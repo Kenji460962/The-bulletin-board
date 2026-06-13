@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>投稿詳細</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        {% if post %}
+        <h1>{{ post.title }}</h1>
+        <p class="meta">投稿者: {{ post.author }} | {{ post.date }}</p>
+        <div class="content">{{ post.content }}</div>
+        {% else %}
+        <p>投稿が見つかりません</p>
+        {% endif %}
+        <a href="/">戻る</a>
+    </div>
+</body>
+</html>
