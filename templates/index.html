@@ -2,24 +2,39 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>掲示板</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>2ちゃんねる風 掲示板トップ</title>
+    <style>
+        body { background-color: #efefef; color: #000000; font-family: "MS P Gothic", sans-serif; padding: 20px; }
+        a:link { color: #0000ff; } a:visited { color: #551a8b; }
+        form { background-color: #f0f0f0; border: 2px outset #ccc; padding: 10px; width: 400px; margin-bottom: 20px; }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>掲示板</h1>
-        <a href="/post" class="btn">新規投稿</a>
-        
-        <div class="posts">
-            {% for post in posts %}
-            <div class="post-item">
-                <h3><a href="/view/{{ post.id }}">{{ post.title }}</a></h3>
-                <p class="meta">投稿者: {{ post.author }} | {{ post.date }}</p>
-                <p>{{ post.content[:100] }}...</p>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
+
+    <h1>2ちゃんねる風 掲示板</h1>
+
+    <!-- 新しい板を作るフォーム -->
+    <form action="{{ url_for('create_thread') }}" method="POST">
+        <h3>新しい板（スレッド）を立てる</h3>
+        <input type="text" name="title" placeholder="スレッドのタイトルを入力" style="width: 80%;" required><br><br>
+        <button type="submit">新規スレッド作成</button>
+    </form>
+
+    <hr>
+
+    <h2>いま立っている板一覧</h2>
+    <ul>
+        {% for thread in threads %}
+        <li>
+            <a href="{{ url_for('thread_view', thread_id=thread.id) }}">
+                【{{ thread.id }}】 {{ thread.title }}
+            </a> 
+            ({{ thread.replies|length }}レス)
+        </li>
+        {% else %}
+        <li>まだ板がありません。新しい板を立ててみましょう！</li>
+        {% endfor %}
+    </ul>
+
 </body>
 </html>
