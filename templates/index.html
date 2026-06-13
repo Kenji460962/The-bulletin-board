@@ -2,91 +2,210 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>...掲示板...</title>
+    <title>高校生による掲示板</title>
     <style>
-        body { background-color: #efefef; color: #000000; font-family: "MS P Gothic", sans-serif; padding: 20px; }
-        a:link { color: #0000ff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        /* 🌐 画面全体の背景設定（写真を背景にする） */
+        body { 
+            /* 🔴 【重要】ここにAI生成画像のURLを貼り付けてください */
+            background-image: url('https://unsplash.com'); 
+            background-size: cover;          /* 画面いっぱいに広げる */
+            background-position: center;     /* 中央寄せ */
+            background-attachment: fixed;    /* スクロールしても背景を固定 */
+            color: #ffffff;                  /* 文字は背景に映える白ベース */
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "MS P Gothic", sans-serif; 
+            padding: 20px; 
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        /* 👑 タイトルのデザイン（文字の周りに影をつけて見やすく） */
+        h1 {
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
+            margin-top: 10px;
+        }
         
-        /* 上のメニューバーのスタイル */
-        .menu-bar { background-color: #ccc; border: 2px outset #fff; padding: 5px; margin-bottom: 20px; display: flex; gap: 10px; }
-        .menu-btn { background-color: #ddd; border: 1px solid #777; padding: 5px 15px; cursor: pointer; font-weight: bold; }
-        .menu-btn.active { background-color: #fff; border-bottom: 1px solid #fff; position: relative; top: 1px; }
+        /* 📱 上のメニューバー（背景写真に馴染む色・少し透けさせる） */
+        .menu-bar { 
+            /* 背景画像に馴染むように暗めの色を少し透過（backdrop-filterで後ろをぼかす） */
+            background-color: rgba(40, 44, 52, 0.75); 
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.15); 
+            border-radius: 8px;
+            padding: 8px; 
+            margin-bottom: 25px; 
+            display: flex; 
+            gap: 12px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* メニューのボタン */
+        .menu-btn { 
+            background-color: rgba(255, 255, 255, 0.1); 
+            color: #ccc;
+            border: 1px solid rgba(255, 255, 255, 0.2); 
+            border-radius: 5px;
+            padding: 8px 20px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            transition: all 0.2s ease;
+        }
+
+        /* マウスを乗せたとき */
+        .menu-btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+
+        /* 現在選ばれているアクティブなボタン（写真に映える明るめのアクセントカラー） */
+        .menu-btn.active { 
+            background-color: #007bff; /* 写真が青系なら青、赤系なら #dc3545 などに変えるとGood */
+            color: #fff;
+            border-color: #007bff;
+            box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+        }
         
-        /* 表示・非表示を切り替える設定 */
+        /* タブのコンテンツ表示切り替え */
         .content-section { display: none; }
         .content-section.active { display: block; }
         
-        /* フォームのレトロな見た目 */
-        form { background-color: #f0f0f0; border: 2px outset #ccc; padding: 10px; width: 400px; margin-bottom: 20px; }
-        .admin-box { background-color: #ffffff; border: 2px inset #ccc; padding: 15px; font-size: 16px; min-height: 80px; white-space: pre-wrap; color: #d00000; font-weight: bold; border-left: 5px solid red; }
+        /* 2ch風パーツを現代風に見やすく（半透明の黒ボックスで背景と文字を分離） */
+        .glass-panel {
+            background-color: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(3px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
 
-        /* 📸 新しいロビー（看板・写真エリア）のスタイル */
-        .lobby-welcome { text-align: center; background-color: #fff; border: 2px inset #ccc; padding: 30px; margin-top: 10px; }
-        .lobby-title { font-size: 32px; color: #800000; font-family: "MS P Mincho", serif; margin-bottom: 20px; font-weight: bold; letter-spacing: 2px; }
-        .lobby-image { max-width: 100%; height: auto; max-height: 400px; border: 3px double #777; box-shadow: 3px 3px 5px #aaa; }
+        /* フォームの調整 */
+        form { 
+            max-width: 450px; 
+        }
+        form h3 { margin-top: 0; }
+        input[type="text"], input[type="password"], textarea {
+            background-color: rgba(255, 255, 255, 0.9);
+            color: #000;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 6px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover { background-color: #218838; }
+
+        /* スレ一覧のリンク（背景色に対して見やすい色に） */
+        ul { padding-left: 20px; }
+        li { margin-bottom: 10px; font-size: 18px; }
+        .thread-link { color: #4dabff !important; font-weight: bold; text-decoration: none; }
+        .thread-link:hover { text-decoration: underline; }
+        .res-count { color: #aaa; font-size: 14px; margin-left: 5px; }
+
+        /* 管理者の一言ボックス */
+        .admin-box { 
+            background-color: rgba(255, 0, 0, 0.15); 
+            border: 1px solid rgba(255, 0, 0, 0.3); 
+            border-left: 5px solid #ff4d4d; 
+            border-radius: 4px;
+            padding: 15px; 
+            font-size: 18px; 
+            min-height: 80px; 
+            white-space: pre-wrap; 
+            color: #ff9999; 
+            font-weight: bold; 
+        }
+
+        /* 📸 ロビータブ内のウェルカムエリア（中央の透明パネル） */
+        .lobby-welcome { 
+            text-align: center; 
+            padding: 40px 20px; 
+        }
+        .lobby-title { 
+            font-size: 36px; 
+            color: #fff; 
+            font-family: "Georgia", serif; 
+            margin-bottom: 20px; 
+            font-weight: bold; 
+            letter-spacing: 3px; 
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+        }
     </style>
 </head>
 <body>
 
-    <h1>...掲示板...</h1>
+    <h1>秘密の掲示板</h1>
 
-    <!-- 📱 上のナビゲーションバー（ロビーを先頭に変更） -->
+    <!-- 📱 ナビゲーションバー -->
     <div class="menu-bar">
         <div class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</div>
         <div class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</div>
         <div class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</div>
     </div>
 
-    <!-- 1. ロビータブ（看板タイトルと写真） -->
+    <!-- 1. ロビータブ（背景画像と一体化するウェルカム画面） -->
     <div id="lobby-tab" class="content-section active">
-        <div class="lobby-welcome">
-            <!-- 好きなタイトル文字に変えてください -->
-            <div class="lobby-title">～ ...掲示板...へようこそ ～</div>
-            
-            <!-- src="..." の中身を、好きな画像のURLに書き換えられます -->
-            <img class="lobby-image" src="https://unsplash.com" alt="ロビー画像">
-            
-            <p style="color: #555; margin-top: 15px; font-size: 14px;">上のメニューから「スレ一覧」を選んで会話に参加しよう！</p>
+        <div class="glass-panel lobby-welcome">
+            <div class="lobby-title">Welcome to Cyber Space</div>
+            <p style="font-size: 16px; color: #ddd; text-shadow: 1px 1px 2px #000;">
+                高校生による掲示板です。<br>
+                上の「スレ一覧」から自由にトピックを作って会話を始めましょう。
+            </p>
         </div>
     </div>
 
     <!-- 2. スレ一覧タブ -->
     <div id="threads-tab" class="content-section">
-        <form action="{{ url_for('create_thread') }}" method="POST">
-            <h3>新しい板（スレッド）を立てる</h3>
-            <input type="text" name="title" placeholder="スレッドのタイトルを入力" style="width: 80%;" required><br><br>
-            <button type="submit">新規スレッド作成</button>
-        </form>
-        <hr>
-        <h2>いま立っている板一覧</h2>
-        <ul>
-            {% for thread in threads %}
-            <li>
-                <a href="{{ url_for('thread_view', thread_id=thread.id) }}">
-                    【{{ thread.id }}】 {{ thread.title }}
-                </a> 
-                ({{ thread.replies|length }}レス)
-            </li>
-            {% else %}
-            <li>まだ板がありません。新しい板を立ててみましょう！</li>
-            {% endfor %}
-        </ul>
+        <div class="glass-panel">
+            <form action="{{ url_for('create_thread') }}" method="POST">
+                <h3>新しい板（スレッド）を立てる</h3>
+                <input type="text" name="title" placeholder="スレッドのタイトルを入力" style="width: 80%;" required><br><br>
+                <button type="submit">新規スレッド作成</button>
+            </form>
+        </div>
+
+        <div class="glass-panel">
+            <h2>いま立っている板一覧</h2>
+            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
+            <ul>
+                {% for thread in threads %}
+                <li>
+                    <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
+                        【{{ thread.id }}】 {{ thread.title }}
+                    </a> 
+                    <span class="res-count">({{ thread.replies|length }}レス)</span>
+                </li>
+                {% else %}
+                <li>まだ板がありません。新しい板を立ててみましょう！</li>
+                {% endfor %}
+            </ul>
+        </div>
     </div>
 
     <!-- 3. 管理者の一言タブ -->
     <div id="admin-tab" class="content-section">
-        <h2>📢 管理者からのお知らせ</h2>
-        <div class="admin-box">{{ admin_message }}</div>
-        <br><br>
-        <hr>
-        <h3>【管理者専用】一言を更新する</h3>
-        <form action="{{ url_for('update_admin_message') }}" method="POST">
-            パスワード：<input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
-            新しいメッセージ：<br>
-            <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required></textarea><br><br>
-            <button type="submit">一言を更新する</button>
-        </form>
+        <div class="glass-panel">
+            <h2>📢 管理者からのお知らせ</h2>
+            <div class="admin-box">{{ admin_message }}</div>
+        </div>
+        
+        <div class="glass-panel">
+            <h3>【管理者専用】一言を更新する</h3>
+            <form action="{{ url_for('update_admin_message') }}" method="POST">
+                パスワード：<input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
+                新しいメッセージ：<br>
+                <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required></textarea><br><br>
+                <button type="submit">一言を更新する</button>
+            </form>
+        </div>
     </div>
 
     <script>
@@ -104,3 +223,4 @@
 
 </body>
 </html>
+
