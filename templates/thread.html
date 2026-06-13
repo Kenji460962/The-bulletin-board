@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ thread.title }}</title>
+    <style>
+        body { background-color: #efefef; color: #000000; font-family: "MS P Gothic", sans-serif; padding: 20px; }
+        a:link { color: #0000ff; }
+        form { background-color: #f0f0f0; border: 2px outset #ccc; padding: 15px; width: 450px; margin-top: 30px; }
+        .post-meta { font-weight: bold; }
+        .post-num { color: green; }
+        .post-name { color: blue; }
+        .post-content { margin-left: 2em; margin-top: 5px; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+
+    <a href="{{ url_for('index') }}">■板一覧に戻る</a>
+    
+    <h1>{{ thread.title }}</h1>
+    <hr>
+
+    <!-- レス一覧の表示 -->
+    {% for reply in thread.replies %}
+    <div>
+        <span class="post-meta">
+            <span class="post-num">{{ reply.id }}</span> ：
+            <span class="post-name">{{ reply.author }}</span> ：
+            {{ reply.date }}
+        </span>
+        <p class="post-content">{{ reply.content }}</p>
+    </div>
+    <hr>
+    {% else %}
+    <p>まだ書き込みがありません。最初のレスをどうぞ！</p>
+    <hr>
+    {% endfor %}
+
+    <!-- 書き込みフォーム -->
+    <form action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST">
+        <h3>この板に書き込む</h3>
+        名前：<input type="text" name="author" placeholder="省略すると名無しさん"><br><br>
+        本文：<br>
+        <textarea name="content" rows="5" cols="50" placeholder="ここにメッセージを入力" required></textarea><br><br>
+        <button type="submit">書き込む</button>
+    </form>
+
+</body>
+</html>
