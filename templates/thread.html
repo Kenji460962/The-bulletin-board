@@ -11,11 +11,24 @@
         .post-meta { font-weight: bold; }
         .post-num { color: green; }
         .post-name { color: blue; }
-        /* ★管理者の名前を赤色にするスタイル */
         .admin-name { color: red; font-weight: bold; }
         .post-id { color: gray; font-size: 13px; font-weight: normal; }
         .post-content { margin-left: 2em; margin-top: 5px; white-space: pre-wrap; }
         .anchor-link { color: #ff00ff !important; font-weight: bold; }
+        
+        /* 🗑 削除ボタンのレトロなスタイル */
+        .delete-btn {
+            background-color: #ffcccc;
+            color: #cc0000;
+            border: 1px solid #cc0000;
+            border-radius: 3px;
+            font-size: 11px;
+            padding: 1px 5px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .delete-btn:hover { background-color: #ff9999; }
+        .delete-form { display: inline; background: none; border: none; padding: 0; margin: 0; width: auto; }
     </style>
 </head>
 <body>
@@ -30,10 +43,16 @@
         <div class="post-item" id="p{{ reply.id }}" data-id="{{ reply.id }}">
             <span class="post-meta">
                 <span class="post-num">{{ reply.id }}</span> ：
-                <!-- 管理者フラグがあれば専用のクラスを適用 -->
                 <span class="{% if reply.is_admin %}admin-name{% else %}post-name{% endif %}">{{ reply.author }}</span> ：
                 {{ reply.date }}
                 <span class="post-id"> ID:{{ reply.user_id }}</span>
+                
+                <!-- 👑 管理者だけに削除ボタンを表示 -->
+                {% if is_admin_user and reply.author != "あぼーん" %}
+                <form class="delete-form" action="/thread/{{ thread.id }}/delete/{{ reply.id }}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
+                    <button type="submit" class="delete-btn">削除</button>
+                </form>
+                {% endif %}
             </span>
             <p class="post-content">{{ reply.content }}</p>
             <hr>
@@ -51,6 +70,8 @@
 
     <script>
         const threadId = {{ thread.id }};
+        // 現在この画面を見ている人が管理者かどうか（HTMLからJavaScriptに引き継ぐ）
+        let isAdminView = {{ 'true' if is_admin_user else 'false' }};
 
         function convertAnchors(element) {
             const rawText = element.innerText;
@@ -75,6 +96,11 @@
                 const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
                 const data = await response.json();
                 
+                // 管理者状態が更新されていれば上書き
+                if (data.is_admin_user !== undefined) {
+                    isAdminView = data.is_admin_user;
+                }
+                
                 data.replies.forEach(reply => {
                     const container = document.getElementById('post-container');
                     const newDiv = document.createElement('div');
@@ -82,8 +108,17 @@
                     newDiv.id = `p${reply.id}`;
                     newDiv.setAttribute('data-id', reply.id);
                     
-                    // JavaScript側でも管理者か通常ユーザーかで色（クラス）を分ける
                     const nameClass = reply.is_admin ? 'admin-name' : 'post-name';
+                    
+                    // 新しく降ってきたレス用の削除ボタンHTML
+                    let deleteButtonHtml = '';
+                    if (isAdminView && reply.author !== 'あぼーん') {
+                        deleteButtonHtml = `
+                            <form class="delete-form" action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
+                                <button type="submit" class="delete-btn">削除</button>
+                            </form>
+                        `;
+                    }
                     
                     newDiv.innerHTML = `
                         <span class="post-meta">
@@ -91,6 +126,7 @@
                             <span class="${nameClass}">${reply.author}</span> ：
                             ${reply.date}
                             <span class="post-id"> ID:${reply.user_id}</span>
+                            ${deleteButtonHtml}
                         </span>
                         <p class="post-content">${reply.content}</p>
                         <hr>
@@ -108,4 +144,3 @@
 
 </body>
 </html>
-
