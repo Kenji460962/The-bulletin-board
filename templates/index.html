@@ -6,9 +6,11 @@
     <style>
         /* 🌐 画面全体の背景設定（写真を背景にする） */
         body { 
-            /* 🔴 【重要】ここにAI生成画像のURLを貼り付けてください */
-            background-image: url('https://unsplash.com'); 
-            background-size: cover;          /* 画面いっぱいに広げる */
+    　　/* 🟢 static フォルダの bg.jpg を背景に指定 */
+    　　　　background-image: url("{{ url_for('static', filename='bg.jpg') }}"); 
+    　　　　background-size: cover;
+...
+        /* 画面いっぱいに広げる */
             background-position: center;     /* 中央寄せ */
             background-attachment: fixed;    /* スクロールしても背景を固定 */
             color: #ffffff;                  /* 文字は背景に映える白ベース */
