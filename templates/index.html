@@ -1,1 +1,25 @@
-print ("a")
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>掲示板</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>掲示板</h1>
+        <a href="/post" class="btn">新規投稿</a>
+        
+        <div class="posts">
+            {% for post in posts %}
+            <div class="post-item">
+                <h3><a href="/view/{{ post.id }}">{{ post.title }}</a></h3>
+                <p class="meta">投稿者: {{ post.author }} | {{ post.date }}</p>
+                <p>{{ post.content[:100] }}...</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>
