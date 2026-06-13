@@ -46,4 +46,6 @@ def view(post_id):
     return render_template('view.html', post=post)
 
 if __name__ == '__main__':
-    app.run()
+    # 環境変数でdebugを制御
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False') == 'True'
+    app.run(debug=debug_mode)
