@@ -8,14 +8,13 @@ import uuid
 app = Flask(__name__)
 
 DATA_FILE = 'bbs_data.json'
-# ★管理者のパスワード（好きな文字列に変えてください）
 ADMIN_PASSWORD = "kenji1228s00460962"
 
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
-    return {"threads": []}
+    return {"threads": [], "admin_message": "ここに管理者の一言が表示されます。"}
 
 def save_data(data):
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
@@ -30,12 +29,26 @@ def get_daily_user_id(user_session_token):
 @app.route('/')
 def index():
     data = load_data()
+    if "admin_message" not in data:
+        data["admin_message"] = "ここに管理者の一言が表示されます。"
+        save_data(data)
+
     user_token = request.cookies.get('user_bbs_token')
-    response = make_response(render_template('index.html', threads=data['threads']))
+    response = make_response(render_template('index.html', threads=data['threads'], admin_message=data['admin_message']))
     if not user_token:
         user_token = str(uuid.uuid4())
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
+
+@app.route('/update_admin_message', methods=['POST'])
+def update_admin_message():
+    password = request.form.get('admin_password')
+    message = request.form.get('message')
+    if password == ADMIN_PASSWORD and message:
+        data = load_data()
+        data['admin_message'] = message
+        save_data(data)
+    return redirect(url_for('index'))
 
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
@@ -68,16 +81,13 @@ def thread_view(thread_id):
         user_id = get_daily_user_id(user_token)
         
         is_admin = False
-        # 名前欄に「#パスワード」が含まれているかチェック
         if "#" in author_input:
             name_part, pass_part = author_input.split("#", 1)
-            # パスワードが一致したら「★」を付与
             if pass_part == ADMIN_PASSWORD:
                 author_input = (name_part or "管理人") + " ★"
                 is_admin = True
-                user_id = "????" # 管理者はIDを隠す
+                user_id = "????"
             else:
-                # パスワードが違ったら普通の文字列として扱う
                 author_input = name_part or "名無しさん"
 
         if content:
@@ -86,7 +96,7 @@ def thread_view(thread_id):
                 'author': author_input,
                 'content': content,
                 'user_id': user_id,
-                'is_admin': is_admin,  # 管理者フラグを保存
+                'is_admin': is_admin,
                 'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             thread['replies'].append(new_reply)
@@ -112,3 +122,4 @@ def thread_updates(thread_id):
 if __name__ == '__main__':
     debug_mode = os.environ.get('FLASK_DEBUG', 'False') == 'True'
     app.run(debug=debug_mode)
+
