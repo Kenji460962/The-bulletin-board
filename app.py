@@ -4,11 +4,16 @@ import json
 import os
 import hashlib
 import uuid
+import requests  # 画像をImgurに送信するために使用します
 
 app = Flask(__name__)
 
 DATA_FILE = 'bbs_data.json'
 ADMIN_PASSWORD = "kenji1228s00460962"
+
+# 🔴 【重要】ここにあなたのImgurのClient IDを入れてください（後述の手順で取得できます）
+# 空白のままでもエラーにはなりませんが、画像アップロードが失敗します。
+IMGUR_CLIENT_ID = "Kenji460962"
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -27,11 +32,29 @@ def get_daily_user_id(user_session_token):
     return hashed[:8]
 
 def check_is_admin_cookie(request):
-    """現在のアクセス者が管理者かどうかをCookieで判定する"""
-    user_token = request.cookies.get('user_bbs_token') or "guest"
-    # 管理者のID（????）の元になるトークンであるか、または管理者用フラグのCookieがあるか
     admin_cookie_flag = request.cookies.get('is_bbs_admin')
     return admin_cookie_flag == "true"
+
+def upload_to_imgur(image_file):
+    """画像をImgurにアップロードして、画像のURLを返す関数"""
+    if not IMGUR_CLIENT_ID or IMGUR_CLIENT_ID == "YOUR_IMGUR_CLIENT_ID":
+        return None
+    
+    url = "https://imgur.com"
+    headers = {"Authorization": f"Client-ID {IMGUR_CLIENT_ID}"}
+    
+    try:
+        # ファイルをそのままImgurのサーバーへ転送
+        files = {"image": (image_file.filename, image_file.stream, image_file.mimetype)}
+        response = requests.post(url, headers=headers, files=files)
+        res_data = response.json()
+        
+        if response.status_code == 200 and res_data.get("success"):
+            return res_data["data"]["link"]  # アップロード成功した画像のURL
+    except Exception as e:
+        print(f"Imgur upload error: {e}")
+        
+    return None
 
 @app.route('/')
 def index():
@@ -85,7 +108,17 @@ def thread_view(thread_id):
 
     if request.method == 'POST':
         author_input = request.form.get('author') or "名無しさん"
-        content = request.form.get('content')
+        content = request.form.get('content') or ""
+        
+        # 📸 ファイルが選択されているか確認
+        image_file = request.files.get('image')
+        image_url = None
+        if image_file Implemented and image_file.filename != '':
+            image_url = upload_to_imgur(image_file)
+            if image_url:
+                # 本文の最後に画像のURLをくっつける（これで自動的に表示されます）
+                content += f"\n{image_url}"
+        
         user_id = get_daily_user_id(user_token)
         
         is_admin = False
@@ -98,7 +131,8 @@ def thread_view(thread_id):
             else:
                 author_input = name_part or "名無しさん"
 
-        if content:
+        # 本文か画像のどちらかがあれば投稿可能にする
+        if content.strip() or image_url:
             new_reply = {
                 'id': len(thread['replies']) + 1,
                 'author': author_input,
@@ -112,11 +146,9 @@ def thread_view(thread_id):
             
         response = redirect(url_for('thread_view', thread_id=thread_id))
         if is_admin:
-            # 管理者として書き込みに成功したら、ブラウザに管理者クッキーを付与
             response.set_cookie('is_bbs_admin', 'true', max_age=60*60*24)
         return response
         
-    # 現在の閲覧者が管理者かどうかも一緒にテンプレートに送る
     response = make_response(render_template('thread.html', thread=thread, is_admin_user=is_admin_user))
     if not request.cookies.get('user_bbs_token'):
         user_token = str(uuid.uuid4())
@@ -125,22 +157,18 @@ def thread_view(thread_id):
 
 @app.route('/thread/<int:thread_id>/delete/<int:reply_id>', methods=['POST'])
 def delete_reply(thread_id, reply_id):
-    """管理者専用：レスを削除（あぼーん化）する"""
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
-        
     data = load_data()
     thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
     if thread:
         reply = next((r for r in thread['replies'] if r['id'] == reply_id), None)
         if reply:
-            # 完全にデータを消すと番号がズレるため、2chでおなじみの「あぼーん」に書き換える
             reply['author'] = "あぼーん"
             reply['content'] = "この書き込みは管理員によって削除されました。"
             reply['user_id'] = "???"
             reply['is_admin'] = False
             save_data(data)
-            
     return redirect(url_for('thread_view', thread_id=thread_id))
 
 @app.route('/api/thread/<int:thread_id>/updates')
@@ -151,8 +179,6 @@ def thread_updates(thread_id):
     if not thread:
         return {"replies": []}, 404
     new_replies = [r for r in thread['replies'] if r['id'] > last_id]
-    
-    # 自動更新用APIにも現在の閲覧者が管理者かどうかの情報を混ぜる
     is_admin_user = check_is_admin_cookie(request)
     return {"replies": new_replies, "is_admin_user": is_admin_user}
 
