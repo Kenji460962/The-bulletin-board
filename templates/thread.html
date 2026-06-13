@@ -5,12 +5,16 @@
     <title>{{ thread.title }}</title>
     <style>
         body { background-color: #efefef; color: #000000; font-family: "MS P Gothic", sans-serif; padding: 20px; }
-        a:link { color: #0000ff; }
+        a:link { color: #0000ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
         form { background-color: #f0f0f0; border: 2px outset #ccc; padding: 15px; width: 450px; margin-top: 30px; }
         .post-meta { font-weight: bold; }
         .post-num { color: green; }
         .post-name { color: blue; }
+        .post-id { color: gray; font-size: 13px; font-weight: normal; }
         .post-content { margin-left: 2em; margin-top: 5px; white-space: pre-wrap; }
+        /* アンカーリンク（>>1など）にホバーしたとき等に分かりやすく */
+        .anchor-link { color: #ff00ff !important; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -23,12 +27,15 @@
     <!-- レス一覧を表示するエリア -->
     <div id="post-container">
         {% for reply in thread.replies %}
-        <div class="post-item" data-id="{{ reply.id }}">
+        <!-- 各レスに id="p1", id="p2" などの目印（アンカー先）をつける -->
+        <div class="post-item" id="p{{ reply.id }}" data-id="{{ reply.id }}">
             <span class="post-meta">
                 <span class="post-num">{{ reply.id }}</span> ：
                 <span class="post-name">{{ reply.author }}</span> ：
                 {{ reply.date }}
+                <span class="post-id"> ID:{{ reply.user_id }}</span>
             </span>
+            <!-- JavaScriptでアンカー化するためクラス名を設定 -->
             <p class="post-content">{{ reply.content }}</p>
             <hr>
         </div>
@@ -40,16 +47,32 @@
         <h3>この板に書き込む</h3>
         名前：<input type="text" name="author" placeholder="省略すると名無しさん"><br><br>
         本文：<br>
-        <textarea name="content" rows="5" cols="50" placeholder="ここにメッセージを入力" required></textarea><br><br>
+        <textarea name="content" rows="5" cols="50" placeholder="ここにメッセージを入力（>>1 のように書くとアンカーになります）" required></textarea><br><br>
         <button type="submit">書き込む</button>
     </form>
 
-    <!-- リアルタイム自動更新のJavaScript -->
     <script>
         const threadId = {{ thread.id }};
+
+        // 本文中の「>>数字」をリンクに変換する関数
+        function convertAnchors(element) {
+            const rawText = element.innerText;
+            // 「>>1」や「>>123」にマッチする正規表現
+            const regex = /&gt;&gt;(\d+)|>>(\d+)/g;
+            
+            const html = rawText.replace(regex, (match, p1, p2) => {
+                const num = p1 || p2;
+                // クリックしたら対応するレス番号（#p1など）へスムーズにスクロールするリンクを作る
+                return `<a href="#p${num}" class="anchor-link">>>${num}</a>`;
+            });
+            element.innerHTML = html;
+        }
+
+        // ページ読み込み時に、すでにあるすべてのレスのアンカーを変換
+        document.querySelectorAll('.post-content').forEach(convertAnchors);
         
+        // 2秒ごとの自動更新処理
         setInterval(async () => {
-            // 現在画面に表示されている最後のレスのIDを取得
             const postItems = document.querySelectorAll('.post-item');
             let lastId = 0;
             if (postItems.length > 0) {
@@ -57,15 +80,14 @@
             }
             
             try {
-                // サーバーに新しいレスがないか問い合わせ
                 const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
                 const data = await response.json();
                 
-                // 新しいレスがあれば、画面をリロードせずに追記する
                 data.replies.forEach(reply => {
                     const container = document.getElementById('post-container');
                     const newDiv = document.createElement('div');
                     newDiv.className = 'post-item';
+                    newDiv.id = `p${reply.id}`;
                     newDiv.setAttribute('data-id', reply.id);
                     
                     newDiv.innerHTML = `
@@ -73,16 +95,22 @@
                             <span class="post-num">${reply.id}</span> ：
                             <span class="post-name">${reply.author}</span> ：
                             ${reply.date}
+                            <span class="post-id"> ID:${reply.user_id}</span>
                         </span>
                         <p class="post-content">${reply.content}</p>
                         <hr>
                     `;
+                    
+                    // 新しいレスの本文もアンカーリンクに変換してから画面に追加
+                    const contentEl = newDiv.querySelector('.post-content');
+                    convertAnchors(contentEl);
+                    
                     container.appendChild(newDiv);
                 });
             } catch (error) {
                 console.error("更新の取得に失敗しました:", error);
             }
-        }, 2000); // ２秒ごとに自動更新
+        }, 2000); // 2秒ごとに自動チェック
     </script>
 
 </body>
