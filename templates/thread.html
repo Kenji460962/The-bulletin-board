@@ -20,21 +20,20 @@
     <h1>{{ thread.title }}</h1>
     <hr>
 
-    <!-- レス一覧の表示 -->
-    {% for reply in thread.replies %}
-    <div>
-        <span class="post-meta">
-            <span class="post-num">{{ reply.id }}</span> ：
-            <span class="post-name">{{ reply.author }}</span> ：
-            {{ reply.date }}
-        </span>
-        <p class="post-content">{{ reply.content }}</p>
+    <!-- レス一覧を表示するエリア -->
+    <div id="post-container">
+        {% for reply in thread.replies %}
+        <div class="post-item" data-id="{{ reply.id }}">
+            <span class="post-meta">
+                <span class="post-num">{{ reply.id }}</span> ：
+                <span class="post-name">{{ reply.author }}</span> ：
+                {{ reply.date }}
+            </span>
+            <p class="post-content">{{ reply.content }}</p>
+            <hr>
+        </div>
+        {% endfor %}
     </div>
-    <hr>
-    {% else %}
-    <p>まだ書き込みがありません。最初のレスをどうぞ！</p>
-    <hr>
-    {% endfor %}
 
     <!-- 書き込みフォーム -->
     <form action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST">
@@ -44,6 +43,47 @@
         <textarea name="content" rows="5" cols="50" placeholder="ここにメッセージを入力" required></textarea><br><br>
         <button type="submit">書き込む</button>
     </form>
+
+    <!-- リアルタイム自動更新のJavaScript -->
+    <script>
+        const threadId = {{ thread.id }};
+        
+        setInterval(async () => {
+            // 現在画面に表示されている最後のレスのIDを取得
+            const postItems = document.querySelectorAll('.post-item');
+            let lastId = 0;
+            if (postItems.length > 0) {
+                lastId = parseInt(postItems[postItems.length - 1].getAttribute('data-id'));
+            }
+            
+            try {
+                // サーバーに新しいレスがないか問い合わせ
+                const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
+                const data = await response.json();
+                
+                // 新しいレスがあれば、画面をリロードせずに追記する
+                data.replies.forEach(reply => {
+                    const container = document.getElementById('post-container');
+                    const newDiv = document.createElement('div');
+                    newDiv.className = 'post-item';
+                    newDiv.setAttribute('data-id', reply.id);
+                    
+                    newDiv.innerHTML = `
+                        <span class="post-meta">
+                            <span class="post-num">${reply.id}</span> ：
+                            <span class="post-name">${reply.author}</span> ：
+                            ${reply.date}
+                        </span>
+                        <p class="post-content">${reply.content}</p>
+                        <hr>
+                    `;
+                    container.appendChild(newDiv);
+                });
+            } catch (error) {
+                console.error("更新の取得に失敗しました:", error);
+            }
+        }, 3000); // 3000ミリ秒（3秒）ごとに自動チェック
+    </script>
 
 </body>
 </html>
