@@ -6,11 +6,9 @@
     <style>
         /* 🌐 画面全体の背景設定（写真を背景にする） */
         body { 
-    　　/* 🟢 static フォルダの bg.jpg を背景に指定 */
-    　　　　background-image: url("{{ url_for('static', filename='publicdomainq-0020308gutgev.jpg') }}"); 
-    　　　　background-size: cover;
-...
-        /* 画面いっぱいに広げる */
+        /* 🟢 filename の中身から static/ を削除しました */
+            background-image: url("{{ url_for('static', filename='publicdomainq-0020308gutgev.jpg') }}"); 
+            background-size: cover;          /* 画面いっぱいに広げる */
             background-position: center;     /* 中央寄せ */
             background-attachment: fixed;    /* スクロールしても背景を固定 */
             color: #ffffff;                  /* 文字は背景に映える白ベース */
@@ -19,6 +17,7 @@
             margin: 0;
             min-height: 100vh;
         }
+
 
         /* 👑 タイトルのデザイン（文字の周りに影をつけて見やすく） */
         h1 {
