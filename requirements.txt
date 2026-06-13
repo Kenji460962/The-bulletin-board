@@ -1,4 +1,3 @@
 Flask==2.3.0
 SQLAlchemy==2.0.0
-Pillow==8.4.0
 gunicorn==20.1.0
