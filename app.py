@@ -76,6 +76,20 @@ def thread_view(thread_id):
         
     return render_template('thread.html', thread=thread)
 
+@app.route('/api/thread/<int:thread_id>/updates')
+def thread_updates(thread_id):
+    """最新の書き込みだけをJavaScriptに返すAPI"""
+    last_id = request.args.get('last_id', type=int, default=0)
+    data = load_data()
+    thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
+    
+    if not thread:
+        return {"replies": []}, 404
+        
+    # 画面にまだ表示されていない、新しいレスだけを抽出
+    new_replies = [r for r in thread['replies'] if r['id'] > last_id]
+    return {"replies": new_replies}
+
 if __name__ == '__main__':
     debug_mode = os.environ.get('FLASK_DEBUG', 'False') == 'True'
     app.run(debug=debug_mode)
