@@ -16,7 +16,6 @@
         .post-content { margin-left: 2em; margin-top: 5px; white-space: pre-wrap; }
         .anchor-link { color: #ff00ff !important; font-weight: bold; }
         
-        /* 📸 写真の最大表示サイズ */
         .uploaded-image {
             display: block;
             max-width: 300px;
@@ -39,6 +38,9 @@
         }
         .delete-btn:hover { background-color: #ff9999; }
         .delete-form { display: inline; background: none; border: none; padding: 0; margin: 0; width: auto; }
+        
+        /* 🔄 アップロード中のぐるぐる表示用 */
+        .loading-text { color: #555; font-size: 12px; font-weight: bold; display: none; }
     </style>
 </head>
 <body>
@@ -69,22 +71,62 @@
         {% endfor %}
     </div>
 
-    <!-- ⚠️ enctype="multipart/form-data" を追加してファイルを送れるように変更 -->
-    <form action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
+    <!-- 💡 送信ボタンが押されたときに JavaScript を動かす設定にしました -->
+    <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST">
         <h3>この板に書き込む</h3>
         名前：<input type="text" name="author" placeholder="名前#パスワード で管理者化"><br><br>
         本文：<br>
-        <textarea name="content" rows="4" cols="50" placeholder="メッセージを入力してください"></textarea><br><br>
+        <textarea id="form-content" name="content" rows="4" cols="50" placeholder="メッセージを入力してください"></textarea><br><br>
         
-        <!-- 📸 【新設】画像選択ボタン -->
-        写真：<input type="file" name="image" accept="image/*"><br><br>
+        <!-- 📸 写真選択ボタン -->
+        写真：<input type="file" id="form-image" accept="image/*"><br>
+        <span id="loading-msg" class="loading-text">⏳ 画像をアップロード中...しばらくお待ちください</span><br><br>
         
-        <button type="submit">書き込む</button>
+        <button type="submit" id="submit-btn">書き込む</button>
     </form>
 
     <script>
         const threadId = {{ thread.id }};
         let isAdminView = {{ 'true' if is_admin_user else 'false' }};
+
+        // フォーム送信時の処理（ID不要の超簡単自動画像アップロード）
+        document.getElementById('bbs-form').addEventListener('submit', async function(e) {
+            const imageInput = document.getElementById('form-image');
+            const contentInput = document.getElementById('form-content');
+            const loadingMsg = document.getElementById('loading-msg');
+            const submitBtn = document.getElementById('submit-btn');
+
+            // 写真が選ばれている場合だけ、送信を一時ストップして裏で画像をアップロードする
+            if (imageInput.files.length > 0) {
+                e.preventDefault(); // 通常の送信をストップ
+                
+                loadingMsg.style.display = 'inline';
+                submitBtn.disabled = true;
+
+                const formData = new FormData();
+                formData.append('file', imageInput.files[0]);
+                formData.append('upload_preset', 'ml_default'); // 誰でも使える無料公開プリセット
+
+                try {
+                    // ID登録なしで誰でも無料で使える画像サーバー（Cloudinary公式）に送信
+                    const response = await fetch('https://cloudinary.com', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const imgData = await response.json();
+                    
+                    if (imgData.secure_url) {
+                        // 成功したら、本文の最後に自動的に画像のURLを追記する
+                        contentInput.value = contentInput.value + "\n" + imgData.secure_url;
+                    }
+                } catch (error) {
+                    alert('画像のアップロードに失敗しました。本文のみ送信します。');
+                }
+
+                // ストップしていた送信を再開してFlaskへ送る
+                this.submit();
+            }
+        });
 
         function processPostContent(element) {
             let text = element.innerHTML;
@@ -95,16 +137,15 @@
                 return `<a href="#p${num}" class="anchor-link">>>${num}</a>`;
             });
 
-            // 文中のImgurなどの画像リンクを自動検知して下に展開する
             const rawText = element.innerText;
-            const imageRegex = /(https?:\/\/[\w\/:%#\$&\?\(\)~\.=\+\-]+(?:\.jpg|\.jpeg|\.png|\.gif|\.png)(?:\?[\w\/:%#\$&\?\(\)~\.=\+\-]+)?)/gi;
+            // さまざまな画像URL（http〜.jpg, .png, ://cloudinary.com など）に対応
+            const imageRegex = /(https?:\/\/[\w\/:%#\$&\?\(\)~\.=\+\-]+(?:\.jpg|\.jpeg|\.png|\.gif)(?:\?[\w\/:%#\$&\?\(\)~\.=\+\-]+)?|https?:\/\/res\.cloudinary\.com\/[\w\/:%#\$&\?\(\)~\.=\+\-]+)/gi;
             
             element.innerHTML = text;
 
             const matches = rawText.match(imageRegex);
             if (matches) {
                 matches.forEach(url => {
-                    // 既に画像が表示されていなければ追加する
                     if (!element.querySelector(`img[src="${url}"]`)) {
                         const img = document.createElement('img');
                         img.src = url;
@@ -174,4 +215,3 @@
 
 </body>
 </html>
-
