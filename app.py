@@ -106,18 +106,21 @@ def thread_view(thread_id):
     user_token = request.cookies.get('user_bbs_token') or "guest"
     is_admin_user = check_is_admin_cookie(request)
 
+    
+    
     if request.method == 'POST':
         author_input = request.form.get('author') or "名無しさん"
         content = request.form.get('content') or ""
         
-        # 📸 ファイルが選択されているか確認
+        # 📸 ファイルが選択されているか確認（修正版）
         image_file = request.files.get('image')
         image_url = None
-        if image_file Implemented and image_file.filename != '':
+        if image_file and image_file.filename != '':
             image_url = upload_to_imgur(image_file)
             if image_url:
-                # 本文の最後に画像のURLをくっつける（これで自動的に表示されます）
+                # 本文の最後に画像のURLをくっつける
                 content += f"\n{image_url}"
+
         
         user_id = get_daily_user_id(user_token)
         
