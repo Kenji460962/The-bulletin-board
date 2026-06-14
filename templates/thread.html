@@ -103,11 +103,11 @@
                 submitBtn.disabled = true;
 
                 const formData = new FormData();
-                formData.append('file', imageInput.files[0]); 
+                formData.append('file', imageInput.files[0]); // 1枚目の画像を取得
                 formData.append('upload_preset', 'ml_default'); 
 
                 try {
-                    // 🟢 あなたのID「dpqh2ssnh」をしっかりと組み込みました！
+                    // 🟢 ここにあなたのID「dpqh2ssnh」がバッチリ入っています！
                     const response = await fetch('https://cloudinary.com', {
                         method: 'POST',
                         body: formData
@@ -208,6 +208,7 @@
             }
         }, 2000);
     </script>
+
 
 
 </body>
