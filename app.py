@@ -148,5 +148,7 @@ def thread_updates(thread_id):
     return {"replies": new_replies, "is_admin_user": is_admin_user}
 
 if __name__ == '__main__':
-    debug_mode = os.environ.get('FLASK_DEBUG', 'False') == 'True'
-    app.run(debug=debug_mode)
+    # Render環境のポート番号（なければデフォルトで5000）を取得する
+    port = int(os.environ.get('PORT', 5000))
+    # debugをオフにし、外部からの接続（0.0.0.0）を許可して起動する
+    app.run(host='0.0.0.0', port=port, debug=False)
