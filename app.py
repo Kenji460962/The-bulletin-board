@@ -1,19 +1,15 @@
-from flask import Flask, render_template, request, redirect, url_for, make_response, jsonify
+from flask import Flask, render_template, request, redirect, url_for, make_response
 from datetime import datetime
 import json
 import os
 import hashlib
 import uuid
-import requests  # 画像をImgurに送信するために使用します
 
 app = Flask(__name__)
 
 DATA_FILE = 'bbs_data.json'
+# 管理者のパスワード（お好きな文字列に変えてください）
 ADMIN_PASSWORD = "kenji1228s00460962"
-
-# 🔴 【重要】ここにあなたのImgurのClient IDを入れてください（後述の手順で取得できます）
-# 空白のままでもエラーにはなりませんが、画像アップロードが失敗します。
-IMGUR_CLIENT_ID = "Kenji460962"
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -34,27 +30,6 @@ def get_daily_user_id(user_session_token):
 def check_is_admin_cookie(request):
     admin_cookie_flag = request.cookies.get('is_bbs_admin')
     return admin_cookie_flag == "true"
-
-def upload_to_imgur(image_file):
-    """画像をImgurにアップロードして、画像のURLを返す関数"""
-    if not IMGUR_CLIENT_ID or IMGUR_CLIENT_ID == "YOUR_IMGUR_CLIENT_ID":
-        return None
-    
-    url = "https://imgur.com"
-    headers = {"Authorization": f"Client-ID {IMGUR_CLIENT_ID}"}
-    
-    try:
-        # ファイルをそのままImgurのサーバーへ転送
-        files = {"image": (image_file.filename, image_file.stream, image_file.mimetype)}
-        response = requests.post(url, headers=headers, files=files)
-        res_data = response.json()
-        
-        if response.status_code == 200 and res_data.get("success"):
-            return res_data["data"]["link"]  # アップロード成功した画像のURL
-    except Exception as e:
-        print(f"Imgur upload error: {e}")
-        
-    return None
 
 @app.route('/')
 def index():
@@ -106,22 +81,9 @@ def thread_view(thread_id):
     user_token = request.cookies.get('user_bbs_token') or "guest"
     is_admin_user = check_is_admin_cookie(request)
 
-    
-    
     if request.method == 'POST':
         author_input = request.form.get('author') or "名無しさん"
         content = request.form.get('content') or ""
-        
-        # 📸 ファイルが選択されているか確認（修正版）
-        image_file = request.files.get('image')
-        image_url = None
-        if image_file and image_file.filename != '':
-            image_url = upload_to_imgur(image_file)
-            if image_url:
-                # 本文の最後に画像のURLをくっつける
-                content += f"\n{image_url}"
-
-        
         user_id = get_daily_user_id(user_token)
         
         is_admin = False
@@ -134,8 +96,8 @@ def thread_view(thread_id):
             else:
                 author_input = name_part or "名無しさん"
 
-        # 本文か画像のどちらかがあれば投稿可能にする
-        if content.strip() or image_url:
+        # 本文が空でなければ（半角スペースのみでなければ）投稿
+        if content.strip():
             new_reply = {
                 'id': len(thread['replies']) + 1,
                 'author': author_input,
