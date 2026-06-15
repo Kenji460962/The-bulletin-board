@@ -72,18 +72,19 @@
     </div>
 
     <!-- 💡 送信ボタンが押されたときに JavaScript を動かす設定にしました -->
-    <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST">
+        <!-- 🟢 【超重要】enctype="multipart/form-data" を追加し、name="image" を設定しました -->
+    <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
         <h3>この板に書き込む</h3>
         名前：<input type="text" name="author" placeholder="名前#パスワード で管理者化"><br><br>
         本文：<br>
         <textarea id="form-content" name="content" rows="4" cols="50" placeholder="メッセージを入力してください"></textarea><br><br>
         
-        <!-- 📸 写真選択ボタン -->
-        写真：<input type="file" id="form-image" accept="image/*"><br>
-        <span id="loading-msg" class="loading-text">⏳ 画像をアップロード中...しばらくお待ちください</span><br><br>
+        <!-- 📸 写真選択ボタン（name="image" を追加） -->
+        写真：<input type="file" id="form-image" name="image" accept="image/*"><br><br>
         
         <button type="submit" id="submit-btn">書き込む</button>
     </form>
+
 
     <script>
         const threadId = {{ thread.id }};
