@@ -14,7 +14,7 @@ app = Flask(__name__)
 # Renderの環境変数（CLOUDINARY_URL）を使って一発で安全に接続します
 # ★ secure=True を足すことで、通信の暗号化エラーによるフリーズを防ぎます
 cloudinary.config(
-    cloudinary_url = os.environ.get('CLOUDINARY_URL'),
+    cloudinary_url = os.environ.get('cloudinary://413154997929334:1MWGTCiDlVZawKJWIm1aNpq_dhM@dpqh2ssnh'),
     secure = True
 )
 
