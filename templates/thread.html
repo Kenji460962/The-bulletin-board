@@ -38,9 +38,6 @@
         }
         .delete-btn:hover { background-color: #ff9999; }
         .delete-form { display: inline; background: none; border: none; padding: 0; margin: 0; width: auto; }
-        
-        /* 🔄 アップロード中のぐるぐる表示用 */
-        .loading-text { color: #555; font-size: 12px; font-weight: bold; display: none; }
     </style>
 </head>
 <body>
@@ -65,45 +62,115 @@
                 </form>
                 {% endif %}
             </span>
+            <!-- 📄 投稿内容を表示する部分 -->
             <p class="post-content">{{ reply.content }}</p>
+            
+            <!-- 📸 【復活】もし画像URL（Cloudinary）が保存されていたらここに画像タグを出す -->
+            {% if reply.image_url %}
+            <div style="margin-left: 2em;">
+                <img src="{{ reply.image_url }}" class="uploaded-image" alt="添付画像">
+            </div>
+            {% endif %}
             <hr>
         </div>
         {% endfor %}
     </div>
 
-    <!-- 💡 送信ボタンが押されたときに JavaScript を動かす設定にしました -->
-        <!-- 🟢 【超重要】enctype="multipart/form-data" を追加し、name="image" を設定しました -->
+    <!-- 🟢 正しく修正されたフォーム（そのまま維持しています） -->
     <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
         <h3>この板に書き込む</h3>
         名前：<input type="text" name="author" placeholder="名前#パスワード で管理者化"><br><br>
         本文：<br>
         <textarea id="form-content" name="content" rows="4" cols="50" placeholder="メッセージを入力してください"></textarea><br><br>
         
-        <!-- 📸 写真選択ボタン（name="image" を追加） -->
         写真：<input type="file" id="form-image" name="image" accept="image/*"><br><br>
         
         <button type="submit" id="submit-btn">書き込む</button>
     </form>
 
-
+    <!-- 🛠 【完全復活】必要なJavaScriptコード -->
     <script>
         const threadId = {{ thread.id }};
         let isAdminView = {{ 'true' if is_admin_user else 'false' }};
 
-        // --- 省略：画像プレビューや表示ロジックは残し、
-        // アップロードのJavaScript処理（fetch）は削除しました ---
+        // 本文の中の「>>1」などのアンカーリンクを正しく処理する機能
+        function processPostContent(element) {
+            let text = element.innerHTML;
+            const anchorRegex = /&gt;&gt;(\d+)|>>(\d+)/g;
+            text = text.replace(anchorRegex, (match, p1, p2) => {
+                const num = p1 || p2;
+                return `<a href="#p${num}" class="anchor-link">>>${num}</a>`;
+            });
+            element.innerHTML = text;
+        }
 
         // 初期読み込み時の投稿チェック
         document.querySelectorAll('.post-content').forEach(processPostContent);
         
-        // 掲示板の自動リアルタイム更新機能（簡略化）
+        // 掲示板の自動リアルタイム更新機能
         setInterval(async () => {
-            // ... (更新ロジック)
+            const postItems = document.querySelectorAll('.post-item');
+            let lastId = 0;
+            if (postItems.length > 0) {
+                lastId = parseInt(postItems[postItems.length - 1].getAttribute('data-id'));
+            }
+            
+            try {
+                const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
+                const data = await response.json();
+                
+                if (data.is_admin_user !== undefined) {
+                    isAdminView = data.is_admin_user;
+                }
+                
+                data.replies.forEach(reply => {
+                    const container = document.getElementById('post-container');
+                    const newDiv = document.createElement('div');
+                    newDiv.className = 'post-item';
+                    newDiv.id = `p${reply.id}`;
+                    newDiv.setAttribute('data-id', reply.id);
+                    
+                    let deleteButtonHtml = '';
+                    if (isAdminView && reply.author !== 'あぼーん') {
+                        deleteButtonHtml = `
+                            <form class="delete-form" action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
+                                <button type="submit" class="delete-btn">削除</button>
+                            </form>
+                        `;
+                    }
+                    
+                    // 投稿に画像が含まれている場合のHTMLタグを生成
+                    let imageHtml = '';
+                    if (reply.image_url) {
+                        imageHtml = `
+                            <div style="margin-left: 2em;">
+                                <img src="${reply.image_url}" class="uploaded-image" alt="添付画像">
+                            </div>
+                        `;
+                    }
+                    
+                    newDiv.innerHTML = `
+                        <span class="post-meta">
+                            <span class="post-num">${reply.id}</span> ：
+                            <span class="${reply.is_admin ? 'admin-name' : 'post-name'}">${reply.author}</span> ：
+                            ${reply.date}
+                            <span class="post-id"> ID:${reply.user_id}</span>
+                            ${deleteButtonHtml}
+                        </span>
+                        <p class="post-content">${reply.content}</p>
+                        ${imageHtml}
+                        <hr>
+                    `;
+                    
+                    container.appendChild(newDiv);
+                    
+                    const newPostContent = newDiv.querySelector('.post-content');
+                    processPostContent(newPostContent);
+                });
+            } catch (error) {
+                console.error('Auto update error:', error);
+            }
         }, 3000);
     </script>
-
-
-
-
 </body>
 </html>
