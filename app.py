@@ -4,11 +4,20 @@ import json
 import os
 import hashlib
 import uuid
+# Cloudinaryのライブラリを読み込み
+import cloudinary
+import cloudinary.uploader
 
 app = Flask(__name__)
 
+# Cloudinaryの設定（Renderの環境変数から自動で読み込みます）
+cloudinary.config(
+    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME'),
+    api_key = os.environ.get('CLOUDINARY_API_KEY'),
+    api_secret = os.environ.get('CLOUDINARY_API_SECRET')
+)
+
 DATA_FILE = 'bbs_data.json'
-# 管理者のパスワード（お好きな文字列に変えてください）
 ADMIN_PASSWORD = "kenji1228s00460962"
 
 def load_data():
@@ -96,14 +105,27 @@ def thread_view(thread_id):
             else:
                 author_input = name_part or "名無しさん"
 
-        # 本文が空でなければ（半角スペースのみでなければ）投稿
-        if content.strip():
+        # 【追加】画像ファイルの取得処理
+        image_url = ""
+        if 'image' in request.files:
+            file = request.files['image']
+            # ファイルが存在し、ファイル名が空でない場合のみCloudinaryへアップロード
+            if file and file.filename != '':
+                try:
+                    upload_result = cloudinary.uploader.upload(file)
+                    image_url = upload_result.get('secure_url') # 画像のURLを取得
+                except Exception as e:
+                    print(f"Cloudinary Upload Error: {e}")
+
+        # 本文が空ではない、または画像がアップロードされている場合に投稿を許可
+        if content.strip() or image_url:
             new_reply = {
                 'id': len(thread['replies']) + 1,
                 'author': author_input,
                 'content': content,
                 'user_id': user_id,
                 'is_admin': is_admin,
+                'image_url': image_url, # 【追加】画像のURLを保存
                 'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             thread['replies'].append(new_reply)
@@ -133,6 +155,7 @@ def delete_reply(thread_id, reply_id):
             reply['content'] = "この書き込みは管理員によって削除されました。"
             reply['user_id'] = "???"
             reply['is_admin'] = False
+            reply['image_url'] = "" # 【追加】画像も削除
             save_data(data)
     return redirect(url_for('thread_view', thread_id=thread_id))
 
@@ -148,7 +171,5 @@ def thread_updates(thread_id):
     return {"replies": new_replies, "is_admin_user": is_admin_user}
 
 if __name__ == '__main__':
-    # Render環境のポート番号（なければデフォルトで5000）を取得する
     port = int(os.environ.get('PORT', 5000))
-    # debugをオフにし、外部からの接続（0.0.0.0）を許可して起動する
     app.run(host='0.0.0.0', port=port, debug=False)
