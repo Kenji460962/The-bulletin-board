@@ -11,10 +11,11 @@ import cloudinary.uploader
 app = Flask(__name__)
 
 # Cloudinaryの設定（Renderの環境変数から自動で読み込みます）
+# Renderの環境変数（CLOUDINARY_URL）を使って一発で安全に接続します
+# ★ secure=True を足すことで、通信の暗号化エラーによるフリーズを防ぎます
 cloudinary.config(
-    cloud_name = os.environ.get('CLOUDINARY_CLOUD_NAME'),
-    api_key = os.environ.get('CLOUDINARY_API_KEY'),
-    api_secret = os.environ.get('CLOUDINARY_API_SECRET')
+    cloudinary_url = os.environ.get('CLOUDINARY_URL'),
+    secure = True
 )
 
 DATA_FILE = 'bbs_data.json'
