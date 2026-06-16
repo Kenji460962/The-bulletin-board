@@ -58,7 +58,7 @@
                 {{ reply.date }}
                 <span class="post-id"> ID:{{ reply.user_id }}</span>
                 
-                {% if is_admin_user and reply.author != "あぼーん" %}
+                {% if is_admin_user and reply.author != "Deleted" %}
                 <form class="delete-form" action="/thread/{{ thread.id }}/delete/{{ reply.id }}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
                     <button type="submit" class="delete-btn">削除</button>
                 </form>
@@ -81,7 +81,7 @@
     <!-- 🟢 正しく修正されたフォーム（そのまま維持しています） -->
     <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
         <h3>この板に書き込む</h3>
-        名前：<input type="text" name="author" placeholder="名前#パスワード で管理者化"><br><br>
+        名前：<input type="text" name="author" placeholder="名無しさん"><br><br>
         本文：<br>
         <textarea id="form-content" name="content" rows="4" cols="50" placeholder="メッセージを入力してください"></textarea><br><br>
         
@@ -142,7 +142,7 @@
                     newDiv.setAttribute('data-id', reply.id);
                     
                     let deleteButtonHtml = '';
-                    if (isAdminView && reply.author !== 'あぼーん') {
+                    if (isAdminView && reply.author !== 'Deleted') {
                         deleteButtonHtml = `
                             <form class="delete-form" action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
                                 <button type="submit" class="delete-btn">削除</button>
