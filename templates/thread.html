@@ -119,6 +119,11 @@
         // 初期読み込み時の投稿チェック
         document.querySelectorAll('.post-content').forEach(processPostContent);
         
+        const bbsForm = document.getElementById('bbs-form');
+        if (bbsForm) {
+            bbsForm.scrollIntoView({ behavior: 'smooth' });
+        }
+        
         // 掲示板の自動リアルタイム更新機能
         setInterval(async () => {
             const postItems = document.querySelectorAll('.post-item');
