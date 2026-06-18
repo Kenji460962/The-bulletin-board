@@ -163,10 +163,12 @@
         </div>
     </div>
 
-    <!-- 2. スレ一覧タブ -->
+
+<!-- 2. スレ一覧タブ -->
     <div id="threads-tab" class="content-section">
         <div class="glass-panel">
-            <form action="{{ url_for('create_thread') }}" method="POST">
+            <!-- 💡 id="create-thread-form" を追加しました -->
+            <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
                 <h3>新しい板（スレッド）を立てる</h3>
                 <input type="text" name="title" placeholder="スレッドのタイトルを入力" style="width: 80%;" required><br><br>
                 <button type="submit">新規スレッド作成</button>
@@ -176,7 +178,8 @@
         <div class="glass-panel">
             <h2>いま立っている板一覧</h2>
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
-            <ul>
+            <!-- 💡 JavaScriptで操作するために id="thread-list" を追加しました -->
+            <ul id="thread-list">
                 {% for thread in threads %}
                 <li>
                     <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
@@ -185,11 +188,71 @@
                     <span class="res-count">({{ thread.replies|length }}レス)</span>
                 </li>
                 {% else %}
-                <li>まだ板がありません。新しい板を立ててみましょう！</li>
+                <!-- 💡 JavaScriptで判定するために id="no-thread-msg" を追加しました -->
+                <li id="no-thread-msg">まだ板がありません。新しい板を立ててみましょう！</li>
                 {% endfor %}
             </ul>
         </div>
     </div>
+
+    <!-- 💡 ページ移動なしで一覧の一番上に追加する魔法のスクリプト -->
+    <script>
+    document.getElementById('create-thread-form').addEventListener('submit', async (e) => {
+        e.preventDefault(); // ❌ ページが勝手にリロードされるのを防ぐ
+
+        const form = e.target;
+        const formData = new FormData(form);
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const thread = result.thread;
+                const threadList = document.getElementById('thread-list');
+                
+                // 「まだ板がありません」の文字が表示されていれば消す
+                const noThreadMsg = document.getElementById('no-thread-msg');
+                if (noThreadMsg) {
+                    noThreadMsg.remove();
+                }
+
+                // ⭕️ 新しいスレッドのHTML（liタグ）をその場で組み立てる
+                const newLi = document.createElement('li');
+                newLi.innerHTML = `
+                    <a class="thread-link" href="/thread/${thread.id}">
+                        【${thread.id}】 ${escapeHtml(thread.title)}
+                    </a> 
+                    <span class="res-count">(0レス)</span>
+                `;
+
+                // ⭕️ 一覧の一番上（先頭）に滑り込ませる
+                threadList.insertBefore(newLi, threadList.firstChild);
+
+                form.reset(); // 入力欄をきれいに空にする
+            } else {
+                alert('スレッドの作成に失敗しました。');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('通信エラーが発生しました。');
+        }
+    });
+
+    // 安全のために文字化けやセキュリティ対策を行う関数
+    function escapeHtml(str) {
+        return str.replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;')
+                  .replace(/'/g, '&#039;');
+    }
+    </script>
+
 
     <!-- 3. 管理者の一言タブ -->
     <div id="admin-tab" class="content-section">
