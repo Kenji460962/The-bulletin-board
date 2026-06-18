@@ -19,7 +19,7 @@ cloudinary.config(
 )
 
 DATA_FILE = 'bbs_data.json'
-ADMIN_PASSWORD = "kenji1228s00460962"
+ADMIN_PASSWORD = "setokoji114514"
 
 def load_data():
     if os.path.exists(DATA_FILE):
