@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, make_response
+=#from flask import Flask, render_template, request, redirect, url_for, make_response
 from datetime import datetime
 import json
 import os
@@ -69,7 +69,7 @@ def update_admin_message():
 def create_thread():
     title = request.form.get('title')
     if not title:
-        return redirect(url_for('index'))
+        return {"error": "タイトルが必要です"}, 400
     data = load_data()
     new_thread = {
         'id': len(data['threads']) + 1,
@@ -77,11 +77,13 @@ def create_thread():
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'replies': []
     }
-    
-    #先頭（インデックス0番）に新スレッドを挿入する（一覧の一番上に来る）
+    #一番上に追加されるようにする
     data['threads'].insert(0, new_thread)
     save_data(data)
-    return redirect(url_for('index'))
+    
+    # 画面をロビーに勝手に戻さず、成功したデータだけを返します
+    return {"success": True, "thread": new_thread}
+
 
 
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
