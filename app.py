@@ -77,9 +77,12 @@ def create_thread():
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'replies': []
     }
-    data['threads'].append(new_thread)
+    
+    #先頭（インデックス0番）に新スレッドを挿入する（一覧の一番上に来る）
+    data['threads'].insert(0, new_thread)
     save_data(data)
     return redirect(url_for('index'))
+
 
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
