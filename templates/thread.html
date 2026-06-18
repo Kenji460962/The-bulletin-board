@@ -124,35 +124,6 @@
     
     <!-- 🛠 【完全復活】必要なJavaScriptコード -->
     <script>
-    
-        const savedAuthor = getCookie('bbs_saved_author');
-            const authorInput = document.querySelector('input[name="author"]');
-            if (savedAuthor && authorInput) {
-                authorInput.value = savedAuthor;
-            }
-        });
-
-        const bbsFormEl = document.getElementById('bbs-form');
-        if (bbsFormEl) {
-            bbsFormEl.addEventListener('submit', () => {
-                const authorInput = document.querySelector('input[name="author"]');
-                if (authorInput) {
-                    setCookie('bbs_saved_author', authorInput.value, 365);
-                }
-            });
-        }
-
-        function setCookie(name, value, days) {
-            const date = new Date();
-            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-            document.cookie = `${name}=${encodeURIComponent(value)};expires=${date.toUTCString()};path=/;SameSite=Strict`;
-        }
-        function getCookie(name) {
-            const value = `; ${document.cookie}`;
-            const parts = value.split(`; ${name}=`);
-            if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
-            return '';
-        }
         const threadId = {{ thread.id }};
         let isAdminView = {{ 'true' if is_admin_user else 'false' }};
 
@@ -170,9 +141,44 @@
         // 初期読み込み時の投稿チェック
         document.querySelectorAll('.post-content').forEach(processPostContent);
         
-        const bbsForm = document.getElementById('bbs-form');
-        if (bbsForm) {
-            bbsForm.scrollIntoView({ behavior: 'smooth' });
+        // 🟢 【名前保存 ＆ 自動スクロール】をセットにした処理
+        window.addEventListener('DOMContentLoaded', () => {
+            // ① 保存されている名前があれば自動で入力する
+            const savedAuthor = getCookie('bbs_saved_author');
+            const authorInput = document.querySelector('input[name="author"]');
+            if (savedAuthor && authorInput) {
+                authorInput.value = savedAuthor;
+            }
+            
+            // ② ページを開いた時に一番下まで滑らかにスクロールする
+            const targetForm = document.getElementById('bbs-form');
+            if (targetForm) {
+                targetForm.scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+
+        // 🟢 【書き込み時に名前を覚える】処理
+        const saveNameForm = document.getElementById('bbs-form');
+        if (saveNameForm) {
+            saveNameForm.addEventListener('submit', () => {
+                const authorInput = document.querySelector('input[name="author"]');
+                if (authorInput) {
+                    setCookie('bbs_saved_author', authorInput.value, 365); // 1年間保存
+                }
+            });
+        }
+
+        // 🟢 Cookie（クッキー）を扱うための部品
+        function setCookie(name, value, days) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            document.cookie = name + "=" + encodeURIComponent(value) + ";expires=" + date.toUTCString() + ";path=/;SameSite=Strict";
+        }
+        function getCookie(name) {
+            const value = "; " + document.cookie;
+            const parts = value.split("; " + name + "=");
+            if (parts.length === 2) return decodeURIComponent(parts.pop().split(";").shift());
+            return "";
         }
         
         // 掲示板の自動リアルタイム更新機能
@@ -207,7 +213,6 @@
                         `;
                     }
                     
-                    // 投稿に画像が含まれている場合のHTMLタグを生成
                     let imageHtml = '';
                     if (reply.image_url) {
                         imageHtml = `
@@ -240,5 +245,6 @@
             }
         }, 3000);
     </script>
+
 </body>
 </html>
