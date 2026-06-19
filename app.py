@@ -195,6 +195,20 @@ def delete_reply(thread_id, reply_id):
             save_data(data)
     return redirect(url_for('thread_view', thread_id=thread_id))
 
+# 🟢 追加：スレッドそのものを丸ごと削除するルート
+@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
+def delete_thread(thread_id):
+    if not check_is_admin_cookie(request):
+        return "権限がありません", 403
+        
+    data = load_data()
+    # 指定されたIDのスレッドを除外した新しいリストを作る
+    data['threads'] = [t for t in data['threads'] if t['id'] != thread_id]
+    save_data(data)
+    
+    return redirect(url_for('index'))
+
+
 # 🟢 追加：特定のレスのIPをアクセス禁止（BAN）にするルート
 @app.route('/thread/<int:thread_id>/ban/<int:reply_id>', methods=['POST'])
 def ban_user(thread_id, reply_id):
