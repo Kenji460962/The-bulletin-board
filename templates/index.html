@@ -8,9 +8,7 @@
         
     <title> talk-ch トークちゃんねる </title>
     <style>
-        /* 🌐 画面全体の背景設定（写真を背景にする） */
         body { 
-        /* 🟢 filename の中身から static/ を削除しました */
             background-image: url("{{ url_for('static', filename='publicdomainq-0020308gutgev.jpg') }}"); 
             background-size: cover;          /* 画面いっぱいに広げる */
             background-position: center;     /* 中央寄せ */
@@ -23,15 +21,14 @@
         }
 
 
-        /* 👑 タイトルのデザイン（文字の周りに影をつけて見やすく） */
+        /* タイトルのデザイン*/
         h1 {
             text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
             margin-top: 10px;
         }
         
-        /* 📱 上のメニューバー（背景写真に馴染む色・少し透けさせる） */
+        /*上のメニューバー*/
         .menu-bar { 
-            /* 背景画像に馴染むように暗めの色を少し透過（backdrop-filterで後ろをぼかす） */
             background-color: rgba(40, 44, 52, 0.75); 
             backdrop-filter: blur(5px);
             -webkit-backdrop-filter: blur(5px);
@@ -62,9 +59,8 @@
             color: #fff;
         }
 
-        /* 現在選ばれているアクティブなボタン（写真に映える明るめのアクセントカラー） */
         .menu-btn.active { 
-            background-color: #007bff; /* 写真が青系なら青、赤系なら #dc3545 などに変えるとGood */
+            background-color: #007bff; 
             color: #fff;
             border-color: #007bff;
             box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
@@ -74,7 +70,6 @@
         .content-section { display: none; }
         .content-section.active { display: block; }
         
-        /* 2ch風パーツを現代風に見やすく（半透明の黒ボックスで背景と文字を分離） */
         .glass-panel {
             background-color: rgba(0, 0, 0, 0.65);
             backdrop-filter: blur(3px);
@@ -108,7 +103,7 @@
         }
         button:hover { background-color: #218838; }
 
-        /* スレ一覧のリンク（背景色に対して見やすい色に） */
+        /* スレ一覧のリンク */
         ul { padding-left: 20px; }
         li { margin-bottom: 10px; font-size: 18px; }
         .thread-link { color: #4dabff !important; font-weight: bold; text-decoration: none; }
@@ -129,7 +124,7 @@
             font-weight: bold; 
         }
 
-        /* 📸 ロビータブ内のウェルカムエリア（中央の透明パネル） */
+        /* ロビー */
         .lobby-welcome { 
             text-align: center; 
             padding: 40px 20px; 
@@ -149,14 +144,14 @@
 
     <h1> talk-ch </h1>
 
-    <!-- 📱 ナビゲーションバー -->
+    <!--  ナビゲーションバー -->
     <div class="menu-bar">
         <div class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</div>
         <div class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</div>
         <div class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</div>
     </div>
 
-    <!-- 1. ロビータブ（背景画像と一体化するウェルカム画面） -->
+    <!-- ロビータブ -->
     <div id="lobby-tab" class="content-section active">
         <div class="glass-panel lobby-welcome">
             <div class="lobby-title">Welcome to our bulletin board</div>
@@ -167,7 +162,7 @@
         </div>
     </div>
 
-    <!-- 2. スレ一覧タブ -->
+    <!-- スレ一覧タブ -->
     <div id="threads-tab" class="content-section">
         <div class="glass-panel">
             <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
@@ -222,10 +217,9 @@
         </div>
     </div>
 
-    <!-- 💡 ページ移動なしで一覧の一番上に追加する魔法のスクリプト -->
     <script>
     document.getElementById('create-thread-form').addEventListener('submit', async (e) => {
-        e.preventDefault(); // ❌ ページが勝手にリロードされるのを防ぐ
+        e.preventDefault(); 
 
         const form = e.target;
         const formData = new FormData(form);
@@ -281,7 +275,6 @@
         }
     });
 
-    // 🟢 修正：文字切れバグを完全に直しました
     function escapeHtml(str) {
         return str.replace(/&/g, '&amp;')
                   .replace(/</g, '&lt;')
