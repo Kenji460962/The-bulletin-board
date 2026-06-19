@@ -10,9 +10,8 @@ import cloudinary.uploader
 
 app = Flask(__name__)
 
-# Cloudinaryの設定（Renderの環境変数から自動で読み込みます）
-# Renderの環境変数（CLOUDINARY_URL）を使って一発で安全に接続します
-# ★ secure=True を足すことで、通信の暗号化エラーによるフリーズを防ぎます
+# Cloudinaryの設定
+# Renderの環境変数
 cloudinary.config(
     cloudinary_url = os.environ.get('cloudinary://413154997929334:1MWGTCiDlVZawKJWIm1aNpq_dhM@dpqh2ssnh'),
     secure = True
@@ -31,20 +30,20 @@ def save_data(data):
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# 🟢 修正：セッショントークンではなく、IPアドレスを元に毎日変わるIDを生成
+#IPアドレスを元に毎日変わるIDを生成
 def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
     raw_str = f"{ip_address}_{today_str}"
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
 
-# 🟢 追加：アクセスしてきたユーザーの実際のIPアドレスを取得する（Render/Cloudflare対応）
+#アクセスしてきたユーザーの実際のIPアドレスを取得する
 def get_client_ip():
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     return request.remote_addr
 
-# 🟢 追加：BAN（アク禁）されたIPかどうかを判定するチェック
+#BANされたIPかどうかを判定する
 def is_banned_ip(ip):
     data = load_data()
     if "banned_ips" not in data:
@@ -58,7 +57,7 @@ def check_is_admin_cookie(request):
 
 @app.route('/')
 def index():
-    # 🟢 追加：ロビー閲覧時もBANされているIPからのアクセスを拒否
+    #ロビー閲覧時もBANされているIPからのアクセスを拒否
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
@@ -69,10 +68,8 @@ def index():
         save_data(data)
 
     user_token = request.cookies.get('user_bbs_token')
-    
-    # 💡 【重要修正】HTMLへ is_admin_user の状態をしっかりと送るように修正しました！
     is_admin_user = check_is_admin_cookie(request)
-    response = make_response(render_template('index.html', threads=data['threads'], admin_message=data['admin_message'], is_admin_user=is_admin_user))
+    response = make_response(render_template('index.html', threads=data['threads'],admin_message=data['admin_message'], is_admin_user=is_admin_user))
     
     if not user_token:
         user_token = str(uuid.uuid4())
@@ -91,7 +88,7 @@ def update_admin_message():
 
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
-    # 🟢 追加：スレッド作成時もBANチェック
+    #スレッド作成時もBANチェック
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
@@ -109,11 +106,9 @@ def create_thread():
     #一番上に追加されるようにする
     data['threads'].insert(0, new_thread)
     save_data(data)
-    
-    # 画面をロビーに勝手に戻さず、成功したデータだけを返します
     return {"success": True, "thread": new_thread}
 
-# 🟢 【新機能追加】スレッドそのものを丸ごと削除するルート
+#スレッド削除
 @app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
 def delete_thread(thread_id):
     if not check_is_admin_cookie(request):
@@ -128,7 +123,7 @@ def delete_thread(thread_id):
 
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
-    # 🟢 追加：アクセス元のIPを取得してBANチェックを行う
+    #アクセス元のIPを取得してBANチェックを行う
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
@@ -143,8 +138,6 @@ def thread_view(thread_id):
     if request.method == 'POST':
         author_input = request.form.get('author') or "名無しさん"
         content = request.form.get('content') or ""
-        
-        # 🟢 修正：トークンではなく、IPアドレスを渡してIDを作る
         user_id = get_daily_user_id(client_ip)
         
         is_admin = False
@@ -157,7 +150,7 @@ def thread_view(thread_id):
             else:
                 author_input = name_part or "名無しさん"
 
-        # 【追加】画像ファイルの取得処理
+        #画像ファイルの取得処理
         image_url = ""
         if 'image' in request.files:
             file = request.files['image']
@@ -165,7 +158,7 @@ def thread_view(thread_id):
             if file and file.filename != '':
                 try:
                     upload_result = cloudinary.uploader.upload(file)
-                    image_url = upload_result.get('secure_url') # 画像のURLを取得
+                    image_url = upload_result.get('secure_url')
                 except Exception as e:
                     print(f"Cloudinary Upload Error: {e}")
 
@@ -177,8 +170,8 @@ def thread_view(thread_id):
                 'content': content,
                 'user_id': user_id,
                 'is_admin': is_admin,
-                'image_url': image_url, # 【追加】画像のURLを保存
-                'ip_address': client_ip, # 🟢 追加：裏でこっそりIPアドレスを保存
+                'image_url': image_url, 
+                'ip_address': client_ip, 
                 'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             thread['replies'].append(new_reply)
@@ -211,8 +204,7 @@ def delete_reply(thread_id, reply_id):
             reply['image_url'] = "" # 【追加】画像も削除
             save_data(data)
     return redirect(url_for('thread_view', thread_id=thread_id))
-
-# 🟢 追加：特定のレスのIPをアクセス禁止（BAN）にするルート
+    
 @app.route('/thread/<int:thread_id>/ban/<int:reply_id>', methods=['POST'])
 def ban_user(thread_id, reply_id):
     if not check_is_admin_cookie(request):
