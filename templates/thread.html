@@ -29,8 +29,7 @@
         .header-area h1 { margin: 0 !important; font-size: 20px !important; line-height: 1.2 !important; }
         a:link { color: #0000ff; text-decoration: none; }
         a:hover { text-decoration: underline; }
-
-        /* ⭕️ 書き込みフォームを横長・縦短に修正 */
+        
         form { 
             background-color: rgba(40, 44, 52, 0.75); 
             backdrop-filter: blur(5px);
@@ -45,37 +44,107 @@
             color: #ffffff;
             font-size: 13px;
         }
-        .form-row { display: flex; gap: 10px; align-items: center; margin-bottom: 5px; }
-        form textarea { flex: 1; height: 40px; resize: none; box-sizing: border-box; background: rgba(255,255,255,0.9); border: none; border-radius: 4px; padding: 5px; }
-        form input[type="text"] { width: 120px; box-sizing: border-box; background: rgba(255,255,255,0.9); border: none; border-radius: 4px; padding: 3px; }
-        #submit-btn { background-color: #00ffff; color: #000; border: none; border-radius: 4px; padding: 8px 15px; font-weight: bold; cursor: pointer; height: 40px; }
+        .form-row { 
+            display: flex; 
+            gap: 10px; 
+            align-items: center; 
+            margin-bottom: 5px; 
+        }
+        form textarea { 
+            flex: 1; 
+            height: 40px; 
+            resize: none; 
+            box-sizing: border-box; 
+            background: rgba(255,255,255,0.9); 
+            border: none; 
+            border-radius: 4px; 
+            padding: 5px; 
+        }
+        form input[type="text"] {
+            width: 120px; 
+            box-sizing: border-box; 
+            background: rgba(255,255,255,0.9); 
+            border: none; 
+            border-radius: 4px; 
+            padding: 3px; 
+        }
+        #submit-btn { 
+            background-color: #00ffff; 
+            color: #000; 
+            border: none; 
+            border-radius: 4px; 
+            padding: 8px 15px; 
+            font-weight: bold; 
+            cursor: pointer; 
+            height: 40px; 
+        }
         #submit-btn:hover { background-color: #00cccc; }
 
         .post-meta { font-weight: bold; }
         .post-num { color: green; }
         .post-name { color: blue; }
-        .admin-name { color: red; font-weight: bold; }
-        .post-id { color: gray; font-size: 13px; font-weight: normal; }
-        .post-content { margin-left: 2em; margin-top: 5px; white-space: pre-wrap; }
-        .anchor-link { color: #ff00ff !important; font-weight: bold; }
-        
-        .uploaded-image { display: block; max-width: 100%; max-height: 200px; margin-top: 5px; margin-bottom: 5px; border: 1px solid #ccc; }
-        .delete-btn { background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 1px 5px; cursor: pointer; margin-left: 10px; }
+        .admin-name { 
+            color: red; 
+            font-weight: bold; 
+        }
+        .post-id { 
+            color: gray; 
+            font-size: 13px; 
+            font-weight: normal; 
+        }
+        .post-content { 
+            margin-left: 2em;
+            margin-top: 5px;
+            white-space: pre-wrap; 
+        }
+        .anchor-link { 
+            color: #ff00ff !important; 
+            font-weight: bold; }
+        .uploaded-image { 
+            display: block;
+            max-width: 100%; 
+            max-height: 200px;
+            margin-top: 5px;
+            margin-bottom: 5px;
+            border: 1px solid #ccc; 
+        }
+        .delete-btn {
+            background-color: #ffcccc;
+            color: #cc0000;
+            border: 1px solid #cc0000; 
+            border-radius: 3px;
+            font-size: 11px;
+            padding: 1px 5px; 
+            cursor: pointer;
+            margin-left: 10px; 
+        }
         .delete-btn:hover { background-color: #ff9999; }
-        .delete-form { display: inline; background: none; border: none; padding: 0; margin: 0; width: auto; }
+        .delete-form { 
+            display: inline; 
+            background: none; 
+            border: none; 
+            padding: 0; 
+            margin: 0; 
+            width: auto; 
+        }
 
-        /* =======================================================
-           🖥 PC用の設定（右端に250pxの広告部屋を固定）
-           ======================================================= */
+        /* ===========================================
+              PC用の設定（右端に250pxの広告部屋を固定）
+           =========================================== */
         @media (min-width: 769px) {
-            #post-container { width: calc(100% - 300px) !important; height: calc(100% - 180px) !important; overflow-y: auto !important; padding: 10px 20px; box-sizing: border-box !important; -webkit-overflow-scrolling: touch; }
+            #post-container { 
+                width: calc(100% - 300px) !important; 
+                height: calc(100% - 180px) !important; 
+                overflow-y: auto !important; 
+                padding: 10px 20px; 
+                box-sizing: border-box !important; -webkit-overflow-scrolling: touch; }
             .footer-area { position: absolute !important; bottom: 0 !important; left: 0 !important; width: calc(100% - 300px) !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
             .ad-area { position: absolute !important; top: 0 !important; right: 0 !important; width: 300px !important; height: 100% !important; background-color: #efefef; display: flex !important; justify-content: center !important; align-items: center !important; border-left: 1px solid #ccc; box-sizing: border-box !important; z-index: 100 !important; }
         }
 
-        /* =======================================================
-           📱 スマホ用の設定（一番下を100px空けて絶対に被らせない）
-           ======================================================= */
+        /* ======================================================
+              スマホ用の設定（一番下を100px空けて絶対に被らせない）
+           ====================================================== */
         @media (max-width: 768px) {
             #post-container { width: 100% !important; height: calc(100% - 275px) !important; overflow-y: auto !important; padding: 10px 20px; box-sizing: border-box !important; -webkit-overflow-scrolling: touch; }
             .footer-area { position: absolute !important; bottom: 100px !important; left: 0 !important; width: 100% !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
