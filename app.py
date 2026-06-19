@@ -25,17 +25,32 @@ def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r', encoding='utf-8') as f:
             return json.load(f)
-    return {"threads": [], "admin_message": "ここに管理者の一言が表示されます。"}
+    return {"threads": [], "admin_message": "ここに管理者の一言が表示されます。", "banned_ips": []}
 
 def save_data(data):
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-def get_daily_user_id(user_session_token):
+# 🟢 修正：セッショントークンではなく、IPアドレスを元に毎日変わるIDを生成
+def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
-    raw_str = f"{user_session_token}_{today_str}"
+    raw_str = f"{ip_address}_{today_str}"
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
+
+# 🟢 追加：アクセスしてきたユーザーの実際のIPアドレスを取得する（Render/Cloudflare対応）
+def get_client_ip():
+    if request.headers.get('X-Forwarded-For'):
+        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    return request.remote_addr
+
+# 🟢 追加：BAN（アク禁）されたIPかどうかを判定するチェック
+def is_banned_ip(ip):
+    data = load_data()
+    if "banned_ips" not in data:
+        data["banned_ips"] = []
+        save_data(data)
+    return ip in data["banned_ips"]
 
 def check_is_admin_cookie(request):
     admin_cookie_flag = request.cookies.get('is_bbs_admin')
@@ -43,6 +58,11 @@ def check_is_admin_cookie(request):
 
 @app.route('/')
 def index():
+    # 🟢 追加：ロビー閲覧時もBANされているIPからのアクセスを拒否
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return "あなたはアクセス禁止（BAN）されています。", 403
+
     data = load_data()
     if "admin_message" not in data:
         data["admin_message"] = "ここに管理者の一言が表示されます。"
@@ -67,6 +87,11 @@ def update_admin_message():
 
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
+    # 🟢 追加：スレッド作成時もBANチェック
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return "あなたはアクセス禁止（BAN）されています。", 403
+
     title = request.form.get('title')
     if not title:
         return {"error": "タイトルが必要です"}, 400
@@ -84,22 +109,26 @@ def create_thread():
     # 画面をロビーに勝手に戻さず、成功したデータだけを返します
     return {"success": True, "thread": new_thread}
 
-
-
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
+    # 🟢 追加：アクセス元のIPを取得してBANチェックを行う
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return "あなたはアクセス禁止（BAN）されています。", 403
+
     data = load_data()
     thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
     if not thread:
         return "スレッドが見つかりません", 404
 
-    user_token = request.cookies.get('user_bbs_token') or "guest"
     is_admin_user = check_is_admin_cookie(request)
 
     if request.method == 'POST':
         author_input = request.form.get('author') or "名無しさん"
         content = request.form.get('content') or ""
-        user_id = get_daily_user_id(user_token)
+        
+        # 🟢 修正：トークンではなく、IPアドレスを渡してIDを作る
+        user_id = get_daily_user_id(client_ip)
         
         is_admin = False
         if "#" in author_input:
@@ -132,6 +161,7 @@ def thread_view(thread_id):
                 'user_id': user_id,
                 'is_admin': is_admin,
                 'image_url': image_url, # 【追加】画像のURLを保存
+                'ip_address': client_ip, # 🟢 追加：裏でこっそりIPアドレスを保存
                 'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             thread['replies'].append(new_reply)
@@ -163,6 +193,32 @@ def delete_reply(thread_id, reply_id):
             reply['is_admin'] = False
             reply['image_url'] = "" # 【追加】画像も削除
             save_data(data)
+    return redirect(url_for('thread_view', thread_id=thread_id))
+
+# 🟢 追加：特定のレスのIPをアクセス禁止（BAN）にするルート
+@app.route('/thread/<int:thread_id>/ban/<int:reply_id>', methods=['POST'])
+def ban_user(thread_id, reply_id):
+    if not check_is_admin_cookie(request):
+        return "権限がありません", 403
+    
+    data = load_data()
+    thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
+    if thread:
+        reply = next((r for r in thread['replies'] if r['id'] == reply_id), None)
+        if reply and 'ip_address' in reply:
+            if "banned_ips" not in data:
+                data["banned_ips"] = []
+            if reply['ip_address'] not in data['banned_ips']:
+                data['banned_ips'].append(reply['ip_address'])
+            
+            # 荒らしの該当レスを自動で「あぼーん」にする
+            reply['author'] = "あぼーん"
+            reply['content'] = "この書き込みは管理員によって削除されました。"
+            reply['user_id'] = "???"
+            reply['is_admin'] = False
+            reply['image_url'] = ""
+            save_data(data)
+            
     return redirect(url_for('thread_view', thread_id=thread_id))
 
 @app.route('/api/thread/<int:thread_id>/updates')
