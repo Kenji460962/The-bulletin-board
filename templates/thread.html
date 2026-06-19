@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     
-    <!--スマホ対応-->
+    <!-- 📱 スマホ対応 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
     <title>{{ thread.title }}</title>
@@ -16,46 +16,6 @@
         .header-area h1 { margin: 5px 0 0 0; font-size: 24px; }
         a:link { color: #0000ff; text-decoration: none; }
         a:hover { text-decoration: underline; }
-
-        /* 💡 コメント一覧（広告とフォームの分を確実に引く） */
-        #post-container { 
-            height: calc(100% - 400px) !important; 
-            overflow-y: auto !important; 
-            padding: 10px 20px;
-            box-sizing: border-box !important;
-            -webkit-overflow-scrolling: touch;
-        }
-
-        /* 💡 下部の書き込みエリア（下から65pxの位置に固定） */
-        .footer-area {
-            position: absolute !important;
-            bottom: 250px !important; 
-            left: 0 !important;
-            width: 100% !important;
-            height: 115px !important;
-            background-color: #fff;
-            border-top: 1px solid #ccc;
-            padding: 10px 20px;
-            box-sizing: border-box !important;
-            box-shadow: 0 -3px 10px rgba(0,0,0,0.05);
-            z-index: 100 !important;
-        }
-
-        /* 💡 最下部の広告エリア（画面の本当の一番底に固定） */
-        .ad-area {
-            position: absolute !important;
-            bottom: 0 !important; 
-            left: 0 !important;
-            width: 100% !important;
-            height: 250px !important;
-            background-color: #efefef;
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            border-top: 1px solid #ccc;
-            box-sizing: border-box !important;
-            z-index: 100 !important;
-        }
 
         /* ⭕️ 書き込みフォームを横長・縦短に修正 */
         form { 
@@ -73,16 +33,7 @@
             font-size: 13px;
         }
         .form-row { display: flex; gap: 10px; align-items: center; margin-bottom: 5px; }
-        form textarea { 
-            flex: 1; 
-            height: 40px; 
-            resize: none; 
-            box-sizing: border-box; 
-            background: rgba(255,255,255,0.9); 
-            border: none; 
-            border-radius: 4px; 
-            padding: 5px; 
-        }
+        form textarea { flex: 1; height: 40px; resize: none; box-sizing: border-box; background: rgba(255,255,255,0.9); border: none; border-radius: 4px; padding: 5px; }
         form input[type="text"] { width: 120px; box-sizing: border-box; background: rgba(255,255,255,0.9); border: none; border-radius: 4px; padding: 3px; }
         #submit-btn { background-color: #00ffff; color: #000; border: none; border-radius: 4px; padding: 8px 15px; font-weight: bold; cursor: pointer; height: 40px; }
         #submit-btn:hover { background-color: #00cccc; }
@@ -95,21 +46,28 @@
         .post-content { margin-left: 2em; margin-top: 5px; white-space: pre-wrap; }
         .anchor-link { color: #ff00ff !important; font-weight: bold; }
         
-        .uploaded-image {
-            display: block;
-            max-width: 100%;
-            max-height: 200px;
-            margin-top: 5px;
-            margin-bottom: 5px;
-            border: 1px solid #ccc;
-        }
-
-        .delete-btn {
-            background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000;
-            border-radius: 3px; font-size: 11px; padding: 1px 5px; cursor: pointer; margin-left: 10px;
-        }
+        .uploaded-image { display: block; max-width: 100%; max-height: 200px; margin-top: 5px; margin-bottom: 5px; border: 1px solid #ccc; }
+        .delete-btn { background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 1px 5px; cursor: pointer; margin-left: 10px; }
         .delete-btn:hover { background-color: #ff9999; }
         .delete-form { display: inline; background: none; border: none; padding: 0; margin: 0; width: auto; }
+
+        /* =======================================================
+           🖥 PC用の設定（右端に250pxの広告部屋を固定）
+           ======================================================= */
+        @media (min-width: 769px) {
+            #post-container { width: calc(100% - 250px) !important; height: calc(100% - 180px) !important; overflow-y: auto !important; padding: 10px 20px; box-sizing: border-box !important; -webkit-overflow-scrolling: touch; }
+            .footer-area { position: absolute !important; bottom: 0 !important; left: 0 !important; width: calc(100% - 250px) !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
+            .ad-area { position: absolute !important; top: 0 !important; right: 0 !important; width: 250px !important; height: 100% !important; background-color: #efefef; display: flex !important; justify-content: center !important; align-items: center !important; border-left: 1px solid #ccc; box-sizing: border-box !important; z-index: 100 !important; }
+        }
+
+        /* =======================================================
+           📱 スマホ用の設定（一番下を100px空けて絶対に被らせない）
+           ======================================================= */
+        @media (max-width: 768px) {
+            #post-container { width: 100% !important; height: calc(100% - 275px) !important; overflow-y: auto !important; padding: 10px 20px; box-sizing: border-box !important; -webkit-overflow-scrolling: touch; }
+            .footer-area { position: absolute !important; bottom: 100px !important; left: 0 !important; width: 100% !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
+            .ad-area { position: absolute !important; bottom: 0 !important; left: 0 !important; width: 100% !important; height: 100px !important; background-color: #efefef; display: flex !important; justify-content: center !important; align-items: center !important; border-top: 1px solid #ccc; box-sizing: border-box !important; z-index: 100 !important; }
+        }
     </style>
 </head>
 <body>
@@ -131,9 +89,11 @@
                 <span class="post-id"> ID:{{ reply.user_id }}</span>
                 
                 {% if is_admin_user and reply.author != "Deleted" and reply.author != "あぼーん" %}
+                <!-- 削除ボタン -->
                 <form class="delete-form" action="/thread/{{ thread.id }}/delete/{{ reply.id }}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
                     <button type="submit" class="delete-btn">削除</button>
                 </form>
+                <!-- BANボタン -->
                 <form class="delete-form" action="/thread/{{ thread.id }}/ban/{{ reply.id }}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
                     <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
                 </form>
@@ -151,7 +111,7 @@
         {% endfor %}
     </div>
 
-    <!-- 💡 下部固定エリア -->
+    <!-- 💡 下部固定エリア（書き込み欄） -->
     <div class="footer-area">
         <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
             <div class="form-row">
@@ -165,7 +125,7 @@
         </form>
     </div>
 
-    <!-- 💰 最下部広告エリア -->
+    <!-- 💰 広告エリア（忍者admax自動切り替えコード） -->
     <div class="ad-area">
         <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
     </div>
