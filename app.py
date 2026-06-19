@@ -69,7 +69,11 @@ def index():
         save_data(data)
 
     user_token = request.cookies.get('user_bbs_token')
-    response = make_response(render_template('index.html', threads=data['threads'], admin_message=data['admin_message']))
+    
+    # 💡 【重要修正】HTMLへ is_admin_user の状態をしっかりと送るように修正しました！
+    is_admin_user = check_is_admin_cookie(request)
+    response = make_response(render_template('index.html', threads=data['threads'], admin_message=data['admin_message'], is_admin_user=is_admin_user))
+    
     if not user_token:
         user_token = str(uuid.uuid4())
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
@@ -108,6 +112,19 @@ def create_thread():
     
     # 画面をロビーに勝手に戻さず、成功したデータだけを返します
     return {"success": True, "thread": new_thread}
+
+# 🟢 【新機能追加】スレッドそのものを丸ごと削除するルート
+@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
+def delete_thread(thread_id):
+    if not check_is_admin_cookie(request):
+        return "権限がありません", 403
+        
+    data = load_data()
+    # 指定されたIDのスレッドを除外した新しいリストを作る
+    data['threads'] = [t for t in data['threads'] if t['id'] != thread_id]
+    save_data(data)
+    
+    return redirect(url_for('index'))
 
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
@@ -195,20 +212,6 @@ def delete_reply(thread_id, reply_id):
             save_data(data)
     return redirect(url_for('thread_view', thread_id=thread_id))
 
-# 🟢 追加：スレッドそのものを丸ごと削除するルート
-@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
-def delete_thread(thread_id):
-    if not check_is_admin_cookie(request):
-        return "権限がありません", 403
-        
-    data = load_data()
-    # 指定されたIDのスレッドを除外した新しいリストを作る
-    data['threads'] = [t for t in data['threads'] if t['id'] != thread_id]
-    save_data(data)
-    
-    return redirect(url_for('index'))
-
-
 # 🟢 追加：特定のレスのIPをアクセス禁止（BAN）にするルート
 @app.route('/thread/<int:thread_id>/ban/<int:reply_id>', methods=['POST'])
 def ban_user(thread_id, reply_id):
@@ -227,7 +230,7 @@ def ban_user(thread_id, reply_id):
             
             # 荒らしの該当レスを自動で「あぼーん」にする
             reply['author'] = "あぼーん"
-            reply['content'] = "この書き込みは管理員によって削除されました。"
+            reply['content'] = "この書き込みは管理員によってBANされました。"
             reply['user_id'] = "???"
             reply['is_admin'] = False
             reply['image_url'] = ""
