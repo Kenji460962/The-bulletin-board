@@ -167,11 +167,9 @@
         </div>
     </div>
 
-
-<!-- 2. スレ一覧タブ -->
+    <!-- 2. スレ一覧タブ -->
     <div id="threads-tab" class="content-section">
         <div class="glass-panel">
-            <!-- 💡 id="create-thread-form" を追加しました -->
             <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
                 <h3>新しい板（スレッド）を立てる</h3>
                 <input type="text" name="title" placeholder="スレッドのタイトルを入力" style="width: 80%;" required><br><br>
@@ -182,20 +180,45 @@
         <div class="glass-panel">
             <h2>いま立っている板一覧</h2>
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
-            <!-- 💡 JavaScriptで操作するために id="thread-list" を追加しました -->
             <ul id="thread-list">
                 {% for thread in threads %}
-                <li>
-                    <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
-                        【{{ thread.id }}】 {{ thread.title }}
-                    </a> 
-                    <span class="res-count">({{ thread.replies|length }}レス)</span>
+                <li style="display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;">
+                    <div>
+                        <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
+                            【{{ thread.id }}】 {{ thread.title }}
+                        </a> 
+                        <span class="res-count">({{ thread.replies|length }}レス)</span>
+                    </div>
+
+                    <!-- 💡 【追加】管理者がログインしている時だけ、赤い「スレ削除」ボタンを出す -->
+                    {% if is_admin_user %}
+                    <form action="/thread/{{ thread.id }}/delete_thread" method="POST" style="display: inline; margin: 0; padding: 0; width: auto;" onsubmit="return confirm('このスレッドを中身ごと完全に削除しますか？');">
+                        <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer;">スレ削除</button>
+                    </form>
+                    {% endif %}
                 </li>
                 {% else %}
-                <!-- 💡 JavaScriptで判定するために id="no-thread-msg" を追加しました -->
                 <li id="no-thread-msg">まだ板がありません。新しい板を立ててみましょう！</li>
                 {% endfor %}
             </ul>
+        </div>
+    </div>
+
+    <!-- 3. 管理者の一言タブ -->
+    <div id="admin-tab" class="content-section">
+        <div class="glass-panel">
+            <h2> 管理者の一言</h2>
+            <div class="admin-box">{{ admin_message }}</div>
+        </div>
+        
+        <div class="glass-panel">
+            <h3>【管理者専用】一言を更新する</h3>
+            <form action="{{ url_for('update_admin_message') }}" method="POST">
+                パスワード：<input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
+                新しいメッセージ：<br>
+                <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required></textarea><br><br>
+                <button type="submit">一言を更新する</button>
+            </form>
         </div>
     </div>
 
@@ -219,25 +242,36 @@
                 const thread = result.thread;
                 const threadList = document.getElementById('thread-list');
                 
-                // 「まだ板がありません」の文字が表示されていれば消す
                 const noThreadMsg = document.getElementById('no-thread-msg');
                 if (noThreadMsg) {
                     noThreadMsg.remove();
                 }
 
-                // ⭕️ 新しいスレッドのHTML（liタグ）をその場で組み立てる
                 const newLi = document.createElement('li');
+                newLi.style.cssText = "display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;";
+                
+                // 管理者の状態に合わせて、新スレにも削除ボタンを自動で出す
+                let deleteButtonHtml = '';
+                if ({{ 'true' if is_admin_user else 'false' }}) {
+                    deleteButtonHtml = `
+                        <form action="/thread/${thread.id}/delete_thread" method="POST" style="display: inline; margin: 0; padding: 0; width: auto;" onsubmit="return confirm('このスレッドを中身ごと完全に削除しますか？');">
+                            <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer;">スレ削除</button>
+                        </form>
+                    `;
+                }
+
                 newLi.innerHTML = `
-                    <a class="thread-link" href="/thread/${thread.id}">
-                        【${thread.id}】 ${escapeHtml(thread.title)}
-                    </a> 
-                    <span class="res-count">(0レス)</span>
+                    <div>
+                        <a class="thread-link" href="/thread/${thread.id}">
+                            【${thread.id}】 ${escapeHtml(thread.title)}
+                        </a> 
+                        <span class="res-count">(0レス)</span>
+                    </div>
+                    ${deleteButtonHtml}
                 `;
 
-                // ⭕️ 一覧の一番上（先頭）に滑り込ませる
                 threadList.insertBefore(newLi, threadList.firstChild);
-
-                form.reset(); // 入力欄をきれいに空にする
+                form.reset();
             } else {
                 alert('スレッドの作成に失敗しました。');
             }
@@ -247,7 +281,7 @@
         }
     });
 
-    // 安全のために文字化けやセキュリティ対策を行う関数
+    // 🟢 修正：文字切れバグを完全に直しました
     function escapeHtml(str) {
         return str.replace(/&/g, '&amp;')
                   .replace(/</g, '&lt;')
@@ -255,40 +289,18 @@
                   .replace(/"/g, '&quot;')
                   .replace(/'/g, '&#039;');
     }
+
+    // タブ切り替えシステム
+    function switchTab(tabId, buttonElement) {
+        document.querySelectorAll('.content-section').forEach(section => {
+            section.classList.remove('active');
+        });
+        document.querySelectorAll('.menu-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.getElementById(tabId).classList.add('active');
+        buttonElement.classList.add('active');
+    }
     </script>
-
-
-    <!-- 3. 管理者の一言タブ -->
-    <div id="admin-tab" class="content-section">
-        <div class="glass-panel">
-            <h2> 管理者の一言</h2>
-            <div class="admin-box">{{ admin_message }}</div>
-        </div>
-        
-        <div class="glass-panel">
-            <h3>【管理者専用】一言を更新する</h3>
-            <form action="{{ url_for('update_admin_message') }}" method="POST">
-                パスワード：<input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
-                新しいメッセージ：<br>
-                <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required></textarea><br><br>
-                <button type="submit">一言を更新する</button>
-            </form>
-        </div>
-    </div>
-
-    <script>
-        function switchTab(tabId, buttonElement) {
-            document.querySelectorAll('.content-section').forEach(section => {
-                section.classList.remove('active');
-            });
-            document.querySelectorAll('.menu-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            document.getElementById(tabId).classList.add('active');
-            buttonElement.classList.add('active');
-        }
-    </script>
-
 </body>
 </html>
-
