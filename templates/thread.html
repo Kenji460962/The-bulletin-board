@@ -12,8 +12,18 @@
         html, body { height: 100% !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; background-color: #efefef; font-family: "MS P Gothic", sans-serif; }
         
         /* 💡 上部のヘッダーエリア（固定） */
-        .header-area { padding: 15px 20px 5px 20px; background-color: #efefef; border-bottom: 1px solid #ccc; height: 60px !important; box-sizing: border-box !important; }
-        .header-area h1 { margin: 5px 0 0 0; font-size: 24px; }
+                /* 💡 上部のヘッダーエリア（文字が下にズレないように高さをきっちり固定） */
+        .header-area { 
+            padding: 5px 20px !important; 
+            background-color: #efefef; 
+            border-bottom: 1px solid #ccc; 
+            height: 60px !important; 
+            box-sizing: border-box !important; 
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important; /* 上下の真ん中に配置 */
+        }
+        .header-area h1 { margin: 0 !important; font-size: 20px !important; line-height: 1.2 !important; }
         a:link { color: #0000ff; text-decoration: none; }
         a:hover { text-decoration: underline; }
 
