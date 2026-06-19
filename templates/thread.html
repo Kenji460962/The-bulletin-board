@@ -12,7 +12,7 @@
         a:link { color: #0000ff; text-decoration: none; }
         a:hover { text-decoration: underline; }
 
-                /* ⭕️ 書き込みフォームを小さく、ロビーに合わせておしゃれに修正 */
+        /* ⭕️ 書き込みフォームを小さく、ロビーに合わせておしゃれに修正 */
         form { 
             background-color: rgba(40, 44, 52, 0.75); 
             backdrop-filter: blur(5px);
@@ -20,7 +20,9 @@
             border: 1px solid rgba(255, 255, 255, 0.15); 
             border-radius: 8px;
             padding: 15px; 
-            width: 350px; /* 💡 横幅を450pxから350pxに小さくしました */
+            width: 100%;
+            max-width: 350px; /* スマホでもはみ出さないように設定 */
+            box-sizing: border-box;
             margin-top: 30px; 
             box-shadow: 0 4px 6px rgba(0,0,0,0.3);
             color: #ffffff; /* 文字色を白にして見やすく */
@@ -40,7 +42,7 @@
         
         .uploaded-image {
             display: block;
-            max-width: 300px;
+            max-width: 100%; /* スマホではみ出さないように調整 */
             max-height: 300px;
             margin-top: 10px;
             margin-bottom: 10px;
@@ -68,7 +70,6 @@
     
     <h1>{{ thread.title }}</h1>
     
-    
     <hr>
 
     <div id="post-container">
@@ -80,16 +81,22 @@
                 {{ reply.date }}
                 <span class="post-id"> ID:{{ reply.user_id }}</span>
                 
-                {% if is_admin_user and reply.author != "Deleted" %}
+                {% if is_admin_user and reply.author != "Deleted" and reply.author != "あぼーん" %}
+                <!-- 既存の削除ボタン -->
                 <form class="delete-form" action="/thread/{{ thread.id }}/delete/{{ reply.id }}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
                     <button type="submit" class="delete-btn">削除</button>
+                </form>
+                
+                <!-- 💡 アク禁用のBANボタン（黒いデザイン） -->
+                <form class="delete-form" action="/thread/{{ thread.id }}/ban/{{ reply.id }}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
+                    <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
                 </form>
                 {% endif %}
             </span>
             <!-- 📄 投稿内容を表示する部分 -->
             <p class="post-content">{{ reply.content }}</p>
             
-            <!-- 📸 【復活】もし画像URL（Cloudinary）が保存されていたらここに画像タグを出す -->
+            <!-- 📸 もし画像URL（Cloudinary）が保存されていたらここに画像タグを出す -->
             {% if reply.image_url %}
             <div style="margin-left: 2em;">
                 <img src="{{ reply.image_url }}" class="uploaded-image" alt="添付画像">
@@ -100,7 +107,7 @@
         {% endfor %}
     </div>
 
-    <!-- 🟢 正しく修正されたフォーム（そのまま維持しています） -->
+    <!-- 書き込みフォーム -->
     <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
         <h3>この板に書き込む</h3>
         名前：<input type="text" name="author" placeholder="名無しさん"><br><br>
@@ -113,13 +120,12 @@
     </form>
 
     <!-- 💰 広告ここから -->
-    <!-- <!-- admax -->
-    <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+    <!-- admax -->
+    <script src="https://shinobi.jp"></script>
     <!-- admax -->
     <!-- 💰 広告ここまで -->
-    
-    
-    <!-- 🛠 【完全復活】必要なJavaScriptコード -->
+
+        <!-- 🛠 JavaScriptコード -->
     <script>
         const threadId = {{ thread.id }};
         let isAdminView = {{ 'true' if is_admin_user else 'false' }};
@@ -202,10 +208,13 @@
                     newDiv.setAttribute('data-id', reply.id);
                     
                     let deleteButtonHtml = '';
-                    if (isAdminView && reply.author !== 'Deleted') {
+                    if (isAdminView && reply.author !== 'Deleted' && reply.author !== 'あぼーん') {
                         deleteButtonHtml = `
                             <form class="delete-form" action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
                                 <button type="submit" class="delete-btn">削除</button>
+                            </form>
+                            <form class="delete-form" action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
+                                <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
                             </form>
                         `;
                     }
@@ -242,6 +251,5 @@
             }
         }, 3000);
     </script>
-
 </body>
 </html>
