@@ -77,11 +77,19 @@ def update_and_get_user_counts(current_token, location):
     count = sum(1 for info in ACTIVE_USERS.values() if info["location"] == location)
     return count
     
-@app.route('/')
+
+
+# 🟢 【修正】methodsに 'GET' と 'HEAD' の両方を公式に許可するよう指定します
+@app.route('/', methods=['GET', 'HEAD'])
 def index():
+    # ロビー閲覧時もBANされているIPからのアクセスを拒否
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
+
+    # 🟢 【追加】ロボットからのHEADリクエストは、ここで最優先で安全に200（正常終了）を返して追い返します
+    if request.method == 'HEAD':
+        return make_response('', 200)
 
     data = load_data()
     if "admin_message" not in data:
@@ -94,6 +102,26 @@ def index():
     if not user_token:
         user_token = str(uuid.uuid4())
         is_new_user = True
+
+    # ロビーの閲覧者数を計算
+    active_count = update_and_get_user_counts(user_token, "lobby")
+
+    is_admin_user = check_is_admin_cookie(request)
+    
+    # 通常の人間用（GET）の画面作成
+    response = make_response(render_template(
+        'index.html', 
+        threads=data['threads'],
+        admin_message=data['admin_message'], 
+        is_admin_user=is_admin_user,
+        active_count=active_count
+    ))
+    
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+        
+    return response
+
 
 # 🟢 【追加】スレ主をBANする管理者用ルート
 @app.route('/thread/<int:thread_id>/ban_owner', methods=['POST'])
