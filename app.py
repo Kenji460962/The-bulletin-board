@@ -95,6 +95,40 @@ def index():
         user_token = str(uuid.uuid4())
         is_new_user = True
 
+# 🟢 【追加】スレ主をBANする管理者用ルート
+@app.route('/thread/<int:thread_id>/ban_owner', methods=['POST'])
+def ban_thread_owner(thread_id):
+    if not check_is_admin_cookie(request):
+        return "権限がありません", 403
+    
+    data = load_data()
+    thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
+    
+    # スレッドが存在し、かつ作成者のIPアドレスが記録されている場合
+    if thread and 'ip_address' in thread:
+        owner_ip = thread['ip_address']
+        
+        if "banned_ips" not in data:
+            data["banned_ips"] = []
+        if owner_ip not in data['banned_ips']:
+            data['banned_ips'].append(owner_ip)
+            
+        # 💡 荒らし対策として、該当スレッドのタイトルを「BAN済」に変更し、レスも全削除
+        thread['title'] = "【このスレッドは管理員によってBANされました】"
+        thread['replies'] = [{
+            'id': 1,
+            'author': "あぼーん",
+            'content': "このスレッドの作成者はBANされました。",
+            'user_id': "???",
+            'is_admin': False,
+            'image_url': "",
+            'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }]
+        save_data(data)
+        
+    return redirect(url_for('index')) # BAN後はロビーに戻す
+
+
     # 🟢 【ロビーの閲覧者数を計算】
     active_count = update_and_get_user_counts(user_token, "lobby")
 
