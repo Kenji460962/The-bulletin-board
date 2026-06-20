@@ -7,6 +7,7 @@ import uuid
 # Cloudinaryのライブラリを読み込み
 import cloudinary
 import cloudinary.uploader
+import time
 
 app = Flask(__name__)
 
@@ -55,6 +56,28 @@ def check_is_admin_cookie(request):
     admin_cookie_flag = request.cookies.get('is_bbs_admin')
     return admin_cookie_flag == "true"
 
+ACTIVE_USERS = {}
+
+def update_and_get_user_counts(current_token, location):
+    now = time.time()
+    
+    # 1. アクセスしてきたユーザーの位置と時間を更新
+    if current_token:
+        ACTIVE_USERS[current_token] = {
+            "location": location,
+            "last_time": now
+        }
+        
+    # 2. 5分（300秒）以上アクセスのない古いデータを削除
+    expired_tokens = [token for token, info in ACTIVE_USERS.items() if now - info["last_time"] > 300]
+    for token in expired_tokens:
+        del ACTIVE_USERS[token]
+        
+    # 3. 指定された場所（ロビーまたは各スレッド）にいる人数をカウント
+    count = sum(1 for info in ACTIVE_USERS.values() if info["location"] == location)
+    return count
+    
+    
 @app.route('/')
 def index():
     #ロビー閲覧時もBANされているIPからのアクセスを拒否
