@@ -11,6 +11,13 @@ import time
 
 app = Flask(__name__)
 
+# 🟢 無料プランのスリープを防ぎつつ、エラーログだけを完全に消し去る設定
+@app.before_request
+def response_to_uptimerobot():
+    if request.method == 'HEAD':
+        return make_response('', 200) # ←「生きてるよ！」と最速で返事をする
+
+
 # Cloudinaryの設定
 # Renderの環境変数
 cloudinary.config(
