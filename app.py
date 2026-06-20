@@ -77,10 +77,8 @@ def update_and_get_user_counts(current_token, location):
     count = sum(1 for info in ACTIVE_USERS.values() if info["location"] == location)
     return count
     
-    
 @app.route('/')
 def index():
-    #ロビー閲覧時もBANされているIPからのアクセスを拒否
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
@@ -91,11 +89,27 @@ def index():
         save_data(data)
 
     user_token = request.cookies.get('user_bbs_token')
-    is_admin_user = check_is_admin_cookie(request)
-    response = make_response(render_template('index.html', threads=data['threads'],admin_message=data['admin_message'], is_admin_user=is_admin_user))
     
+    is_new_user = False
     if not user_token:
         user_token = str(uuid.uuid4())
+        is_new_user = True
+
+    # 🟢 【ロビーの閲覧者数を計算】
+    active_count = update_and_get_user_counts(user_token, "lobby")
+
+    is_admin_user = check_is_admin_cookie(request)
+    
+    # 🟢 【HTMLに人数 active_count を送る】
+    response = make_response(render_template(
+        'index.html', 
+        threads=data['threads'],
+        admin_message=data['admin_message'], 
+        is_admin_user=is_admin_user,
+        active_count=active_count
+    ))
+    
+    if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
 
@@ -111,7 +125,6 @@ def update_admin_message():
 
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
-    #スレッド作成時もBANチェック
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
@@ -126,27 +139,12 @@ def create_thread():
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'replies': []
     }
-    #一番上に追加されるようにする
     data['threads'].insert(0, new_thread)
     save_data(data)
     return {"success": True, "thread": new_thread}
 
-#スレッド削除
-@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
-def delete_thread(thread_id):
-    if not check_is_admin_cookie(request):
-        return "権限がありません", 403
-        
-    data = load_data()
-    # 指定されたIDのスレッドを除外した新しいリストを作る
-    data['threads'] = [t for t in data['threads'] if t['id'] != thread_id]
-    save_data(data)
-    
-    return redirect(url_for('index'))
-
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
-    #アクセス元のIPを取得してBANチェックを行う
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
@@ -173,11 +171,9 @@ def thread_view(thread_id):
             else:
                 author_input = name_part or "名無しさん"
 
-        #画像ファイルの取得処理
         image_url = ""
         if 'image' in request.files:
             file = request.files['image']
-            # ファイルが存在し、ファイル名が空でない場合のみCloudinaryへアップロード
             if file and file.filename != '':
                 try:
                     upload_result = cloudinary.uploader.upload(file)
@@ -185,7 +181,6 @@ def thread_view(thread_id):
                 except Exception as e:
                     print(f"Cloudinary Upload Error: {e}")
 
-        # 本文が空ではない、または画像がアップロードされている場合に投稿を許可
         if content.strip() or image_url:
             new_reply = {
                 'id': len(thread['replies']) + 1,
@@ -205,11 +200,30 @@ def thread_view(thread_id):
             response.set_cookie('is_bbs_admin', 'true', max_age=60*60*24)
         return response
         
-    response = make_response(render_template('thread.html', thread=thread, is_admin_user=is_admin_user))
-    if not request.cookies.get('user_bbs_token'):
+    user_token = request.cookies.get('user_bbs_token')
+    is_new_user = False
+    if not user_token:
         user_token = str(uuid.uuid4())
+        is_new_user = True
+
+    # 🟢 【スレッド専用の人数をカウントしてHTMLに送る】
+    location_key = f"thread_{thread_id}"
+    active_count = update_and_get_user_counts(user_token, location_key)
+
+    response = make_response(render_template('thread.html', thread=thread, is_admin_user=is_admin_user, active_count=active_count))
+    
+    if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
+
+@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
+def delete_thread(thread_id):
+    if not check_is_admin_cookie(request):
+        return "権限がありません", 403
+    data = load_data()
+    data['threads'] = [t for t in data['threads'] if t['id'] != thread_id]
+    save_data(data)
+    return redirect(url_for('index'))
 
 @app.route('/thread/<int:thread_id>/delete/<int:reply_id>', methods=['POST'])
 def delete_reply(thread_id, reply_id):
@@ -224,7 +238,7 @@ def delete_reply(thread_id, reply_id):
             reply['content'] = "この書き込みは管理員によって削除されました。"
             reply['user_id'] = "???"
             reply['is_admin'] = False
-            reply['image_url'] = "" # 【追加】画像も削除
+            reply['image_url'] = ""
             save_data(data)
     return redirect(url_for('thread_view', thread_id=thread_id))
     
@@ -232,7 +246,6 @@ def delete_reply(thread_id, reply_id):
 def ban_user(thread_id, reply_id):
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
-    
     data = load_data()
     thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
     if thread:
@@ -242,28 +255,38 @@ def ban_user(thread_id, reply_id):
                 data["banned_ips"] = []
             if reply['ip_address'] not in data['banned_ips']:
                 data['banned_ips'].append(reply['ip_address'])
-            
-            # 荒らしの該当レスを自動で「あぼーん」にする
             reply['author'] = "あぼーん"
             reply['content'] = "この書き込みは管理員によってBANされました。"
             reply['user_id'] = "???"
             reply['is_admin'] = False
             reply['image_url'] = ""
             save_data(data)
-            
     return redirect(url_for('thread_view', thread_id=thread_id))
 
 @app.route('/api/thread/<int:thread_id>/updates')
 def thread_updates(thread_id):
     last_id = request.args.get('last_id', type=int, default=0)
+    
+    # 🟢 【3秒おきのJavaScriptアクセス時にも生存確認として人数を更新】
+    user_token = request.cookies.get('user_bbs_token')
+    location_key = f"thread_{thread_id}"
+    active_count = update_and_get_user_counts(user_token, location_key)
+    
     data = load_data()
     thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
     if not thread:
         return {"replies": []}, 404
     new_replies = [r for r in thread['replies'] if r['id'] > last_id]
     is_admin_user = check_is_admin_cookie(request)
-    return {"replies": new_replies, "is_admin_user": is_admin_user}
+    
+    # 🟢 【JavaScript側に最新の人数 active_count を辞書に含めて返す】
+    return {
+        "replies": new_replies, 
+        "is_admin_user": is_admin_user, 
+        "active_count": active_count
+    }
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
