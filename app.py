@@ -137,11 +137,13 @@ def create_thread():
         'id': len(data['threads']) + 1,
         'title': title,
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'ip_address': client_ip,  # 🟢 【追加】スレ主のIPを保存
         'replies': []
     }
     data['threads'].insert(0, new_thread)
     save_data(data)
     return {"success": True, "thread": new_thread}
+
 
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
