@@ -128,28 +128,48 @@
             width: auto; 
         }
 
+
         /* ===========================================
-              PC用の設定（右端に250pxの広告部屋を固定）
+              PC用の設定（引き算ではなく上下一杯に固定）
            =========================================== */
         @media (min-width: 769px) {
             #post-container { 
+                position: absolute !important;
+                top: 60px !important; /* ヘッダーの下から */
+                bottom: 115px !important; /* 書き込み欄の上まで */
+                left: 0 !important;
                 width: calc(100% - 300px) !important; 
-                height: calc(100% - 180px) !important; 
+                height: auto !important; /* 高さは自動計算に任せる */
                 overflow-y: auto !important; 
                 padding: 10px 20px; 
-                box-sizing: border-box !important; -webkit-overflow-scrolling: touch; }
+                box-sizing: border-box !important; 
+                -webkit-overflow-scrolling: touch; 
+            }
             .footer-area { position: absolute !important; bottom: 0 !important; left: 0 !important; width: calc(100% - 300px) !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
             .ad-area { position: absolute !important; top: 0 !important; right: 0 !important; width: 300px !important; height: 100% !important; background-color: #efefef; display: flex !important; justify-content: center !important; align-items: center !important; border-left: 1px solid #ccc; box-sizing: border-box !important; z-index: 100 !important; }
         }
 
         /* ======================================================
-              スマホ用の設定（一番下を100px空けて絶対に被らせない）
+              スマホ用の設定（こちらも絶対配置で安全に固定）
            ====================================================== */
         @media (max-width: 768px) {
-            #post-container { width: 100% !important; height: calc(100% - 275px) !important; overflow-y: auto !important; padding: 10px 20px; box-sizing: border-box !important; -webkit-overflow-scrolling: touch; }
+            #post-container { 
+                position: absolute !important;
+                top: 60px !important; /* ヘッダーの下から */
+                bottom: 215px !important; /* 書き込み欄＋広告の上まで */
+                left: 0 !important;
+                width: 100% !important; 
+                height: auto !important; 
+                overflow-y: auto !important; 
+                padding: 10px 20px; 
+                box-sizing: border-box !important; 
+                -webkit-overflow-scrolling: touch; 
+            }
             .footer-area { position: absolute !important; bottom: 100px !important; left: 0 !important; width: 100% !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
             .ad-area { position: absolute !important; bottom: 0 !important; left: 0 !important; width: 100% !important; height: 100px !important; background-color: #efefef; display: flex !important; justify-content: center !important; align-items: center !important; border-top: 1px solid #ccc; box-sizing: border-box !important; z-index: 100 !important; }
         }
+
+
     </style>
 </head>
 <body>
