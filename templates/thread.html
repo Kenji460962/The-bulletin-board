@@ -178,13 +178,24 @@
     </style>
 </head>
 <body>
+    
 
-    <!-- 💡 上部固定エリア（PC表示でも隠れないように最前面へ固定） -->
+    <!-- 💡 上部固定エリア -->
     <div class="header-area">
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
             <div>
                 <a href="{{ url_for('index') }}">■板一覧に戻る</a>
-                <h1>{{ thread.title }}</h1>
+                <h1 style="display: inline-block; margin-right: 15px !important;">{{ thread.title }}</h1>
+                
+                <!-- 🟢 【追加】管理者がログインしている時だけ、スレ主情報とBANボタンを出す -->
+                {% if is_admin_user and thread.ip_address %}
+                <span style="background: #fff; color: #000; padding: 2px 6px; border: 1px solid #ccc; font-size: 12px; font-weight: bold; border-radius: 3px;">
+                    スレ主IP: {{ thread.ip_address }}
+                </span>
+                <form class="delete-form" action="/thread/{{ thread.id }}/ban_owner" method="POST" onsubmit="return confirm('本当にこのスレ主を完全にBANし、スレッドを解体しますか？');" style="display: inline; margin-left: 5px;">
+                    <button type="submit" class="delete-btn" style="background-color: #d9534f; color: #fff; border-color: #d43f3a; padding: 2px 8px;">スレ主をBAN</button>
+                </form>
+                {% endif %}
             </div>
             
             <!-- 右端に固定されるオンライン人数パーツ -->
@@ -193,7 +204,7 @@
             </div>
         </div>
     </div>
-#
+
 
     <!-- 💡 スクロールするコメントエリア -->
     <div id="post-container">
