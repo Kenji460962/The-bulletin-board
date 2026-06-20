@@ -144,13 +144,20 @@
 
     <h1> talk-ch </h1>
 
-    <!--  ナビゲーションバー -->
-    <div class="menu-bar">
+        <!--  ナビゲーションバー -->
+    <div class="menu-bar" style="align-items: center;"> <!-- 💡上下中央揃えのために style を少し追加 -->
         <div class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</div>
         <div class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</div>
         <div class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</div>
+        
+        <!-- 👇 これを直前に追加します（margin-left: auto; で右端に吹き飛びます） -->
+        <div style="margin-left: auto; margin-right: 10px; font-size: 14px; color: #28a745; font-weight: bold; background-color: rgba(40, 167, 69, 0.15); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(40, 167, 69, 0.3);">
+            ● <span style="color: #fff; font-weight: normal;">オンライン:</span> <strong id="realtime-active-count">{{ active_count }}</strong>人
+        </div>
     </div>
 
+    
+    
     <!-- ロビータブ -->
     <div id="lobby-tab" class="content-section active">
         <div class="glass-panel lobby-welcome">
