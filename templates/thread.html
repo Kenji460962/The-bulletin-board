@@ -14,9 +14,15 @@
             padding: 0 !important; 
             overflow: hidden !important; 
             background-color: #efefef; 
-            font-family: "MS P Gothic", sans-serif; }
+            font-family: "MS P Gothic", sans-serif; 
+        }
         
+        /* 💡 ヘッダーが裏に隠れないよう z-index: 1000 を追加して最前面に固定 */
         .header-area { 
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
             padding: 5px 20px !important; 
             background-color: #efefef; 
             border-bottom: 1px solid #ccc; 
@@ -24,9 +30,10 @@
             box-sizing: border-box !important; 
             display: flex !important;
             flex-direction: column !important;
-            justify-content: center !important; /* 上下の真ん中に配置 */
+            justify-content: center !important;
+            z-index: 1000 !important; 
         }
-        .header-area h1 { margin: 0 !important; font-size: 20px !important; line-height: 1.2 !important; }
+        .header-area h1 { margin: 0 !important; font-size: 20px !important; line-height: 1.2 !important; color: #000; }
         a:link { color: #0000ff; text-decoration: none; }
         a:hover { text-decoration: underline; }
         
@@ -80,7 +87,7 @@
         }
         #submit-btn:hover { background-color: #00cccc; }
 
-        .post-meta { font-weight: bold; }
+        .post-meta { font-weight: bold; color: #000; }
         .post-num { color: green; }
         .post-name { color: blue; }
         .admin-name { 
@@ -93,6 +100,7 @@
             font-weight: normal; 
         }
         .post-content { 
+            color: #000;
             margin-left: 2em;
             margin-top: 5px;
             white-space: pre-wrap; 
@@ -128,18 +136,17 @@
             width: auto; 
         }
 
-
         /* ===========================================
-              PC用の設定（引き算ではなく上下一杯に固定）
+              PC用の設定
            =========================================== */
         @media (min-width: 769px) {
             #post-container { 
                 position: absolute !important;
-                top: 60px !important; /* ヘッダーの下から */
-                bottom: 115px !important; /* 書き込み欄の上まで */
+                top: 60px !important; 
+                bottom: 115px !important; 
                 left: 0 !important;
                 width: calc(100% - 300px) !important; 
-                height: auto !important; /* 高さは自動計算に任せる */
+                height: auto !important; 
                 overflow-y: auto !important; 
                 padding: 10px 20px; 
                 box-sizing: border-box !important; 
@@ -150,13 +157,13 @@
         }
 
         /* ======================================================
-              スマホ用の設定（こちらも絶対配置で安全に固定）
+              スマホ用の設定
            ====================================================== */
         @media (max-width: 768px) {
             #post-container { 
                 position: absolute !important;
-                top: 60px !important; /* ヘッダーの下から */
-                bottom: 215px !important; /* 書き込み欄＋広告の上まで */
+                top: 60px !important; 
+                bottom: 215px !important; 
                 left: 0 !important;
                 width: 100% !important; 
                 height: auto !important; 
@@ -168,25 +175,25 @@
             .footer-area { position: absolute !important; bottom: 100px !important; left: 0 !important; width: 100% !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
             .ad-area { position: absolute !important; bottom: 0 !important; left: 0 !important; width: 100% !important; height: 100px !important; background-color: #efefef; display: flex !important; justify-content: center !important; align-items: center !important; border-top: 1px solid #ccc; box-sizing: border-box !important; z-index: 100 !important; }
         }
-
-
     </style>
 </head>
 <body>
 
-
-    <!-- 💡 上部固定エリア -->
-    <div class="header-area" style="position: relative;"> <!-- 💡positionを追加 -->
-        <a href="{{ url_for('index') }}">■板一覧に戻る</a>
-        <h1>{{ thread.title }}</h1>
-        
-        <!-- 🟢 【追加】右端に固定されるオンライン人数パーツ -->
-        <div style="position: absolute; right: 20px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #28a745; font-weight: bold; background-color: rgba(40, 167, 69, 0.1); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(40, 167, 69, 0.3);">
-            ● <span style="color: #333; font-weight: normal;">ここを閲覧中:</span> <strong id="realtime-active-count">{{ active_count }}</strong>人
+    <!-- 💡 上部固定エリア（PC表示でも隠れないように最前面へ固定） -->
+    <div class="header-area">
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div>
+                <a href="{{ url_for('index') }}">■板一覧に戻る</a>
+                <h1>{{ thread.title }}</h1>
+            </div>
+            
+            <!-- 右端に固定されるオンライン人数パーツ -->
+            <div style="font-size: 13px; color: #28a745; font-weight: bold; background-color: rgba(40, 167, 69, 0.1); padding: 6px 12px; border-radius: 4px; border: 1px solid rgba(40, 167, 69, 0.3); white-space: nowrap; margin-right: 10px;">
+                ● <span style="color: #333; font-weight: normal;">ここを閲覧中:</span> <strong id="realtime-active-count">{{ active_count }}</strong>人
+            </div>
         </div>
     </div>
-
-
+#
 
     <!-- 💡 スクロールするコメントエリア -->
     <div id="post-container">
@@ -216,7 +223,7 @@
                 <img src="{{ reply.image_url }}" class="uploaded-image" alt="添付画像">
             </div>
             {% endif %}
-            <hr>
+            <hr style="border:0; border-top:1px solid #ccc;">
         </div>
         {% endfor %}
     </div>
@@ -226,21 +233,20 @@
         <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
             <div class="form-row">
                 名前：<input type="text" name="author" placeholder="名無しさん">
-                写真：<input type="file" id="form-image" name="image" accept="image/*" style="max-width: 150px;">
+                画像：<input type="file" name="image" accept="image/*" style="color: #000; font-size: 11px; max-width: 150px;">
             </div>
             <div class="form-row">
-                <textarea id="form-content" name="content" placeholder="メッセージを入力してください"></textarea>
+                <textarea name="content" placeholder="ここに書き込み内容を入力してください" required></textarea>
                 <button type="submit" id="submit-btn">書き込む</button>
             </div>
         </form>
     </div>
 
-    <!-- 💰 広告エリア（忍者admax自動切り替えコード） -->
+    <!-- 💡 広告エリア（右側または下側） -->
     <div class="ad-area">
-        <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+        <span style="color: #666; font-size: 12px;">広告スペース</span>
     </div>
 
-    <!-- 🛠 JavaScriptコード -->
     <script>
         const threadId = {{ thread.id }};
         let isAdminView = {{ 'true' if is_admin_user else 'false' }};
@@ -257,7 +263,6 @@
 
         document.querySelectorAll('.post-content').forEach(processPostContent);
         
-        // 🟢 【名前保存 ＆ 自動スクロール】
         window.addEventListener('DOMContentLoaded', () => {
             const savedAuthor = getCookie('bbs_saved_author');
             const authorInput = document.querySelector('input[name="author"]');
@@ -265,7 +270,6 @@
                 authorInput.value = savedAuthor;
             }
             
-            // コメントコンテナの中を一番下までスクロールさせる
             const container = document.getElementById('post-container');
             if (container) {
                 container.scrollTop = container.scrollHeight;
@@ -302,13 +306,12 @@
                 lastId = parseInt(postItems[postItems.length - 1].getAttribute('data-id'));
             }
             
-            
             try {
                 const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
                 const data = await response.json();
                 
-                // 🟢 【追加】サーバーから届いた最新の人数で、画面の数字を自動書き換え
-                if (data.active_count !== undefined) {
+                // サーバーから届いた最新の人数で、右上の数字を自動書き換え
+                if (data.active_count !== undefined && data.active_count !== null && data.active_count !== "") {
                     document.getElementById('realtime-active-count').innerText = data.active_count;
                 }
                 
@@ -317,9 +320,6 @@
                 }
                 
                 let hasNewReply = false;
-
-                    
-            
                 data.replies.forEach(reply => {
                     const container = document.getElementById('post-container');
                     const newDiv = document.createElement('div');
@@ -358,7 +358,7 @@
                         </span>
                         <p class="post-content">${reply.content}</p>
                         ${imageHtml}
-                        <hr>
+                        <hr style="border:0; border-top:1px solid #ccc;">
                     `;
                     
                     container.appendChild(newDiv);
@@ -368,7 +368,6 @@
                     processPostContent(newPostContent);
                 });
 
-                // 新しい書き込みがあったら自動で一番下までスクロール
                 if (hasNewReply) {
                     const container = document.getElementById('post-container');
                     container.scrollTop = container.scrollHeight;
