@@ -154,12 +154,13 @@
 </head>
 <body>
 
+
     <!-- 💡 上部固定エリア -->
-    <div class="header-area" style="position: relative;">
+    <div class="header-area" style="position: relative;"> <!-- 💡positionを追加 -->
         <a href="{{ url_for('index') }}">■板一覧に戻る</a>
         <h1>{{ thread.title }}</h1>
         
-        <!-- 👇 右端に固定されるオンライン人数パーツを追加 -->
+        <!-- 🟢 【追加】右端に固定されるオンライン人数パーツ -->
         <div style="position: absolute; right: 20px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #28a745; font-weight: bold; background-color: rgba(40, 167, 69, 0.1); padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(40, 167, 69, 0.3);">
             ● <span style="color: #333; font-weight: normal;">ここを閲覧中:</span> <strong id="realtime-active-count">{{ active_count }}</strong>人
         </div>
