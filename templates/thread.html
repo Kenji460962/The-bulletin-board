@@ -285,11 +285,19 @@
                 const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
                 const data = await response.json();
                 
+                // 🟢 【ここを追加】サーバーから届いた最新の人数で、右上の数字を自動書き換え
+                if (data.active_count !== undefined) {
+                    document.getElementById('realtime-active-count').innerText = data.active_count;
+                }
+                
                 if (data.is_admin_user !== undefined) {
                     isAdminView = data.is_admin_user;
                 }
                 
                 let hasNewReply = false;
+
+                    
+            
                 data.replies.forEach(reply => {
                     const container = document.getElementById('post-container');
                     const newDiv = document.createElement('div');
