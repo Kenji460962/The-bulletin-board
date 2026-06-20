@@ -282,11 +282,12 @@
                 lastId = parseInt(postItems[postItems.length - 1].getAttribute('data-id'));
             }
             
+            
             try {
                 const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
                 const data = await response.json();
                 
-                // 🟢 【ここを追加】サーバーから届いた最新の人数で、右上の数字を自動書き換え
+                // 🟢 【追加】サーバーから届いた最新の人数で、画面の数字を自動書き換え
                 if (data.active_count !== undefined) {
                     document.getElementById('realtime-active-count').innerText = data.active_count;
                 }
