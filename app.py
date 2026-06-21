@@ -39,23 +39,7 @@ ADMIN_PASSWORD = "setokoji114514"
 # 🟢 【全自動お引越し装置】
 # Renderサーバー内にある古いbbs_data.jsonを見つけて、起動時に自動でSupabaseへ全移行します
 def auto_migrate_from_json():
-    if not os.path.exists(DATA_FILE):
-        return
-    try:
-        with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        # 1. 管理者メッセージの移行
-        if "admin_message" in data:
-            supabase.table('admin_messages').update({'message': data["admin_message"]}).eq('id', 1).execute()
-            
-        # 2. BANリストの移行
-        if "banned_ips" in data:
-            for ip in data["banned_ips"]:
-                try:
-                    supabase.table('banned_ips').insert({'ip': ip}).execute()
-                except:
-                    pass
+    pass
 
         # 3. スレッドとレスの移行（古いスレ順に保存）
         if "threads" in data:
