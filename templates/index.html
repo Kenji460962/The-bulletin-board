@@ -302,6 +302,16 @@
         document.getElementById(tabId).classList.add('active');
         buttonElement.classList.add('active');
     }
+        window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('tab') === 'threads') {
+            // スレ一覧ボタンを探して自動クリックする
+            const threadsButton = document.querySelector('.menu-btn[onclick*="threads-tab"]');
+            if (threadsButton) {
+                switchTab('threads-tab', threadsButton);
+            }
+        }
+    });
     </script>
 </body>
 </html>
