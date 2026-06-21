@@ -4,19 +4,20 @@ import json
 import os
 import hashlib
 import uuid
+import time
 # Cloudinaryのライブラリを読み込み
 import cloudinary
 import cloudinary.uploader
-import time
+# 🟢 【追加】Supabaseを使うためのライブラリを読み込み
+from supabase import create_client, Client
 
 app = Flask(__name__)
 
-# 🟢 無料プランのスリープを防ぎつつ、エラーログだけを完全に消し去る設定
+# 無料プランのスリープを防ぎつつ、エラーログだけを完全に消し去る設定
 @app.before_request
 def response_to_uptimerobot():
     if request.method == 'HEAD':
         return make_response('', 200) # ←「生きてるよ！」と最速で返事をする
-
 
 # Cloudinaryの設定
 # Renderの環境変数
@@ -25,39 +26,95 @@ cloudinary.config(
     secure = True
 )
 
+# 🟢 【重要】あなたのSupabase情報を直接ここに埋め込みました
+SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://supabase.co')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
+
+# Supabaseに接続するロボットを起動
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 DATA_FILE = 'bbs_data.json'
 ADMIN_PASSWORD = "setokoji114514"
 
-def load_data():
-    if os.path.exists(DATA_FILE):
+# 🟢 【全自動お引越し装置】
+# Renderサーバー内にある古いbbs_data.jsonを見つけて、起動時に自動でSupabaseへ全移行します
+def auto_migrate_from_json():
+    if not os.path.exists(DATA_FILE):
+        return
+    try:
         with open(DATA_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {"threads": [], "admin_message": "ここに管理者の一言が表示されます。", "banned_ips": []}
+            data = json.load(f)
+        
+        # 1. 管理者メッセージの移行
+        if "admin_message" in data:
+            supabase.table('admin_messages').update({'message': data["admin_message"]}).eq('id', 1).execute()
+            
+        # 2. BANリストの移行
+        if "banned_ips" in data:
+            for ip in data["banned_ips"]:
+                try:
+                    supabase.table('banned_ips').insert({'ip': ip}).execute()
+                except:
+                    pass
 
-def save_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        # 3. スレッドとレスの移行（古いスレ順に保存）
+        if "threads" in data:
+            existing = supabase.table('threads').select('id').execute()
+            if len(existing.data) == 0:
+                for thread in reversed(data["threads"]):
+                    try:
+                        # スレッド保存
+                        supabase.table('threads').insert({
+                            'id': thread['id'],
+                            'title': thread['title'],
+                            'created_at': thread.get('created_at', datetime.now().isoformat())
+                        }).execute()
+                        
+                        # レス保存
+                        if 'replies' in thread and thread['replies']:
+                            for reply in thread['replies']:
+                                reply_date = reply.get('date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                                iso_date = reply_date.replace(' ', 'T') + '+09:00'
+                                supabase.table('replies').insert({
+                                    'thread_id': thread['id'],
+                                    'author': reply['author'],
+                                    'content': reply['content'],
+                                    'user_id': reply['user_id'],
+                                    'is_admin': reply.get('is_admin', False),
+                                    'image_url': reply.get('image_url', ''),
+                                    'ip_address': reply.get('ip_address', ''),
+                                    'date': iso_date
+                                }).execute()
+                    except Exception as e:
+                        print(f"自動移行エラー (スレID {thread['id']}): {e}")
+                print("✨ 古いJSONからSupabaseへの全データ移行が完了しました！")
+    except Exception as e:
+        print(f"自動移行システム起動エラー: {e}")
 
-#IPアドレスを元に毎日変わるIDを生成
+# アプリ起動時に引っ越しを自動実行
+auto_migrate_from_json()
+
+
+# IPアドレスを元に毎日変わるIDを生成
 def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
     raw_str = f"{ip_address}_{today_str}"
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
 
-#アクセスしてきたユーザーの実際のIPアドレスを取得する
+# アクセスしてきたユーザーの実際のIPアドレスを取得する
 def get_client_ip():
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     return request.remote_addr
 
-#BANされたIPかどうかを判定する
+# BANされたIPかどうかを判定する
 def is_banned_ip(ip):
-    data = load_data()
-    if "banned_ips" not in data:
-        data["banned_ips"] = []
-        save_data(data)
-    return ip in data["banned_ips"]
+    try:
+        response = supabase.table('banned_ips').select('ip').eq('ip', ip).execute()
+        return len(response.data) > 0
+    except:
+        return False
 
 def check_is_admin_cookie(request):
     admin_cookie_flag = request.cookies.get('is_bbs_admin')
@@ -67,41 +124,44 @@ ACTIVE_USERS = {}
 
 def update_and_get_user_counts(current_token, location):
     now = time.time()
-    
-    # 1. アクセスしてきたユーザーの位置と時間を更新
     if current_token:
         ACTIVE_USERS[current_token] = {
             "location": location,
             "last_time": now
         }
-        
-    # 2. 5分（300秒）以上アクセスのない古いデータを削除
     expired_tokens = [token for token, info in ACTIVE_USERS.items() if now - info["last_time"] > 300]
     for token in expired_tokens:
         del ACTIVE_USERS[token]
-        
-    # 3. 指定された場所（ロビーまたは各スレッド）にいる人数をカウント
     count = sum(1 for info in ACTIVE_USERS.values() if info["location"] == location)
     return count
-    
 
-
-# 🟢 【修正】methodsに 'GET' と 'HEAD' の両方を公式に許可するよう指定します
+# 🟢 methodsに 'GET' と 'HEAD' の両方を公式に許可するよう指定します
 @app.route('/', methods=['GET', 'HEAD'])
 def index():
-    # ロビー閲覧時もBANされているIPからのアクセスを拒否
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
-    # 🟢 【追加】ロボットからのHEADリクエストは、ここで最優先で安全に200（正常終了）を返して追い返します
     if request.method == 'HEAD':
         return make_response('', 200)
 
-    data = load_data()
-    if "admin_message" not in data:
-        data["admin_message"] = "ここに管理者の一言が表示されます。"
-        save_data(data)
+    try:
+        # Supabaseからスレッド一覧（最新順）を取得
+        threads_response = supabase.table('threads').select('*').order('id', desc=True).execute()
+        threads = threads_response.data
+
+        # 各スレッドにレスが何件ついているかを数える
+        for t in threads:
+            replies_res = supabase.table('replies').select('id').eq('thread_id', t['id']).execute()
+            t['replies'] = replies_res.data
+
+        # Supabaseから管理者の一言を取得
+        admin_res = supabase.table('admin_messages').select('message').eq('id', 1).execute()
+        admin_message = admin_res.data['message'] if admin_res.data else "ここに管理者の一言が表示されます。"
+    except Exception as e:
+        print(f"データ取得エラー: {e}")
+        threads = []
+        admin_message = "データベース接続エラーが発生しています。"
 
     user_token = request.cookies.get('user_bbs_token')
     
@@ -110,76 +170,20 @@ def index():
         user_token = str(uuid.uuid4())
         is_new_user = True
 
-    # ロビーの閲覧者数を計算
     active_count = update_and_get_user_counts(user_token, "lobby")
-
     is_admin_user = check_is_admin_cookie(request)
     
-    # 通常の人間用（GET）の画面作成
     response = make_response(render_template(
         'index.html', 
-        threads=data['threads'],
-        admin_message=data['admin_message'], 
-        is_admin_user=is_admin_user,
+        threads=threads, 
+        admin_message=admin_message, 
+        is_admin_user=is_admin_user, 
         active_count=active_count
     ))
     
     if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
         
-    return response
-
-
-# 🟢 【追加】スレ主をBANする管理者用ルート
-@app.route('/thread/<int:thread_id>/ban_owner', methods=['POST'])
-def ban_thread_owner(thread_id):
-    if not check_is_admin_cookie(request):
-        return "権限がありません", 403
-    
-    data = load_data()
-    thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
-    
-    # スレッドが存在し、かつ作成者のIPアドレスが記録されている場合
-    if thread and 'ip_address' in thread:
-        owner_ip = thread['ip_address']
-        
-        if "banned_ips" not in data:
-            data["banned_ips"] = []
-        if owner_ip not in data['banned_ips']:
-            data['banned_ips'].append(owner_ip)
-            
-        # 💡 荒らし対策として、該当スレッドのタイトルを「BAN済」に変更し、レスも全削除
-        thread['title'] = "【このスレッドは管理員によってBANされました】"
-        thread['replies'] = [{
-            'id': 1,
-            'author': "あぼーん",
-            'content': "このスレッドの作成者はBANされました。",
-            'user_id': "???",
-            'is_admin': False,
-            'image_url': "",
-            'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }]
-        save_data(data)
-        
-    return redirect(url_for('index')) # BAN後はロビーに戻す
-
-
-    # 🟢 【ロビーの閲覧者数を計算】
-    active_count = update_and_get_user_counts(user_token, "lobby")
-
-    is_admin_user = check_is_admin_cookie(request)
-    
-    # 🟢 【HTMLに人数 active_count を送る】
-    response = make_response(render_template(
-        'index.html', 
-        threads=data['threads'],
-        admin_message=data['admin_message'], 
-        is_admin_user=is_admin_user,
-        active_count=active_count
-    ))
-    
-    if is_new_user:
-        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
 
 @app.route('/update_admin_message', methods=['POST'])
@@ -187,9 +191,10 @@ def update_admin_message():
     password = request.form.get('admin_password')
     message = request.form.get('message')
     if password == ADMIN_PASSWORD and message:
-        data = load_data()
-        data['admin_message'] = message
-        save_data(data)
+        try:
+            supabase.table('admin_messages').update({'message': message}).eq('id', 1).execute()
+        except Exception as e:
+            print(f"メッセージ更新エラー: {e}")
     return redirect(url_for('index'))
 
 @app.route('/create_thread', methods=['POST'])
@@ -201,18 +206,19 @@ def create_thread():
     title = request.form.get('title')
     if not title:
         return {"error": "タイトルが必要です"}, 400
-    data = load_data()
-    new_thread = {
-        'id': len(data['threads']) + 1,
-        'title': title,
-        'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'ip_address': client_ip,  # 🟢 【追加】スレ主のIPを保存
-        'replies': []
-    }
-    data['threads'].insert(0, new_thread)
-    save_data(data)
+    
+    try:
+        # 🟢 Supabaseへ新しいスレッドを保存
+        response = supabase.table('threads').insert({
+            'title': title,
+            'ip_address': client_ip
+        }).execute()
+        new_thread = response.data[0] if response.data else None
+    except Exception as e:
+        print(f"スレッド作成エラー: {e}")
+        return {"error": "データベースエラー"}, 500
+        
     return {"success": True, "thread": new_thread}
-
 
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
@@ -220,13 +226,27 @@ def thread_view(thread_id):
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
-    data = load_data()
-    thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
-    if not thread:
-        return "スレッドが見つかりません", 404
+    try:
+        # 🟢 Supabaseから指定されたスレッドを取得
+        thread_res = supabase.table('threads').select('*').eq('id', thread_id).execute()
+        if not thread_res.data:
+            return "スレッドが見つかりません", 404
+        thread = thread_res.data[0]
+
+        # 🟢 Supabaseからスレッド内のレス一覧（古い順）を取得
+        replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
+        thread['replies'] = replies_res.data
+        for r in thread['replies']:
+            if r.get('date'):
+                dt = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                r['date'] = dt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception as e:
+        print(f"スレッド読み込みエラー: {e}")
+        return "データベースエラーが発生しました", 500
 
     is_admin_user = check_is_admin_cookie(request)
 
+    # 書き込み（POST）処理
     if request.method == 'POST':
         author_input = request.form.get('author') or "名無しさん"
         content = request.form.get('content') or ""
@@ -242,6 +262,7 @@ def thread_view(thread_id):
             else:
                 author_input = name_part or "名無しさん"
 
+        # 画像ファイルのアップロード
         image_url = ""
         if 'image' in request.files:
             file = request.files['image']
@@ -253,104 +274,146 @@ def thread_view(thread_id):
                     print(f"Cloudinary Upload Error: {e}")
 
         if content.strip() or image_url:
-            new_reply = {
-                'id': len(thread['replies']) + 1,
-                'author': author_input,
-                'content': content,
-                'user_id': user_id,
-                'is_admin': is_admin,
-                'image_url': image_url, 
-                'ip_address': client_ip, 
-                'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
-            thread['replies'].append(new_reply)
-            save_data(data)
+            try:
+                # 🟢 Supabaseへレスを保存
+                supabase.table('replies').insert({
+                    'thread_id': thread_id,
+                    'author': author_input,
+                    'content': content,
+                    'user_id': user_id,
+                    'is_admin': is_admin,
+                    'image_url': image_url,
+                    'ip_address': client_ip
+                }).execute()
+            except Exception as e:
+                print(f"レス保存エラー: {e}")
             
         response = redirect(url_for('thread_view', thread_id=thread_id))
         if is_admin:
             response.set_cookie('is_bbs_admin', 'true', max_age=60*60*24)
         return response
         
+    # 画面表示（GET）の処理
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
     if not user_token:
         user_token = str(uuid.uuid4())
         is_new_user = True
 
-    # 🟢 【スレッド専用の人数をカウントしてHTMLに送る】
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
 
     response = make_response(render_template('thread.html', thread=thread, is_admin_user=is_admin_user, active_count=active_count))
-    
     if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
 
+# スレッド丸ごと削除（管理人用）
 @app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
 def delete_thread(thread_id):
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
-    data = load_data()
-    data['threads'] = [t for t in data['threads'] if t['id'] != thread_id]
-    save_data(data)
+    try:
+        # 🟢 Supabaseからスレッドを削除
+        supabase.table('threads').delete().eq('id', thread_id).execute()
+    except Exception as e:
+        print(f"スレッド削除エラー: {e}")
     return redirect(url_for('index'))
 
+# レス単体削除（あぼーん処理）
 @app.route('/thread/<int:thread_id>/delete/<int:reply_id>', methods=['POST'])
 def delete_reply(thread_id, reply_id):
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
-    data = load_data()
-    thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
-    if thread:
-        reply = next((r for r in thread['replies'] if r['id'] == reply_id), None)
-        if reply:
-            reply['author'] = "あぼーん"
-            reply['content'] = "この書き込みは管理員によって削除されました。"
-            reply['user_id'] = "???"
-            reply['is_admin'] = False
-            reply['image_url'] = ""
-            save_data(data)
+    try:
+        # 🟢 Supabaseの該当レスを「あぼーん」に更新
+        supabase.table('replies').update({
+            'author': 'あぼーん',
+            'content': 'この書き込みは管理員によって削除されました。',
+            'user_id': '???',
+            'is_admin': False,
+            'image_url': ''
+        }).eq('id', reply_id).execute()
+    except Exception as e:
+        print(f"レス削除エラー: {e}")
     return redirect(url_for('thread_view', thread_id=thread_id))
     
+# 荒らしユーザーをBAN
 @app.route('/thread/<int:thread_id>/ban/<int:reply_id>', methods=['POST'])
 def ban_user(thread_id, reply_id):
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
-    data = load_data()
-    thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
-    if thread:
-        reply = next((r for r in thread['replies'] if r['id'] == reply_id), None)
-        if reply and 'ip_address' in reply:
-            if "banned_ips" not in data:
-                data["banned_ips"] = []
-            if reply['ip_address'] not in data['banned_ips']:
-                data['banned_ips'].append(reply['ip_address'])
-            reply['author'] = "あぼーん"
-            reply['content'] = "この書き込みは管理員によってBANされました。"
-            reply['user_id'] = "???"
-            reply['is_admin'] = False
-            reply['image_url'] = ""
-            save_data(data)
+    
+    try:
+        reply_res = supabase.table('replies').select('ip_address').eq('id', reply_id).execute()
+        if reply_res.data and reply_res.data[0].get('ip_address'):
+            b_ip = reply_res.data[0]['ip_address']
+            # BANリストにIPを登録
+            supabase.table('banned_ips').insert({'ip': b_ip}).execute()
+            
+            # レスをあぼーん化
+            supabase.table('replies').update({
+                'author': 'あぼーん',
+                'content': 'この書き込みは管理員によってBANされました。',
+                'user_id': '???',
+                'is_admin': False,
+                'image_url': ''
+            }).eq('id', reply_id).execute()
+    except Exception as e:
+        print(f"ユーザーBANエラー: {e}")
+            
     return redirect(url_for('thread_view', thread_id=thread_id))
 
+# 🟢 スレ主をBANする管理者用ルート
+@app.route('/thread/<int:thread_id>/ban_owner', methods=['POST'])
+def ban_thread_owner(thread_id):
+    if not check_is_admin_cookie(request):
+        return "権限がありません", 403
+    
+    try:
+        thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
+        if thread_res.data and thread_res.data[0].get('ip_address'):
+            owner_ip = thread_res.data[0]['ip_address']
+            # スレ主のIPをBANテーブルへ登録
+            supabase.table('banned_ips').insert({'ip': owner_ip}).execute()
+                
+            # スレタイをBAN表示に変え、中身のレスを解体
+            supabase.table('threads').update({'title': '【このスレッドは管理員によってBANされました】'}).eq('id', thread_id).execute()
+            supabase.table('replies').delete().eq('thread_id', thread_id).execute()
+            supabase.table('replies').insert({
+                'thread_id': thread_id,
+                'author': 'あぼーん',
+                'content': 'このスレッドの作成者はBANされました。',
+                'user_id': '???',
+                'is_admin': False,
+                'image_url': ''
+            }).execute()
+    except Exception as e:
+        print(f"スレ主BANエラー: {e}")
+        
+    return redirect(url_for('index'))
+
+# 3秒おきの自動リアルタイム更新API
 @app.route('/api/thread/<int:thread_id>/updates')
 def thread_updates(thread_id):
     last_id = request.args.get('last_id', type=int, default=0)
     
-    # 🟢 【3秒おきのJavaScriptアクセス時にも生存確認として人数を更新】
     user_token = request.cookies.get('user_bbs_token')
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
     
-    data = load_data()
-    thread = next((t for t in data['threads'] if t['id'] == thread_id), None)
-    if not thread:
-        return {"replies": []}, 404
-    new_replies = [r for r in thread['replies'] if r['id'] > last_id]
+    try:
+        new_replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).gt('id', last_id).order('id', desc=False).execute()
+        new_replies = new_replies_res.data
+        for r in new_replies:
+            if r.get('date'):
+                dt = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                r['date'] = dt.strftime('%Y-%m-%d %H:%M:%S')
+    except Exception as e:
+        print(f"自動更新APIエラー: {e}")
+        new_replies = []
+        
     is_admin_user = check_is_admin_cookie(request)
-    
-    # 🟢 【JavaScript側に最新の人数 active_count を辞書に含めて返す】
     return {
         "replies": new_replies, 
         "is_admin_user": is_admin_user, 
@@ -360,4 +423,3 @@ def thread_updates(thread_id):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
