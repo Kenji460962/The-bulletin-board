@@ -91,9 +91,6 @@ def auto_migrate_from_json():
     except Exception as e:
         print(f"自動移行システム起動エラー: {e}")
 
-# アプリ起動時に引っ越しを自動実行
-auto_migrate_from_json()
-
 
 # IPアドレスを元に毎日変わるIDを生成
 def get_daily_user_id(ip_address):
