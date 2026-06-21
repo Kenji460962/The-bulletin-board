@@ -147,18 +147,29 @@ def index():
         threads_response = supabase.table('threads').select('*').order('id', desc=True).execute()
         threads = threads_response.data
 
-        # 各スレッドにレスが何件ついているかを数える
+        # 各スレッドにレスが何件ついているかを数える（エラーが起きても無視して進むように個別に囲む）
         for t in threads:
-            replies_res = supabase.table('replies').select('id').eq('thread_id', t['id']).execute()
-            t['replies'] = replies_res.data
+            try:
+                replies_res = supabase.table('replies').select('id').eq('thread_id', t['id']).execute()
+                t['replies'] = replies_res.data if replies_res.data else []
+            except Exception as re:
+                print(f"レス件数取得エラー (スレID {t['id']}): {re}")
+                t['replies'] = [] # エラーが起きても空配列を入れてスレ自体は残す
 
         # Supabaseから管理者の一言を取得
-        admin_res = supabase.table('admin_messages').select('message').eq('id', 1).execute()
-        admin_message = admin_res.data['message'] if admin_res.data else "ここに管理者の一言が表示されます。"
+        try:
+            admin_res = supabase.table('admin_messages').select('message').eq('id', 1).execute()
+            # リストから最初の1件を取得する安全な書き方に修正
+            admin_message = admin_res.data[0]['message'] if admin_res.data else "ここに管理者の一言が表示されます。"
+        except Exception as ae:
+            print(f"管理者メッセージ取得エラー: {ae}")
+            admin_message = "管理者の一言の取得に失敗しました。"
+
     except Exception as e:
-        print(f"データ取得エラー: {e}")
+        print(f"スレッド一覧取得エラー: {e}")
         threads = []
-        admin_message = "データベース接続エラーが発生しています。"
+
+
 
     user_token = request.cookies.get('user_bbs_token')
     
