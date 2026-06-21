@@ -291,7 +291,9 @@
                   .replace(/'/g, '&#039;');
     }
 
-    // タブ切り替えシステム
+
+
+        // タブ切り替えシステム（元々ある関数）
     function switchTab(tabId, buttonElement) {
         document.querySelectorAll('.content-section').forEach(section => {
             section.classList.remove('active');
@@ -302,16 +304,32 @@
         document.getElementById(tabId).classList.add('active');
         buttonElement.classList.add('active');
     }
-        window.addEventListener('DOMContentLoaded', () => {
+
+    // 🟢 【上書き修正】最速かつ確実に「スレ一覧」タブを強制的に開くコード
+    (function() {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get('tab') === 'threads') {
-            // スレ一覧ボタンを探して自動クリックする
-            const threadsButton = document.querySelector('.menu-btn[onclick*="threads-tab"]');
-            if (threadsButton) {
-                switchTab('threads-tab', threadsButton);
+            // DOMContentLoadedより確実に、即座にボタンを探して切り替える関数
+            const forceSwitch = () => {
+                const buttons = document.querySelectorAll('.menu-btn');
+                let found = false;
+                buttons.forEach(btn => {
+                    if (btn.textContent.trim() === 'スレ一覧') {
+                        switchTab('threads-tab', btn);
+                        found = true;
+                    }
+                });
+                return found;
+            };
+
+            // 1. まず即座に実行を試みる
+            if (!forceSwitch()) {
+                // 2. まだボタンが描画されていなければ、読み込み完了を待って実行
+                window.addEventListener('DOMContentLoaded', forceSwitch);
+                window.addEventListener('load', forceSwitch);
             }
         }
-    });
+    })();
     </script>
 </body>
 </html>
