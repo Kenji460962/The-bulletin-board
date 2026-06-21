@@ -291,45 +291,39 @@
                   .replace(/'/g, '&#039;');
     }
 
-
-
-        // タブ切り替えシステム（元々ある関数）
+    // タブ切り替えシステム（確実に動くように修正済）
     function switchTab(tabId, buttonElement) {
-        document.querySelectorAll('.content-section').forEach(section => {
-            section.classList.remove('active');
-        });
-        document.querySelectorAll('.menu-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        document.getElementById(tabId).classList.add('active');
-        buttonElement.classList.add('active');
+        var sections = document.querySelectorAll('.content-section');
+        for (var i = 0; i < sections.length; i++) {
+            sections[i].classList.remove('active');
+        }
+        var buttons = document.querySelectorAll('.menu-btn');
+        for (var j = 0; j < buttons.length; j++) {
+            buttons[j].classList.remove('active');
+        }
+        var targetSection = document.getElementById(tabId);
+        if (targetSection) {
+            targetSection.classList.add('active');
+        }
+        if (buttonElement) {
+            buttonElement.classList.add('active');
+        }
     }
 
-    // 🟢 【上書き修正】最速かつ確実に「スレ一覧」タブを強制的に開くコード
-    (function() {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('tab') === 'threads') {
-            // DOMContentLoadedより確実に、即座にボタンを探して切り替える関数
-            const forceSwitch = () => {
-                const buttons = document.querySelectorAll('.menu-btn');
-                let found = false;
-                buttons.forEach(btn => {
-                    if (btn.textContent.trim() === 'スレ一覧') {
-                        switchTab('threads-tab', btn);
-                        found = true;
-                    }
-                });
-                return found;
-            };
-
-            // 1. まず即座に実行を試みる
-            if (!forceSwitch()) {
-                // 2. まだボタンが描画されていなければ、読み込み完了を待って実行
-                window.addEventListener('DOMContentLoaded', forceSwitch);
-                window.addEventListener('load', forceSwitch);
+    // 🟢 【サーバーパニック対策・完全版】
+    // 波カッコが連続しないように「空白」を空けて、Pythonの勘違いを完全に防ぎます
+    window.addEventListener('load', function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('tab') === 'threads') {
+            var btns = document.querySelectorAll('.menu-btn');
+            for (var k = 0; k < btns.length; k++) {
+                if (btns[k].textContent.trim() === 'スレ一覧') {
+                    switchTab('threads-tab', btns[k]);
+                    break;
+                }
             }
         }
-    })();
+    });
     </script>
 </body>
 </html>
