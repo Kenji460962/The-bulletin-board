@@ -308,13 +308,19 @@ def thread_view(thread_id):
         user_token = str(uuid.uuid4())
         is_new_user = True
 
+
+
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
 
-    response = make_response(render_template('thread.html', thread=thread, is_admin_user=is_admin_user, active_count=active_count))
+    # 🟢 カッコの最後に「, back_to_board="/?tab=threads"」を追加！
+    response = make_response(render_template('thread.html', thread=thread, is_admin_user=is_admin_user, active_count=active_count, back_to_board="/?tab=threads"))
+    
     if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
+
+
 
 # スレッド丸ごと削除（管理人用）
 @app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
