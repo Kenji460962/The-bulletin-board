@@ -206,22 +206,25 @@
     </div>
 
 
+
     <!-- 💡 スクロールするコメントエリア -->
     <div id="post-container">
         {% for reply in thread.replies %}
+        <!-- 🟢 id属性とdata-id属性は、裏側のプログラム（削除・BAN・自動更新）が動くように本物のIDのまま維持します -->
         <div class="post-item" id="p{{ reply.id }}" data-id="{{ reply.id }}">
             <span class="post-meta">
-                <span class="post-num">{{ reply.id }}</span> ：
+                <!-- 🟢 表示する数字だけを、スレ内だけの連番（1, 2, 3...）に変更します -->
+                <span class="post-num">{{ loop.index }}</span> ：
                 <span class="{% if reply.is_admin %}admin-name{% else %}post-name{% endif %}">{{ reply.author }}</span> ：
                 {{ reply.date }}
                 <span class="post-id"> ID:{{ reply.user_id }}</span>
                 
                 {% if is_admin_user and reply.author != "Deleted" and reply.author != "あぼーん" %}
-                <!-- 削除ボタン -->
+                <!-- 削除ボタン（本物のIDで動作） -->
                 <form class="delete-form" action="/thread/{{ thread.id }}/delete/{{ reply.id }}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
                     <button type="submit" class="delete-btn">削除</button>
                 </form>
-                <!-- BANボタン -->
+                <!-- BANボタン（本物のIDで動作） -->
                 <form class="delete-form" action="/thread/{{ thread.id }}/ban/{{ reply.id }}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
                     <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
                 </form>
@@ -238,6 +241,9 @@
         </div>
         {% endfor %}
     </div>
+
+
+    
 
     <!-- 💡 下部固定エリア（書き込み欄） -->
     <div class="footer-area">
