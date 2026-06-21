@@ -27,7 +27,7 @@ cloudinary.config(
 )
 
 # 🟢 【重要】あなたのSupabase情報を直接ここに埋め込みました
-SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://supabase.co')
+SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvjhukmy.supabase.co')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
 
 # Supabaseに接続するロボットを起動
