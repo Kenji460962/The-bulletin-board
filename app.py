@@ -228,6 +228,20 @@ def thread_view(thread_id):
         content = request.form.get('content') or ""
         user_id = get_daily_user_id(client_ip)
         
+        
+
+        client_ip = get_client_ip()
+        now = time.time()
+        if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 10:
+            return redirect(url_for('thread_view', thread_id=thread_id))
+        
+        author_input = request.form.get('author') or "名無しさん"
+        if not ("#" in author_input and author_input.split("#", 1)[1] == ADMIN_PASSWORD):
+            LAST_POST_TIMES[client_ip] = now
+
+        
+        
+        
         is_admin = False
         if "#" in author_input:
             name_part, pass_part = author_input.split("#", 1)
