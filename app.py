@@ -36,6 +36,10 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 DATA_FILE = 'bbs_data.json'
 ADMIN_PASSWORD = "setokoji114514"
 
+# 🟢 【セキュリティ強化】ユーザーごとの最後の書き込み時間を記録する場所
+LAST_POST_TIMES = {}
+
+
 # 🟢 【全自動お引越し装置】
 # Renderサーバー内にある古いbbs_data.jsonを見つけて、起動時に自動でSupabaseへ全移行します
 # 🟢 不要になったお引越しシステムの中身を完全に消去しました
