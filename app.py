@@ -157,6 +157,7 @@ def update_admin_message():
             print(f"メッセージ更新エラー: {e}")
     return redirect(url_for('index'))
 
+
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
     client_ip = get_client_ip()
@@ -167,8 +168,12 @@ def create_thread():
     if not title:
         return {"error": "タイトルが必要です"}, 400
     
+    # 🟢 【追加】スレッド名の文字数制限（50文字を超える場合はエラーにする）
+    if len(title) > 50:
+        return {"error": "スレッド名は50文字以内で入力してください"}, 400
+    
     try:
-        # 🟢 Supabaseへ新しいスレッドを保存
+        # Supabaseへ新しいスレッドを保存
         response = supabase.table('threads').insert({
             'title': title,
             'ip_address': client_ip
@@ -179,6 +184,10 @@ def create_thread():
         return {"error": "データベースエラー"}, 500
         
     return {"success": True, "thread": new_thread}
+
+
+
+
 
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
