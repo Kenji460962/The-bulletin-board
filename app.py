@@ -262,6 +262,20 @@ def thread_view(thread_id):
             response.set_cookie('is_bbs_admin', 'true', max_age=60*60*24)
         return response
         
+                # （中略）画像ファイルのアップロード処理の下あたり
+        
+        # 🟢 【追加】コメントの文字数制限（500文字を超える場合は保存せずにリダイレクト）
+        if len(content) > 500:
+            # 💡 500文字を超えていたら書き込ませずにスレ画面に戻す
+            return redirect(url_for('thread_view', thread_id=thread_id))
+
+        if content.strip() or image_url:
+            try:
+                # Supabaseへレスを保存
+                supabase.table('replies').insert({
+
+        
+        
     # 画面表示（GET）の処理
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
