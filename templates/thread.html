@@ -288,7 +288,11 @@
                 画像：<input type="file" name="image" accept="image/*" style="color: #000; font-size: 11px; max-width: 150px;">
             </div>
             <div class="form-row">
-                <textarea name="content" placeholder="ここに書き込み内容を入力してください" required></textarea>
+                
+                <!-- 🟢 maxlength="500" を追加して、500文字以上の入力をブロックします -->
+　　　　　　　　　　　<textarea name="content" placeholder="ここに書き込み内容を入力してください（500文字以内）" maxlength="500" required></textarea>
+
+                
                 <button type="submit" id="submit-btn">書き込む</button>
             </div>
         </form>
