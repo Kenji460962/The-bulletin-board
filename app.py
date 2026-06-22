@@ -38,42 +38,10 @@ ADMIN_PASSWORD = "setokoji114514"
 
 # 🟢 【全自動お引越し装置】
 # Renderサーバー内にある古いbbs_data.jsonを見つけて、起動時に自動でSupabaseへ全移行します
+# 🟢 不要になったお引越しシステムの中身を完全に消去しました
 def auto_migrate_from_json():
     pass
 
-        # 3. スレッドとレスの移行（古いスレ順に保存）
-        if "threads" in data:
-            existing = supabase.table('threads').select('id').execute()
-            if len(existing.data) == 0:
-                for thread in reversed(data["threads"]):
-                    try:
-                        # スレッド保存
-                        supabase.table('threads').insert({
-                            'id': thread['id'],
-                            'title': thread['title'],
-                            'created_at': thread.get('created_at', datetime.now().isoformat())
-                        }).execute()
-                        
-                        # レス保存
-                        if 'replies' in thread and thread['replies']:
-                            for reply in thread['replies']:
-                                reply_date = reply.get('date', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                                iso_date = reply_date.replace(' ', 'T') + '+09:00'
-                                supabase.table('replies').insert({
-                                    'thread_id': thread['id'],
-                                    'author': reply['author'],
-                                    'content': reply['content'],
-                                    'user_id': reply['user_id'],
-                                    'is_admin': reply.get('is_admin', False),
-                                    'image_url': reply.get('image_url', ''),
-                                    'ip_address': reply.get('ip_address', ''),
-                                    'date': iso_date
-                                }).execute()
-                    except Exception as e:
-                        print(f"自動移行エラー (スレID {thread['id']}): {e}")
-                print("✨ 古いJSONからSupabaseへの全データ移行が完了しました！")
-    except Exception as e:
-        print(f"自動移行システム起動エラー: {e}")
 
 
 # IPアドレスを元に毎日変わるIDを生成
