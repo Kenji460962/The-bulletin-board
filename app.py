@@ -162,6 +162,7 @@ def update_admin_message():
     return redirect(url_for('index'))
 
 
+
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
     client_ip = get_client_ip()
@@ -171,10 +172,14 @@ def create_thread():
     title = request.form.get('title')
     if not title:
         return {"error": "タイトルが必要です"}, 400
-    
-    # 🟢 【追加】スレッド名の文字数制限（50文字を超える場合はエラーにする）
-    if len(title) > 50:
+    if len(title) > 30:
         return {"error": "スレッド名は50文字以内で入力してください"}, 400
+    
+    # 🟢 【セキュリティ強化】10秒以内の連続スレ立てをブロック
+    now = time.time()
+    if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 3:
+        return {"error": "連投は禁止されています。しばらく時間を置いてから投稿してください。"}, 429
+    LAST_POST_TIMES[client_ip] = now # 書き込み時間を更新
     
     try:
         # Supabaseへ新しいスレッドを保存
@@ -188,8 +193,6 @@ def create_thread():
         return {"error": "データベースエラー"}, 500
         
     return {"success": True, "thread": new_thread}
-
-
 
 
 
