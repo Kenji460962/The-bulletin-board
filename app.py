@@ -163,33 +163,33 @@ def update_admin_message():
 
 
 
+
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
-        return "あなたはアクセス禁止（BAN）されています。", 403
+        return {"error": "あなたはアクセス禁止（BAN）されています。"}, 403
 
     title = request.form.get('title')
     if not title:
         return {"error": "タイトルが必要です"}, 400
     if len(title) > 30:
-        return {"error": "スレッド名は50文字以内で入力してください"}, 400
+        return {"error": "スレッド名は30文字以内で入力してください"}, 400
     
-
-        # 🟢 【荒らし対策】5分（300秒）以内の連続スレ立てをブロック（管理人は免除）
+    # 🟢 【荒らし対策】5分（300秒）以内の連続スレ立てをブロック（管理人は免除）
     is_admin = check_is_admin_cookie(request)
     now = time.time()
     
-    if not is_admin: # 管理者じゃない場合のみ5分制限をかける
+    if not is_admin:
         if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 300:
             remaining_time = int(300 - (now - LAST_POST_TIMES[client_ip]))
             minutes = remaining_time // 60
             seconds = remaining_time % 60
-            return {"error": f"スレッドの作成は5分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
+            # 💡 JavaScriptで表示しやすいようにエラー文を返却
+            return {"error": f"スレッド作成は5分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
             
-        LAST_POST_TIMES[client_ip] = now # 一般ユーザーのみ時間を記録
-
-    
+        # 💡 スレ立てに成功した時だけ時間を更新する（ここが重要！）
+        LAST_POST_TIMES[client_ip] = now 
     
     try:
         # Supabaseへ新しいスレッドを保存
@@ -200,9 +200,11 @@ def create_thread():
         new_thread = response.data[0] if response.data else None
     except Exception as e:
         print(f"スレッド作成エラー: {e}")
-        return {"error": "データベースエラー"}, 500
+        return {"error": "データベースエラーが発生しました"}, 500
         
     return {"success": True, "thread": new_thread}
+
+
 
 
 
