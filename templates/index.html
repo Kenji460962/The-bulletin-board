@@ -206,7 +206,21 @@
                 {% else %}
                 <li id="no-thread-msg">まだ板がありません。新しい板を立ててみましょう！</li>
                 {% endfor %}
+
             </ul>
+                    <!-- 🟢 【追加】ページ切り替え（ボタン）パーツ -->
+        <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center;">
+            {% if current_page > 1 %}
+                <a href="/?tab=threads&page={{ current_page - 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">◀ 前のページ</a>
+            {% endif %}
+            
+            <span style="color: #bbb;">ページ {{ current_page }}</span>
+            
+            {% if has_next %}
+                <a href="/?tab=threads&page={{ current_page + 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">次のページ ▶</a>
+            {% endif %}
+        </div>
+
         </div>
     </div>
 
