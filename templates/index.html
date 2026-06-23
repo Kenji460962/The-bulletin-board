@@ -145,33 +145,20 @@
     <h1> talk-ch </h1>
 
 
-       <!-- 上のメニューバー -->
+    <!-- 上のメニューバー -->
     <div class="menu-bar">
-        <button class="menu-btn active" onclick="switchTab('lobby', this)">ロビー</button>
+        <!-- 💡 switchTabの中身を 'lobby-tab' に統一しました -->
+        <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</button>
         <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
         <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
-        <!-- 🟢 「その他」ボタンを追加 -->
         <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
     </div>
 
-    <!-- 🟢 復活させたロビーのエリア -->
-    <div id="lobby" class="content-section active">
-        <div class="glass-panel lobby-welcome">
-            <div class="lobby-title">talk-ch</div>
-            <!-- 💡 ここに元のオンライン人数表示を完全に復活させました -->
-            <p style="font-size: 18px; color: #4dabff; font-weight: bold;">
-                🟢 現在のオンライン人数: {{ active_count }}人
-            </p>
-            <p style="color: #ccc; margin-top: 15px;">トークちゃんねるへようこそ！自由にスレッドを立てて会話を楽しんでね。</p>
-        </div>
-    </div>
-
-    
-    <!-- ロビータブ -->
+    <!-- ロビータブ（英語のウェルカムメッセージのみを残して正常化） -->
     <div id="lobby-tab" class="content-section active">
         <div class="glass-panel lobby-welcome">
             <div class="lobby-title">Welcome to our bulletin board</div>
-            <p style="font-size: 16px; color: #ddd; text-shadow: 1px 1px 2px #000;">
+            <p style="font-size: 16px; color: #ddd; text-shadow: 1px 1px 2px #000; line-height: 1.6;">
                 トークちゃんねるは完全匿名、登録不要の掲示板です。<br>
                 上の「スレ一覧」から自由にトピックを作って会話を始めましょう！
             </p>
@@ -183,22 +170,23 @@
         <div class="glass-panel">
             <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
                 <h3>新しい板（スレッド）を立てる</h3>
-                <!-- 🟢 maxlength="50" を追加することで、スマホでもPCでも50文字以上はキーボード入力できなくなります -->
-　　　　　　　　　　　<input type="text" name="title" placeholder="スレッドのタイトルを入力（50文字以内）" style="width: 80%;" maxlength="50" required>
+                <input type="text" name="title" placeholder="スレッドのタイトルを入力（50文字以内）" style="width: 80%;" maxlength="50" required>
                 <button type="submit">新規スレッド作成</button>
             </form>
         </div>
+    </div> <!-- 💡 壊れていた閉じタグを正しく補完しました -->
 
-    <!-- 🟢 「その他」が押されたときに表示されるエリア -->
+    <!-- 「その他」が押されたときに表示されるエリア -->
     <div id="other-tab" class="content-section">
         <div class="glass-panel">
-            <h3>その他メニュー</h3>
+            <h3 style="margin-top: 0;">その他メニュー</h3>
             <ul>
-            <!-- 💡 ここにプライバシーポリシーのリンクを配置 -->
                 <li><a class="thread-link" href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a></li>
             </ul>
         </div>
     </div>
+
+
 
 
         <div class="glass-panel">
