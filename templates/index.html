@@ -143,15 +143,27 @@
 <body>
 
     <h1> talk-ch </h1>
-    
-    <!-- 上のメニューバー -->
-    <div class="menu-bar">
-        <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</button>
-        <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
-        <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
-        <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
+
+
+
+
+        <!-- 上のメニューバー -->
+    <div class="menu-bar" style="justify-content: space-between; align-items: center; display: flex; width: 100%; box-sizing: border-box;">
+        <!-- 左側：タブ切り替えボタン群 -->
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</button>
+            <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
+            <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
+            <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
+        </div>
+
+        <!-- 右側：バーの右端に固定されたオンライン人数 -->
+        <div style="color: #4dabff; font-weight: bold; font-size: 14px; padding-right: 15px; text-shadow: 0 0 5px rgba(77, 171, 255, 0.4); white-space: nowrap;">
+            🟢 オンライン: {{ active_count }}人
+        </div>
     </div>
 
+   
     <!-- 1. ロビータブ -->
     <div id="lobby-tab" class="content-section active">
         <div class="glass-panel lobby-welcome">
