@@ -145,19 +145,24 @@
     <h1> talk-ch </h1>
 
 
-    <!-- 上のメニューバー -->
-    <div class="menu-bar" style="justify-content: space-between; align-items: center;">
-        <!-- 左側：ナビゲーションボタン群 -->
-        <div style="display: flex; gap: 12px; align-items: center;">
-            <button class="menu-btn active" onclick="switchTab('lobby', this)">ロビー</button>
-            <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
-            <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
-            <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
-        </div>
+       <!-- 上のメニューバー -->
+    <div class="menu-bar">
+        <button class="menu-btn active" onclick="switchTab('lobby', this)">ロビー</button>
+        <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
+        <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
+        <!-- 🟢 「その他」ボタンを追加 -->
+        <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
+    </div>
 
-        <!-- 🟢 右側：復活させたオンライン人数表示 -->
-        <div style="color: #4dabff; font-weight: bold; font-size: 14px; padding-right: 10px; text-shadow: 0 0 5px rgba(77, 171, 255, 0.3);">
-            🟢 オンライン: {{ active_count }}人
+    <!-- 🟢 復活させたロビーのエリア -->
+    <div id="lobby" class="content-section active">
+        <div class="glass-panel lobby-welcome">
+            <div class="lobby-title">talk-ch</div>
+            <!-- 💡 ここに元のオンライン人数表示を完全に復活させました -->
+            <p style="font-size: 18px; color: #4dabff; font-weight: bold;">
+                🟢 現在のオンライン人数: {{ active_count }}人
+            </p>
+            <p style="color: #ccc; margin-top: 15px;">トークちゃんねるへようこそ！自由にスレッドを立てて会話を楽しんでね。</p>
         </div>
     </div>
 
