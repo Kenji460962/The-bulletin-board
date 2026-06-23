@@ -175,19 +175,20 @@ def create_thread():
     if len(title) > 30:
         return {"error": "スレッド名は50文字以内で入力してください"}, 400
     
-    
-        # 🟢 【荒らし対策】5分（300秒）以内の連続スレ立てをブロック
-    now = time.time()
-    if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 300:
-        # 残り時間を計算してメッセージに表示（親切設計）
-        remaining_time = int(300 - (now - LAST_POST_TIMES[client_ip]))
-        minutes = remaining_time // 60
-        seconds = remaining_time % 60
-        return {"error": f"スレッドの作成は5分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
-        
-    LAST_POST_TIMES[client_ip] = now # スレ立て成功時に時間を更新
 
+        # 🟢 【荒らし対策】5分（300秒）以内の連続スレ立てをブロック（管理人は免除）
+    is_admin = check_is_admin_cookie(request)
+    now = time.time()
     
+    if not is_admin: # 管理者じゃない場合のみ5分制限をかける
+        if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 300:
+            remaining_time = int(300 - (now - LAST_POST_TIMES[client_ip]))
+            minutes = remaining_time // 60
+            seconds = remaining_time % 60
+            return {"error": f"スレッドの作成は5分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
+            
+        LAST_POST_TIMES[client_ip] = now # 一般ユーザーのみ時間を記録
+
     
     
     try:
