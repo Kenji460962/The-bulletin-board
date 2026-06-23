@@ -146,22 +146,15 @@
 
 
 
-    <!-- 上のメニューバー -->
+      <!-- 上のメニューバー -->
     <div class="menu-bar">
         <!-- 既存のタブ切り替えボタン -->
         <button class="menu-btn active" onclick="switchTab('lobby', this)">ロビー</button>
         <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
         <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
-        
-        <!-- 「その他」ドロップダウンメニュー -->
-        <div class="dropdown-container">
-            <button class="menu-btn no-tab">その他 ▼</button>
-            <div class="dropdown-content">
-                <!-- プライバシーポリシーへのリンク -->
-                <a href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a>
-            </div>
-        </div>
+        <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
     </div>
+
 
 
 
