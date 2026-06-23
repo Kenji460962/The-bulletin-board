@@ -191,7 +191,9 @@
                         <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
                             【{{ thread.id }}】 {{ thread.title }}
                         </a> 
-                        <span class="res-count">({{ thread.replies|length }}レス)</span>
+                        <!-- python側で計算した軽量なカウント変数を表示します -->
+                         <span class="res-count">({{ thread.replies_count }}レス)</span>
+
                     </div>
 
                     <!-- 💡 【追加】管理者がログインしている時だけ、赤い「スレ削除」ボタンを出す -->
