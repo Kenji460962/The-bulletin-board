@@ -175,11 +175,20 @@ def create_thread():
     if len(title) > 30:
         return {"error": "スレッド名は50文字以内で入力してください"}, 400
     
-    # 🟢 【セキュリティ強化】10秒以内の連続スレ立てをブロック
+    
+        # 🟢 【荒らし対策】5分（300秒）以内の連続スレ立てをブロック
     now = time.time()
-    if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 3:
-        return {"error": "連投は禁止されています。しばらく時間を置いてから投稿してください。"}, 429
-    LAST_POST_TIMES[client_ip] = now # 書き込み時間を更新
+    if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 300:
+        # 残り時間を計算してメッセージに表示（親切設計）
+        remaining_time = int(300 - (now - LAST_POST_TIMES[client_ip]))
+        minutes = remaining_time // 60
+        seconds = remaining_time % 60
+        return {"error": f"スレッドの作成は5分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
+        
+    LAST_POST_TIMES[client_ip] = now # スレ立て成功時に時間を更新
+
+    
+    
     
     try:
         # Supabaseへ新しいスレッドを保存
