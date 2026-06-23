@@ -143,18 +143,16 @@
 <body>
 
     <h1> talk-ch </h1>
-
-
+    
     <!-- 上のメニューバー -->
     <div class="menu-bar">
-        <!-- 💡 switchTabの中身を 'lobby-tab' に統一しました -->
         <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</button>
         <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
         <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
         <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
     </div>
 
-    <!-- ロビータブ（英語のウェルカムメッセージのみを残して正常化） -->
+    <!-- 1. ロビータブ -->
     <div id="lobby-tab" class="content-section active">
         <div class="glass-panel lobby-welcome">
             <div class="lobby-title">Welcome to our bulletin board</div>
@@ -165,8 +163,9 @@
         </div>
     </div>
 
-    <!-- スレ一覧タブ -->
+    <!-- 2. スレ一覧タブ（フォームも板一覧もすべてこの部屋に入れます） -->
     <div id="threads-tab" class="content-section">
+        <!-- 上段：スレ立てフォーム -->
         <div class="glass-panel">
             <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
                 <h3>新しい板（スレッド）を立てる</h3>
@@ -174,21 +173,8 @@
                 <button type="submit">新規スレッド作成</button>
             </form>
         </div>
-    </div> <!-- 💡 壊れていた閉じタグを正しく補完しました -->
 
-    <!-- 「その他」が押されたときに表示されるエリア -->
-    <div id="other-tab" class="content-section">
-        <div class="glass-panel">
-            <h3 style="margin-top: 0;">その他メニュー</h3>
-            <ul>
-                <li><a class="thread-link" href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a></li>
-            </ul>
-        </div>
-    </div>
-
-
-
-
+        <!-- 下段：いま立っている板一覧 -->
         <div class="glass-panel">
             <h2>いま立っている板一覧</h2>
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
@@ -199,12 +185,9 @@
                         <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
                             【{{ thread.id }}】 {{ thread.title }}
                         </a> 
-                        <!-- python側で計算した軽量なカウント変数を表示します -->
-                         <span class="res-count">({{ thread.replies_count }}レス)</span>
-
+                        <span class="res-count">({{ thread.replies_count }}レス)</span>
                     </div>
 
-                    <!-- 💡 【追加】管理者がログインしている時だけ、赤い「スレ削除」ボタンを出す -->
                     {% if is_admin_user %}
                     <form action="/thread/{{ thread.id }}/delete_thread" method="POST" style="display: inline; margin: 0; padding: 0; width: auto;" onsubmit="return confirm('このスレッドを中身ごと完全に削除しますか？');">
                         <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer;">スレ削除</button>
@@ -214,23 +197,33 @@
                 {% else %}
                 <li id="no-thread-msg">まだ板がありません。新しい板を立ててみましょう！</li>
                 {% endfor %}
-
             </ul>
-                    <!-- 🟢 【追加】ページ切り替え（ボタン）パーツ -->
-        <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center;">
-            {% if current_page > 1 %}
-                <a href="/?tab=threads&page={{ current_page - 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">◀ 前のページ</a>
-            {% endif %}
-            
-            <span style="color: #bbb;">ページ {{ current_page }}</span>
-            
-            {% if has_next %}
-                <a href="/?tab=threads&page={{ current_page + 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">次のページ ▶</a>
-            {% endif %}
-        </div>
 
+            <!-- ページ切り替え（ボタン）パーツ -->
+            <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center;">
+                {% if current_page > 1 %}
+                    <a href="/?tab=threads&page={{ current_page - 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">◀ 前のページ</a>
+                {% endif %}
+                
+                <span style="color: #bbb;">ページ {{ current_page }}</span>
+                
+                {% if has_next %}
+                    <a href="/?tab=threads&page={{ current_page + 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">次のページ ▶</a>
+                {% endif %}
+            </div>
+        </div>
+    </div> <!-- 💡 ここでスレ一覧タブの部屋を正しく閉じました -->
+
+    <!-- 3. 「その他」タブ -->
+    <div id="other-tab" class="content-section">
+        <div class="glass-panel">
+            <h3 style="margin-top: 0;">その他メニュー</h3>
+            <ul>
+                <li><a class="thread-link" href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a></li>
+            </ul>
         </div>
     </div>
+
 
     <!-- 3. 管理者の一言タブ -->
     <div id="admin-tab" class="content-section">
