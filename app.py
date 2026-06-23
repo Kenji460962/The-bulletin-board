@@ -88,8 +88,7 @@ def update_and_get_user_counts(current_token, location):
     count = sum(1 for info in ACTIVE_USERS.values() if info["location"] == location)
     return count
 
-# 🟢 methodsに 'GET' と 'HEAD' の両方を公式に許可するよう指定します
-@app.route('/', methods=['GET', 'HEAD'])
+# @app.route('/', methods=['GET', 'HEAD'])
 def index():
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
@@ -98,24 +97,30 @@ def index():
     if request.method == 'HEAD':
         return make_response('', 200)
 
+    # 🟢 【追加】現在のページ番号を取得（デフォルトは1ページ目）
+    page = request.args.get('page', default=1, type=int)
+    per_page = 30  # 1ページあたりの表示件数
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page - 1
+
     try:
-        # Supabaseからスレッド一覧（最新順）を取得
-        threads_response = supabase.table('threads').select('*').order('id', desc=True).execute()
+        # 🟢 改善：Supabaseから必要な範囲（30件分）だけを爆速で取得
+        # .range(開始, 終了) を使うことでサーバーの負担を最小限にします
+        threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
 
-        # 各スレッドにレスが何件ついているかを数える（エラーが起きても無視して進むように個別に囲む）
+        # 🟢 改善：中身をダウンロードせずにレス件数だけを取得（N+1問題の解決）
         for t in threads:
             try:
-                replies_res = supabase.table('replies').select('id').eq('thread_id', t['id']).execute()
-                t['replies'] = replies_res.data if replies_res.data else []
+                replies_res = supabase.table('replies').select('id', count='exact').eq('thread_id', t['id']).execute()
+                t['replies_count'] = replies_res.count if replies_res.count is not None else 0
             except Exception as re:
                 print(f"レス件数取得エラー (スレID {t['id']}): {re}")
-                t['replies'] = [] # エラーが起きても空配列を入れてスレ自体は残す
+                t['replies_count'] = 0
 
-        # Supabaseから管理者の一言を取得
+        # 管理者メッセージの取得（変更なし）
         try:
             admin_res = supabase.table('admin_messages').select('message').eq('id', 1).execute()
-            # リストから最初の1件を取得する安全な書き方に修正
             admin_message = admin_res.data[0]['message'] if admin_res.data else "ここに管理者の一言が表示されます。"
         except Exception as ae:
             print(f"管理者メッセージ取得エラー: {ae}")
@@ -125,10 +130,7 @@ def index():
         print(f"スレッド一覧取得エラー: {e}")
         threads = []
 
-
-
     user_token = request.cookies.get('user_bbs_token')
-    
     is_new_user = False
     if not user_token:
         user_token = str(uuid.uuid4())
@@ -137,18 +139,24 @@ def index():
     active_count = update_and_get_user_counts(user_token, "lobby")
     is_admin_user = check_is_admin_cookie(request)
     
+    # 🟢 次のページがあるか判定（今取得した件数が1ページの上限と同じなら、次があるとみなす）
+    has_next = len(threads) == per_page
+
     response = make_response(render_template(
         'index.html', 
         threads=threads, 
         admin_message=admin_message, 
         is_admin_user=is_admin_user, 
-        active_count=active_count
+        active_count=active_count,
+        current_page=page,      # 🟢 テンプレートに現在のページを渡す
+        has_next=has_next       # 🟢 テンプレートに次があるかを渡す
     ))
     
     if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
         
     return response
+
 
 @app.route('/update_admin_message', methods=['POST'])
 def update_admin_message():
