@@ -146,17 +146,24 @@
 
 
 
-    <!--  ナビゲーションバー -->
-    <div class="menu-bar" style="align-items: center;"> <!-- 💡align-itemsを追加 -->
-        <div class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</div>
-        <div class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</div>
-        <div class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</div>
+    <!-- 上のメニューバー -->
+    <div class="menu-bar">
+        <!-- 既存のタブ切り替えボタン -->
+        <button class="menu-btn active" onclick="switchTab('lobby', this)">ロビー</button>
+        <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
+        <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
         
-        <!-- 🟢 【追加】右端にオンライン人数を表示するパーツ -->
-        <div style="margin-left: auto; margin-right: 10px; font-size: 14px; color: #28a745; font-weight: bold; background-color: rgba(40, 167, 69, 0.15); padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(40, 167, 69, 0.3);">
-            ● <span style="color: #fff; font-weight: normal;">オンライン:</span> <strong>{{ active_count }}</strong>人
+        <!-- 「その他」ドロップダウンメニュー -->
+        <div class="dropdown-container">
+            <button class="menu-btn no-tab">その他 ▼</button>
+            <div class="dropdown-content">
+                <!-- プライバシーポリシーへのリンク -->
+                <a href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a>
+            </div>
         </div>
     </div>
+
+
 
     
     <!-- ロビータブ -->
