@@ -226,7 +226,8 @@
         </div>
     </div>
 
-    <script>
+        <script>
+    // 🟢 スレッド作成フォームの送信処理
     document.getElementById('create-thread-form').addEventListener('submit', async (e) => {
         e.preventDefault(); 
 
@@ -242,6 +243,7 @@
             const result = await response.json();
 
             if (result.success) {
+                // スレッド作成成功時の処理
                 const thread = result.thread;
                 const threadList = document.getElementById('thread-list');
                 
@@ -253,7 +255,6 @@
                 const newLi = document.createElement('li');
                 newLi.style.cssText = "display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;";
                 
-                // 管理者の状態に合わせて、新スレにも削除ボタンを自動で出す
                 let deleteButtonHtml = '';
                 if ({{ 'true' if is_admin_user else 'false' }}) {
                     deleteButtonHtml = `
@@ -275,6 +276,13 @@
 
                 threadList.insertBefore(newLi, threadList.firstChild);
                 form.reset();
+                
+                // 🟢 成功したら最新の状態を反映するためにページをリロードする
+                location.reload();
+
+            } else if (result.error) {
+                // 🟢 【追加】サーバーから返ってきた「あと〇分〇秒お待ちください」をアラートで出す
+                alert(result.error);
             } else {
                 alert('スレッドの作成に失敗しました。');
             }
@@ -284,15 +292,16 @@
         }
     });
 
+    // 🟢 HTMLエスケープ処理
     function escapeHtml(str) {
         return str.replace(/&/g, '&amp;')
                   .replace(/</g, '&lt;')
                   .replace(/>/g, '&gt;')
                   .replace(/"/g, '&quot;')
-                  .replace(/'/g, '&#039;');
+                  .replace(/'/g, '&#39;');
     }
 
-    // タブ切り替えシステム（確実に動くように修正済）
+    // 🟢 タブ切り替えシステム
     function switchTab(tabId, buttonElement) {
         var sections = document.querySelectorAll('.content-section');
         for (var i = 0; i < sections.length; i++) {
@@ -312,7 +321,6 @@
     }
 
     // 🟢 【サーバーパニック対策・完全版】
-    // 波カッコが連続しないように「空白」を空けて、Pythonの勘違いを完全に防ぎます
     window.addEventListener('load', function() {
         var params = new URLSearchParams(window.location.search);
         if (params.get('tab') === 'threads') {
@@ -326,5 +334,6 @@
         }
     });
     </script>
+
 </body>
 </html>
