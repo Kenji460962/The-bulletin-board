@@ -88,6 +88,12 @@ def update_and_get_user_counts(current_token, location):
     count = sum(1 for info in ACTIVE_USERS.values() if info["location"] == location)
     return count
 
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
+
+
 @app.route('/', methods=['GET', 'HEAD'])
 def index():
     client_ip = get_client_ip()
