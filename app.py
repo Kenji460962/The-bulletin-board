@@ -224,13 +224,12 @@ def thread_view(thread_id):
 
     # 書き込み（POST）処理
     if request.method == 'POST':
-        author_input = request.form.get('author') or "名無しさん"
         content = request.form.get('content') or ""
-        user_id = get_daily_user_id(client_ip)
         
+        # 🟢 コメントの文字数制限（500文字を超える場合は保存せずにリダイレクト）
+        if len(content) > 500:
+            return redirect(url_for('thread_view', thread_id=thread_id))
         
-
-        client_ip = get_client_ip()
         now = time.time()
         if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 10:
             return redirect(url_for('thread_view', thread_id=thread_id))
@@ -239,9 +238,7 @@ def thread_view(thread_id):
         if not ("#" in author_input and author_input.split("#", 1)[1] == ADMIN_PASSWORD):
             LAST_POST_TIMES[client_ip] = now
 
-        
-        
-        
+        user_id = get_daily_user_id(client_ip)
         is_admin = False
         if "#" in author_input:
             name_part, pass_part = author_input.split("#", 1)
@@ -265,7 +262,7 @@ def thread_view(thread_id):
 
         if content.strip() or image_url:
             try:
-                # 🟢 Supabaseへレスを保存
+                # 🟢 Supabaseへレスを保存（壊れていた部分をしっかり修正！）
                 supabase.table('replies').insert({
                     'thread_id': thread_id,
                     'author': author_input,
@@ -277,26 +274,13 @@ def thread_view(thread_id):
                 }).execute()
             except Exception as e:
                 print(f"レス保存エラー: {e}")
-            
+
+        # 投稿完了後のリダイレクト処理
         response = redirect(url_for('thread_view', thread_id=thread_id))
         if is_admin:
             response.set_cookie('is_bbs_admin', 'true', max_age=60*60*24)
         return response
-        
-                # （中略）画像ファイルのアップロード処理の下あたり
-        
-        # 🟢 【追加】コメントの文字数制限（500文字を超える場合は保存せずにリダイレクト）
-        if len(content) > 500:
-            # 💡 500文字を超えていたら書き込ませずにスレ画面に戻す
-            return redirect(url_for('thread_view', thread_id=thread_id))
 
-        if content.strip() or image_url:
-            try:
-                # Supabaseへレスを保存
-                supabase.table('replies').insert({
-
-        
-        
     # 画面表示（GET）の処理
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
@@ -304,18 +288,21 @@ def thread_view(thread_id):
         user_token = str(uuid.uuid4())
         is_new_user = True
 
-
-
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
 
     # 🟢 カッコの最後に「, back_to_board="/?tab=threads"」を追加！
-    response = make_response(render_template('thread.html', thread=thread, is_admin_user=is_admin_user, active_count=active_count, back_to_board="/?tab=threads"))
+    response = make_response(render_template(
+        'thread.html', 
+        thread=thread, 
+        is_admin_user=is_admin_user, 
+        active_count=active_count, 
+        back_to_board="/?tab=threads"
+    ))
     
     if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
-
 
 
 # スレッド丸ごと削除（管理人用）
