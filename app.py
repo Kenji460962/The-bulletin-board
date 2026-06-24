@@ -237,11 +237,21 @@ def thread_view(thread_id):
 
         # 🟢 Supabaseからスレッド内のレス一覧（古い順）を取得
         replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
+        
+                # 🟢 Supabaseからスレッド内のレス一覧を取得した後の処理
         thread['replies'] = replies_res.data
         for r in thread['replies']:
             if r.get('date'):
-                dt = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                r['date'] = dt.strftime('%Y-%m-%d %H:%M:%S')
+                # 💡 UTCの「Z」をタイムゾーン情報（+00:00）として正しく認識させる
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                
+                # 💡 9時間足して日本時間（JST）に変換する計算
+                from datetime import timedelta
+                dt_jst = dt_utc + timedelta(hours=9)
+                
+                # 💡 変換後の日本時間を画面表示用の文字にする
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
         return "データベースエラーが発生しました", 500
