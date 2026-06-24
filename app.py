@@ -434,14 +434,17 @@ def thread_updates(thread_id):
     user_token = request.cookies.get('user_bbs_token')
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
-    
+
     try:
         new_replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).gt('id', last_id).order('id', desc=False).execute()
         new_replies = new_replies_res.data
         for r in new_replies:
             if r.get('date'):
-                dt = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                r['date'] = dt.strftime('%Y-%m-%d %H:%M:%S')
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                from datetime import timedelta
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+
     except Exception as e:
         print(f"自動更新APIエラー: {e}")
         new_replies = []
