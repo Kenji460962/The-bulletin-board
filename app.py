@@ -105,7 +105,7 @@ def index():
 
     # 🟢 【追加】現在のページ番号を取得（デフォルトは1ページ目）
     page = request.args.get('page', default=1, type=int)
-    per_page = 30  # 1ページあたりの表示件数
+    per_page = 20  # 1ページあたりの表示件数
     start_index = (page - 1) * per_page
     end_index = start_index + per_page - 1
 
