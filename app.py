@@ -281,8 +281,8 @@ def thread_view(thread_id):
         # 🟢 レス連投制限のチェック（10秒）※管理人は免除
         now = time.time()
         if not is_admin:
-            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 10:
-                # 10秒以内なら、時間を上書きせずにそのままリダイレクト（弾く）
+            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
+                # 3秒以内なら、時間を上書きせずにそのままリダイレクト（弾く）
                 return redirect(url_for('thread_view', thread_id=thread_id))
             
             # 🟢 制限を突破した（10秒以上経っている）場合のみ、現在の時間を記録
