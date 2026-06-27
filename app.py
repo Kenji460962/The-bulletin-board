@@ -180,8 +180,6 @@ def update_admin_message():
     return redirect(url_for('index'))
 
 
-
-
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
     client_ip = get_client_ip()
@@ -194,23 +192,21 @@ def create_thread():
     if len(title) > 30:
         return {"error": "スレッド名は30文字以内で入力してください"}, 400
     
-    # 🟢 【荒らし対策】5分（300秒）以内の連続スレ立てをブロック（管理人は免除）
     is_admin = check_is_admin_cookie(request)
     now = time.time()
     
+    # 🟢 スレ立て専用の辞書（LAST_THREAD_TIMES）で判定
     if not is_admin:
-        if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 180:
-            remaining_time = int(180 - (now - LAST_POST_TIMES[client_ip]))
+        if client_ip in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[client_ip] < 180:
+            remaining_time = int(180 - (now - LAST_THREAD_TIMES[client_ip]))
             minutes = remaining_time // 60
             seconds = remaining_time % 60
-            # 💡 JavaScriptで表示しやすいようにエラー文を返却
             return {"error": f"スレッド作成は3分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
             
-        # 💡 スレ立てに成功した時だけ時間を更新する（ここが重要！）
-        LAST_POST_TIMES[client_ip] = now 
+    # 🟢 制限を通過し、投稿に成功したタイミングでのみ時間を記録
+    LAST_THREAD_TIMES[client_ip] = now 
     
     try:
-        # Supabaseへ新しいスレッドを保存
         response = supabase.table('threads').insert({
             'title': title,
             'ip_address': client_ip
@@ -221,8 +217,6 @@ def create_thread():
         return {"error": "データベースエラーが発生しました"}, 500
         
     return {"success": True, "thread": new_thread}
-
-
 
 
 
@@ -266,19 +260,12 @@ def thread_view(thread_id):
     if request.method == 'POST':
         content = request.form.get('content') or ""
         
-        # 🟢 コメントの文字数制限（500文字を超える場合は保存せずにリダイレクト）
         if len(content) > 500:
             return redirect(url_for('thread_view', thread_id=thread_id))
         
-        now = time.time()
-        if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 10:
-            return redirect(url_for('thread_view', thread_id=thread_id))
-        
         author_input = request.form.get('author') or "名無しさん"
-        if not ("#" in author_input and author_input.split("#", 1)[1] == ADMIN_PASSWORD):
-            LAST_POST_TIMES[client_ip] = now
-
-        user_id = get_daily_user_id(client_ip)
+        
+        # 管理人かどうかの判定を先に行う
         is_admin = False
         if "#" in author_input:
             name_part, pass_part = author_input.split("#", 1)
@@ -288,6 +275,19 @@ def thread_view(thread_id):
                 user_id = "????"
             else:
                 author_input = name_part or "名無しさん"
+        else:
+            user_id = get_daily_user_id(client_ip)
+
+        # 🟢 レス連投制限のチェック（10秒）※管理人は免除
+        now = time.time()
+        if not is_admin:
+            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 10:
+                # 10秒以内なら、時間を上書きせずにそのままリダイレクト（弾く）
+                return redirect(url_for('thread_view', thread_id=thread_id))
+            
+            # 🟢 制限を突破した（10秒以上経っている）場合のみ、現在の時間を記録
+            LAST_REPLY_TIMES[client_ip] = now
+
 
         # 画像ファイルのアップロード
         image_url = ""
