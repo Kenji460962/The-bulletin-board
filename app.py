@@ -38,6 +38,10 @@ ADMIN_PASSWORD = "setokoji114514"
 
 # 🟢 【セキュリティ強化】ユーザーごとの最後の書き込み時間を記録する場所
 LAST_POST_TIMES = {}
+# 🟢 ユーザーごとの最後の「スレ立て」「レス投稿」の時間を分けて記録
+LAST_THREAD_TIMES = {}
+LAST_REPLY_TIMES = {}
+
 
 
 # 🟢 【全自動お引越し装置】
