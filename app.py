@@ -195,12 +195,12 @@ def create_thread():
     now = time.time()
     
     if not is_admin:
-        if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 300:
-            remaining_time = int(300 - (now - LAST_POST_TIMES[client_ip]))
+        if client_ip in LAST_POST_TIMES and now - LAST_POST_TIMES[client_ip] < 180:
+            remaining_time = int(180 - (now - LAST_POST_TIMES[client_ip]))
             minutes = remaining_time // 60
             seconds = remaining_time % 60
             # 💡 JavaScriptで表示しやすいようにエラー文を返却
-            return {"error": f"スレッド作成は5分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
+            return {"error": f"スレッド作成は3分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
             
         # 💡 スレ立てに成功した時だけ時間を更新する（ここが重要！）
         LAST_POST_TIMES[client_ip] = now 
