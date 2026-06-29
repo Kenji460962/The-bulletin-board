@@ -190,6 +190,9 @@ def create_thread():
     title = request.form.get('title')
     if not title:
         return {"error": "タイトルが必要です"}, 400
+    
+    title = html.escape(title)    
+    
     if len(title) > 30:
         return {"error": "スレッド名は30文字以内で入力してください"}, 400
     
