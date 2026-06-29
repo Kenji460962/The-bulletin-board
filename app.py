@@ -264,6 +264,7 @@ def thread_view(thread_id):
     if request.method == 'POST':
         content = request.form.get('content') or ""
         
+        # 🟢 先に文字数制限をチェック（エスケープすると文字数が増える可能性があるため）
         if len(content) > 500:
             return redirect(url_for('thread_view', thread_id=thread_id))
         
@@ -274,13 +275,24 @@ def thread_view(thread_id):
         if "#" in author_input:
             name_part, pass_part = author_input.split("#", 1)
             if pass_part == ADMIN_PASSWORD:
-                author_input = (name_part or "管理人") + " ★"
+                # 🟢 パスワードが一致した場合は、名前の部分だけをエスケープする
+                author_input = (html.escape(name_part) or "管理人") + " ★"
                 is_admin = True
                 user_id = "????"
             else:
-                author_input = name_part or "名無しさん"
+                # パスワードが間違っていた場合は、入力された名前部分だけをエスケープ
+                author_input = html.escape(name_part) or "名無しさん"
         else:
+            # 🟢 # が含まれない一般ユーザーの名前をエスケープ
+            author_input = html.escape(author_input)
             user_id = get_daily_user_id(client_ip)
+
+        # 🟢 本文のXSS対策（HTMLタグを安全な文字列に変換）
+        content = html.escape(content)
+
+            
+            
+            
 
         # 🟢 レス連投制限のチェック（10秒）※管理人は免除
         now = time.time()
