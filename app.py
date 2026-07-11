@@ -120,11 +120,14 @@ def index():
         threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
 
-        # 🟢 改善：中身をダウンロードせずにレス件数だけを取得（N+1問題の解決）
+        # 🟢 修正：各スレッドのレス件数を「型を固定したフィルター」と「配列の長さ」で確実にカウント
         for t in threads:
             try:
-                replies_res = supabase.table('replies').select('id', count='exact').eq('thread_id', t['id']).execute()
-                t['replies_count'] = replies_res.count if replies_res.count is not None else 0
+                replies_res = supabase.table('replies').select('id').eq('thread_id', int(t['id'])).execute()
+                if replies_res.data:
+                    t['replies_count'] = len(replies_res.data)
+                else:
+                    t['replies_count'] = 0
             except Exception as re:
                 print(f"レス件数取得エラー (スレID {t['id']}): {re}")
                 t['replies_count'] = 0
@@ -294,14 +297,14 @@ def thread_view(thread_id):
             
             
 
-        # 🟢 レス連投制限のチェック（10秒）※管理人は免除
+        # 🟢 レス連投制限のチェック（3秒）※管理人は免除
         now = time.time()
         if not is_admin:
             if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
                 # 3秒以内なら、時間を上書きせずにそのままリダイレクト（弾く）
                 return redirect(url_for('thread_view', thread_id=thread_id))
             
-            # 🟢 制限を突破した（10秒以上経っている）場合のみ、現在の時間を記録
+            # 🟢 制限を突破した（3秒以上経っている）場合のみ、現在の時間を記録
             LAST_REPLY_TIMES[client_ip] = now
 
 
