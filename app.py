@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import json
 import html
 import os
@@ -43,14 +43,13 @@ LAST_POST_TIMES = {}
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
 
+# 🟢 【追加】固定したい雑談スレッドのID（実際のデータベースのIDに合わせて変更してください）
+PINNED_THREAD_ID = 1  
 
 
-# 🟢 【全自動お引越し装置】
-# Renderサーバー内にある古いbbs_data.jsonを見つけて、起動時に自動でSupabaseへ全移行します
 # 🟢 不要になったお引越しシステムの中身を完全に消去しました
 def auto_migrate_from_json():
     pass
-
 
 
 # IPアドレスを元に毎日変わるIDを生成
@@ -93,10 +92,20 @@ def update_and_get_user_counts(current_token, location):
     count = sum(1 for info in ACTIVE_USERS.values() if info["location"] == location)
     return count
 
+# 🟢 【追加】雑談スレッドの3日以上前のレスを自動削除するクリーンアップ処理
+def cleanup_old_pinned_replies():
+    try:
+        # UTC時間で3日前を計算
+        three_days_ago = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        # 雑談スレッド(PINNED_THREAD_ID)内の、3日前より古い(lte)レスを削除
+        supabase.table('replies').delete().eq('thread_id', PINNED_THREAD_ID).lte('date', three_days_ago).execute()
+    except Exception as e:
+        print(f"古い雑談レスの自動削除中にエラーが発生しました: {e}")
+
+
 @app.route('/privacy')
 def privacy():
     return render_template('privacy.html')
-
 
 
 @app.route('/', methods=['GET', 'HEAD'])
@@ -108,21 +117,52 @@ def index():
     if request.method == 'HEAD':
         return make_response('', 200)
 
-    # 🟢 【追加】現在のページ番号を取得（デフォルトは1ページ目）
+    # 🟢 現在のページ番号を取得（デフォルトは1ページ目）
     page = request.args.get('page', default=1, type=int)
     per_page = 20  # 1ページあたりの表示件数
     start_index = (page - 1) * per_page
     end_index = start_index + per_page - 1
 
     try:
-        # 🟢 改善：Supabaseから必要な範囲（30件分）だけを爆速で取得
-        # .range(開始, 終了) を使うことでサーバーの負担を最小限にします
-        threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
-        threads = threads_response.data
+        threads = []
+        pinned_thread = None
 
-        # 🟢 修正：各スレッドのレス件数を「型を固定したフィルター」と「配列の長さ」で確実にカウント
-        for t in threads:
+        # 🟢 【1ページ目の処理】固定スレッドを取得し、一覧の先頭に差し込む
+        if page == 1:
+            # ① 固定スレッドをピンポイントで取得
             try:
+                pinned_res = supabase.table('threads').select('*').eq('id', PINNED_THREAD_ID).execute()
+                if pinned_res.data:
+                    pinned_thread = pinned_res.data[0]
+                    pinned_thread['is_pinned'] = True  # 固定スレッド用の目印
+            except Exception as pe:
+                print(f"固定スレッド取得エラー: {pe}")
+
+            # ② 1ページ目の通常表示分を取得（固定スレを除外して取得）
+            threads_response = supabase.table('threads').select('*').neq('id', PINNED_THREAD_ID).order('id', desc=True).range(0, per_page - 2).execute()
+            threads = threads_response.data
+
+            # ③ 固定スレッドが存在すれば、リストの一番最初に追加
+            if pinned_thread:
+                threads.insert(0, pinned_thread)
+
+        # 🟢 【2ページ目以降の処理】固定スレッドを除外して正確な範囲を取得
+        else:
+            adj_start = (page - 1) * per_page - 1
+            adj_end = page * per_page - 2
+            threads_response = supabase.table('threads').select('*').neq('id', PINNED_THREAD_ID).order('id', desc=True).range(adj_start, adj_end).execute()
+            threads = threads_response.data
+
+        # 各スレッドのレス件数を取得
+        for t in threads:
+            # 🟢 雑談スレッドの場合はカウントを行わない（数字を一覧に出さないため）
+            if t.get('is_pinned') or t['id'] == PINNED_THREAD_ID:
+                t['replies_count'] = None
+                t['is_pinned'] = True
+                continue
+
+            try:
+                # 確実に整数型にしてカウント
                 replies_res = supabase.table('replies').select('id').eq('thread_id', int(t['id'])).execute()
                 if replies_res.data:
                     t['replies_count'] = len(replies_res.data)
@@ -153,7 +193,7 @@ def index():
     active_count = update_and_get_user_counts(user_token, "lobby")
     is_admin_user = check_is_admin_cookie(request)
     
-    # 🟢 次のページがあるか判定（今取得した件数が1ページの上限と同じなら、次があるとみなす）
+    # 次のページがあるか判定
     has_next = len(threads) == per_page
 
     response = make_response(render_template(
@@ -162,8 +202,8 @@ def index():
         admin_message=admin_message, 
         is_admin_user=is_admin_user, 
         active_count=active_count,
-        current_page=page,      # 🟢 テンプレートに現在のページを渡す
-        has_next=has_next       # 🟢 テンプレートに次があるかを渡す
+        current_page=page,      
+        has_next=has_next       
     ))
     
     if is_new_user:
@@ -202,7 +242,7 @@ def create_thread():
     is_admin = check_is_admin_cookie(request)
     now = time.time()
     
-    # 🟢 スレ立て専用の辞書（LAST_THREAD_TIMES）で判定
+    # スレ立て専用の辞書（LAST_THREAD_TIMES）で判定
     if not is_admin:
         if client_ip in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[client_ip] < 180:
             remaining_time = int(180 - (now - LAST_THREAD_TIMES[client_ip]))
@@ -210,7 +250,7 @@ def create_thread():
             seconds = remaining_time % 60
             return {"error": f"スレッド作成は3分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
             
-    # 🟢 制限を通過し、投稿に成功したタイミングでのみ時間を記録
+    # 制限を通過し、投稿に成功したタイミングでのみ時間を記録
     LAST_THREAD_TIMES[client_ip] = now 
     
     try:
@@ -226,35 +266,36 @@ def create_thread():
     return {"success": True, "thread": new_thread}
 
 
-
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
+    # 🟢 雑談スレッド(PINNED_THREAD_ID)の場合、アクセス時に3日以上前の古いレスを自動削除
+    if thread_id == PINNED_THREAD_ID:
+        cleanup_old_pinned_replies()
+
     try:
-        # 🟢 Supabaseから指定されたスレッドを取得
+        # Supabaseから指定されたスレッドを取得
         thread_res = supabase.table('threads').select('*').eq('id', thread_id).execute()
         if not thread_res.data:
             return "スレッドが見つかりません", 404
         thread = thread_res.data[0]
+        
+        if thread_id == PINNED_THREAD_ID:
+            thread['is_pinned'] = True
 
-        # 🟢 Supabaseからスレッド内のレス一覧（古い順）を取得
+        # Supabaseからスレッド内のレス一覧（古い順）を取得
         replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
         
-                # 🟢 Supabaseからスレッド内のレス一覧を取得した後の処理
         thread['replies'] = replies_res.data
         for r in thread['replies']:
             if r.get('date'):
-                # 💡 UTCの「Z」をタイムゾーン情報（+00:00）として正しく認識させる
+                # UTCの「Z」をタイムゾーン情報として認識させる
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                
-                # 💡 9時間足して日本時間（JST）に変換する計算
-                from datetime import timedelta
+                # 9時間足して日本時間（JST）に変換
                 dt_jst = dt_utc + timedelta(hours=9)
-                
-                # 💡 変換後の日本時間を画面表示用の文字にする
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
 
     except Exception as e:
@@ -267,7 +308,7 @@ def thread_view(thread_id):
     if request.method == 'POST':
         content = request.form.get('content') or ""
         
-        # 🟢 先に文字数制限をチェック（エスケープすると文字数が増える可能性があるため）
+        # 先に文字数制限をチェック
         if len(content) > 500:
             return redirect(url_for('thread_view', thread_id=thread_id))
         
@@ -278,35 +319,25 @@ def thread_view(thread_id):
         if "#" in author_input:
             name_part, pass_part = author_input.split("#", 1)
             if pass_part == ADMIN_PASSWORD:
-                # 🟢 パスワードが一致した場合は、名前の部分だけをエスケープする
                 author_input = (html.escape(name_part) or "管理人") + " ★"
                 is_admin = True
                 user_id = "????"
             else:
-                # パスワードが間違っていた場合は、入力された名前部分だけをエスケープ
                 author_input = html.escape(name_part) or "名無しさん"
         else:
-            # 🟢 # が含まれない一般ユーザーの名前をエスケープ
             author_input = html.escape(author_input)
             user_id = get_daily_user_id(client_ip)
 
-        # 🟢 本文のXSS対策（HTMLタグを安全な文字列に変換）
+        # 本文のXSS対策
         content = html.escape(content)
 
-            
-            
-            
-
-        # 🟢 レス連投制限のチェック（3秒）※管理人は免除
+        # レス連投制限のチェック（3秒）※管理人は免除
         now = time.time()
         if not is_admin:
             if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
-                # 3秒以内なら、時間を上書きせずにそのままリダイレクト（弾く）
                 return redirect(url_for('thread_view', thread_id=thread_id))
             
-            # 🟢 制限を突破した（3秒以上経っている）場合のみ、現在の時間を記録
             LAST_REPLY_TIMES[client_ip] = now
-
 
         # 画像ファイルのアップロード
         image_url = ""
@@ -321,7 +352,6 @@ def thread_view(thread_id):
 
         if content.strip() or image_url:
             try:
-                # 🟢 Supabaseへレスを保存（壊れていた部分をしっかり修正！）
                 supabase.table('replies').insert({
                     'thread_id': thread_id,
                     'author': author_input,
@@ -350,7 +380,6 @@ def thread_view(thread_id):
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
 
-    # 🟢 カッコの最後に「, back_to_board="/?tab=threads"」を追加！
     response = make_response(render_template(
         'thread.html', 
         thread=thread, 
@@ -370,7 +399,6 @@ def delete_thread(thread_id):
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
     try:
-        # 🟢 Supabaseからスレッドを削除
         supabase.table('threads').delete().eq('id', thread_id).execute()
     except Exception as e:
         print(f"スレッド削除エラー: {e}")
@@ -382,7 +410,6 @@ def delete_reply(thread_id, reply_id):
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
     try:
-        # 🟢 Supabaseの該当レスを「あぼーん」に更新
         supabase.table('replies').update({
             'author': 'あぼーん',
             'content': 'この書き込みは管理員によって削除されました。',
@@ -404,10 +431,8 @@ def ban_user(thread_id, reply_id):
         reply_res = supabase.table('replies').select('ip_address').eq('id', reply_id).execute()
         if reply_res.data and reply_res.data[0].get('ip_address'):
             b_ip = reply_res.data[0]['ip_address']
-            # BANリストにIPを登録
             supabase.table('banned_ips').insert({'ip': b_ip}).execute()
             
-            # レスをあぼーん化
             supabase.table('replies').update({
                 'author': 'あぼーん',
                 'content': 'この書き込みは管理員によってBANされました。',
@@ -420,7 +445,7 @@ def ban_user(thread_id, reply_id):
             
     return redirect(url_for('thread_view', thread_id=thread_id))
 
-# 🟢 スレ主をBANする管理者用ルート
+# スレ主をBANする管理者用ルート
 @app.route('/thread/<int:thread_id>/ban_owner', methods=['POST'])
 def ban_thread_owner(thread_id):
     if not check_is_admin_cookie(request):
@@ -430,10 +455,8 @@ def ban_thread_owner(thread_id):
         thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
         if thread_res.data and thread_res.data[0].get('ip_address'):
             owner_ip = thread_res.data[0]['ip_address']
-            # スレ主のIPをBANテーブルへ登録
             supabase.table('banned_ips').insert({'ip': owner_ip}).execute()
                 
-            # スレタイをBAN表示に変え、中身のレスを解体
             supabase.table('threads').update({'title': '【このスレッドは管理員によってBANされました】'}).eq('id', thread_id).execute()
             supabase.table('replies').delete().eq('thread_id', thread_id).execute()
             supabase.table('replies').insert({
@@ -457,6 +480,10 @@ def thread_updates(thread_id):
     user_token = request.cookies.get('user_bbs_token')
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
+
+    # 🟢 自動更新時にも、アクセス中のスレッドが雑談スレッドであれば3日前のレスをクリーンアップ
+    if thread_id == PINNED_THREAD_ID:
+        cleanup_old_pinned_replies()
 
     try:
         new_replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).gt('id', last_id).order('id', desc=False).execute()
