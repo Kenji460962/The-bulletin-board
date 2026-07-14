@@ -191,18 +191,17 @@
             <h2>いま立っている板一覧</h2>
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
             <ul id="thread-list">
-
-
                 
                 
-               {% for thread in threads %}
+                
+                {% for thread in threads %}
                 <li style="display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;">
                     <div>
-                        <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}" {% if thread.id == 1 %}style="color: #ff3344; font-weight: bold;"{% endif %}>
+                        <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}" {% if thread.id|int == 1 %}style="color: #ff3344 !important; font-weight: bold;"{% endif %}>
                             【{{ thread.id }}】 {{ thread.title }}
                         </a> 
                         
-                        {% if thread.id != 1 %}
+                        {% if thread.id|int != 1 %}
                         <span class="res-count">({{ thread.replies_count }}レス)</span>
                         {% endif %}
                     </div>
@@ -212,6 +211,7 @@
                         <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer;">スレ削除</button>
                     </form>
                     {% endif %}
+
 
                 </li>
                 {% else %}
