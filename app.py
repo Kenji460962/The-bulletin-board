@@ -119,29 +119,32 @@ def index():
         threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
 
-        # 2. 【1ページ目のみ】IDが1のスレを先頭に移動させる
-        if page == 1:
-            pinned_thread = None
-            
-            # 取得したリストの中に ID=1 のスレがあるか探して取り出す
-            for i, t in enumerate(threads):
-                if int(t['id']) == 1:
-                    pinned_thread = threads.pop(i)
-                    break
-            
-            # もし1ページ目のリスト（最新20件）に入っていなかった場合、個別にデータベースから取得する
-            if not pinned_thread:
-                try:
-                    pinned_res = supabase.table('threads').select('*').eq('id', 1).execute()
-                    if pinned_res.data:
-                        pinned_thread = pinned_res.data[0]
-                except Exception as pe:
-                    print(f"固定スレッドの個別取得エラー: {pe}")
-            
-            # ID=1 のスレが見つかったら、リストの一番最初（先頭）に挿入する
-            if pinned_thread:
-                pinned_thread['is_pinned'] = True  # HTML側で装飾するための目印
-                threads.insert(0, pinned_thread)
+
+
+        # 2. 【修正】ページ数に関係なく、IDが1のスレを常に先頭に移動させる
+        pinned_thread = None
+        
+        # 取得したリストの中に ID=1 のスレがあるか探して取り出す
+        for i, t in enumerate(threads):
+            if int(t['id']) == 1:
+                pinned_thread = threads.pop(i)
+                break
+        
+        # もし現在のページのリストに入っていなかった場合、個別にデータベースから取得する
+        if not pinned_thread:
+            try:
+                pinned_res = supabase.table('threads').select('*').eq('id', 1).execute()
+                if pinned_res.data:
+                    pinned_thread = pinned_res.data[0]
+            except Exception as pe:
+                print(f"固定スレッドの個別取得エラー: {pe}")
+        
+        # ID=1 のスレが見つかったら、リストの一番最初（先頭）に挿入する
+        if pinned_thread:
+            pinned_thread['is_pinned'] = True  # HTML側で装飾するための目印
+            threads.insert(0, pinned_thread)
+
+  
 
         # 各スレッドのレス件数を取得
         for t in threads:
