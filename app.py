@@ -9,7 +9,7 @@ import time
 # Cloudinaryのライブラリを読み込み
 import cloudinary
 import cloudinary.uploader
-# 🟢 【追加】Supabaseを使うためのライブラリを読み込み
+# Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
 
 app = Flask(__name__)
@@ -27,7 +27,6 @@ cloudinary.config(
     secure = True
 )
 
-# 🟢 【重要】あなたのSupabase情報を直接ここに埋め込みました
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvjhukmy.supabase.co')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
 
@@ -37,17 +36,12 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 DATA_FILE = 'bbs_data.json'
 ADMIN_PASSWORD = "setokoji114514"
 
-# 🟢 【セキュリティ強化】ユーザーごとの最後の書き込み時間を記録する場所
+# セキュリティ強化 ユーザーごとの最後の書き込み時間を記録する場所
 LAST_POST_TIMES = {}
-# 🟢 ユーザーごとの最後の「スレ立て」「レス投稿」の時間を分けて記録
+# ユーザーごとの最後の「スレ立て」「レス投稿」の時間を分けて記録
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
 
-
-
-# 🟢 【全自動お引越し装置】
-# Renderサーバー内にある古いbbs_data.jsonを見つけて、起動時に自動でSupabaseへ全移行します
-# 🟢 不要になったお引越しシステムの中身を完全に消去しました
 def auto_migrate_from_json():
     pass
 
@@ -233,7 +227,7 @@ def create_thread():
     is_admin = check_is_admin_cookie(request)
     now = time.time()
     
-    # 🟢 スレ立て専用の辞書（LAST_THREAD_TIMES）で判定
+    # スレ立て専用の辞書（LAST_THREAD_TIMES）で判定
     if not is_admin:
         if client_ip in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[client_ip] < 180:
             remaining_time = int(180 - (now - LAST_THREAD_TIMES[client_ip]))
@@ -241,7 +235,7 @@ def create_thread():
             seconds = remaining_time % 60
             return {"error": f"スレッド作成は3分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
             
-    # 🟢 制限を通過し、投稿に成功したタイミングでのみ時間を記録
+    # 制限を通過し、投稿に成功したタイミングでのみ時間を記録
     LAST_THREAD_TIMES[client_ip] = now 
     
     try:
@@ -265,16 +259,16 @@ def thread_view(thread_id):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
     try:
-        # 🟢 Supabaseから指定されたスレッドを取得
+        # Supabaseから指定されたスレッドを取得
         thread_res = supabase.table('threads').select('*').eq('id', thread_id).execute()
         if not thread_res.data:
             return "スレッドが見つかりません", 404
         thread = thread_res.data[0]
 
-        # 🟢 Supabaseからスレッド内のレス一覧（古い順）を取得
+        # Supabaseからスレッド内のレス一覧（古い順）を取得
         replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
         
-                # 🟢 Supabaseからスレッド内のレス一覧を取得した後の処理
+                # Supabaseからスレッド内のレス一覧を取得した後の処理
         thread['replies'] = replies_res.data
         for r in thread['replies']:
             if r.get('date'):
@@ -298,7 +292,7 @@ def thread_view(thread_id):
     if request.method == 'POST':
         content = request.form.get('content') or ""
         
-        # 🟢 先に文字数制限をチェック（エスケープすると文字数が増える可能性があるため）
+        # 先に文字数制限をチェック（エスケープすると文字数が増える可能性があるため）
         if len(content) > 500:
             return redirect(url_for('thread_view', thread_id=thread_id))
         
@@ -309,7 +303,7 @@ def thread_view(thread_id):
         if "#" in author_input:
             name_part, pass_part = author_input.split("#", 1)
             if pass_part == ADMIN_PASSWORD:
-                # 🟢 パスワードが一致した場合は、名前の部分だけをエスケープする
+                # パスワードが一致した場合は、名前の部分だけをエスケープする
                 author_input = (html.escape(name_part) or "管理人") + " ★"
                 is_admin = True
                 user_id = "????"
@@ -317,25 +311,29 @@ def thread_view(thread_id):
                 # パスワードが間違っていた場合は、入力された名前部分だけをエスケープ
                 author_input = html.escape(name_part) or "名無しさん"
         else:
-            # 🟢 # が含まれない一般ユーザーの名前をエスケープ
+            # #が含まれない一般ユーザーの名前をエスケープ
             author_input = html.escape(author_input)
             user_id = get_daily_user_id(client_ip)
-
-        # 🟢 本文のXSS対策（HTMLタグを安全な文字列に変換）
+        # 1. 一旦、全体に強力なエスケープ（XSS対策）をかける
         content = html.escape(content)
 
+        # 2. 【追加】「&gt;&gt;数字」に変換されてしまった部分だけを「>>数字」に安全に復元する
+        import re
+        # &gt;&gt;123 のような文字列を >>123 に戻す処理
+        content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
+
             
             
             
 
-        # 🟢 レス連投制限のチェック（3秒）※管理人は免除
+        # レス連投制限のチェック（3秒）※管理人は免除
         now = time.time()
         if not is_admin:
             if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
                 # 3秒以内なら、時間を上書きせずにそのままリダイレクト（弾く）
                 return redirect(url_for('thread_view', thread_id=thread_id))
             
-            # 🟢 制限を突破した（3秒以上経っている）場合のみ、現在の時間を記録
+            # 制限を突破した（3秒以上経っている）場合のみ、現在の時間を記録
             LAST_REPLY_TIMES[client_ip] = now
 
 
@@ -352,7 +350,7 @@ def thread_view(thread_id):
 
         if content.strip() or image_url:
             try:
-                # 🟢 Supabaseへレスを保存（壊れていた部分をしっかり修正！）
+                # Supabaseへレスを保存（壊れていた部分をしっかり修正！）
                 supabase.table('replies').insert({
                     'thread_id': thread_id,
                     'author': author_input,
@@ -381,7 +379,7 @@ def thread_view(thread_id):
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
 
-    # 🟢 カッコの最後に「, back_to_board="/?tab=threads"」を追加！
+    # カッコの最後に「, back_to_board="/?tab=threads"」を追加！
     response = make_response(render_template(
         'thread.html', 
         thread=thread, 
@@ -401,7 +399,7 @@ def delete_thread(thread_id):
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
     try:
-        # 🟢 Supabaseからスレッドを削除
+        # Supabaseからスレッドを削除
         supabase.table('threads').delete().eq('id', thread_id).execute()
     except Exception as e:
         print(f"スレッド削除エラー: {e}")
@@ -413,7 +411,7 @@ def delete_reply(thread_id, reply_id):
     if not check_is_admin_cookie(request):
         return "権限がありません", 403
     try:
-        # 🟢 Supabaseの該当レスを「あぼーん」に更新
+        # Supabaseの該当レスを「あぼーん」に更新
         supabase.table('replies').update({
             'author': 'あぼーん',
             'content': 'この書き込みは管理員によって削除されました。',
@@ -451,7 +449,7 @@ def ban_user(thread_id, reply_id):
             
     return redirect(url_for('thread_view', thread_id=thread_id))
 
-# 🟢 スレ主をBANする管理者用ルート
+# スレ主をBANする管理者用ルート
 @app.route('/thread/<int:thread_id>/ban_owner', methods=['POST'])
 def ban_thread_owner(thread_id):
     if not check_is_admin_cookie(request):
