@@ -108,20 +108,49 @@ def index():
     if request.method == 'HEAD':
         return make_response('', 200)
 
-    # 🟢 【追加】現在のページ番号を取得（デフォルトは1ページ目）
+    # 現在のページ番号を取得
     page = request.args.get('page', default=1, type=int)
     per_page = 20  # 1ページあたりの表示件数
     start_index = (page - 1) * per_page
     end_index = start_index + per_page - 1
 
     try:
-        # 🟢 改善：Supabaseから必要な範囲（30件分）だけを爆速で取得
-        # .range(開始, 終了) を使うことでサーバーの負担を最小限にします
+        # 1. 普通に全スレッドを最新順（IDの降順）で取得する（余計な除外フィルターはかけない）
         threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
 
-        # 🟢 修正：各スレッドのレス件数を「型を固定したフィルター」と「配列の長さ」で確実にカウント
+        # 2. 【1ページ目のみ】IDが1のスレを先頭に移動させる
+        if page == 1:
+            pinned_thread = None
+            
+            # 取得したリストの中に ID=1 のスレがあるか探して取り出す
+            for i, t in enumerate(threads):
+                if int(t['id']) == 1:
+                    pinned_thread = threads.pop(i)
+                    break
+            
+            # もし1ページ目のリスト（最新20件）に入っていなかった場合、個別にデータベースから取得する
+            if not pinned_thread:
+                try:
+                    pinned_res = supabase.table('threads').select('*').eq('id', 1).execute()
+                    if pinned_res.data:
+                        pinned_thread = pinned_res.data[0]
+                except Exception as pe:
+                    print(f"固定スレッドの個別取得エラー: {pe}")
+            
+            # ID=1 のスレが見つかったら、リストの一番最初（先頭）に挿入する
+            if pinned_thread:
+                pinned_thread['is_pinned'] = True  # HTML側で装飾するための目印
+                threads.insert(0, pinned_thread)
+
+        # 各スレッドのレス件数を取得
         for t in threads:
+            # 雑談（ID=1 または is_pinned）の場合は、赤文字にしてレス数を表示しない
+            if t.get('is_pinned') or int(t['id']) == 1:
+                t['replies_count'] = None
+                t['is_pinned'] = True
+                continue
+
             try:
                 replies_res = supabase.table('replies').select('id').eq('thread_id', int(t['id'])).execute()
                 if replies_res.data:
@@ -132,7 +161,7 @@ def index():
                 print(f"レス件数取得エラー (スレID {t['id']}): {re}")
                 t['replies_count'] = 0
 
-        # 管理者メッセージの取得（変更なし）
+        # 管理者メッセージの取得
         try:
             admin_res = supabase.table('admin_messages').select('message').eq('id', 1).execute()
             admin_message = admin_res.data[0]['message'] if admin_res.data else "ここに管理者の一言が表示されます。"
@@ -153,7 +182,6 @@ def index():
     active_count = update_and_get_user_counts(user_token, "lobby")
     is_admin_user = check_is_admin_cookie(request)
     
-    # 🟢 次のページがあるか判定（今取得した件数が1ページの上限と同じなら、次があるとみなす）
     has_next = len(threads) == per_page
 
     response = make_response(render_template(
@@ -162,8 +190,8 @@ def index():
         admin_message=admin_message, 
         is_admin_user=is_admin_user, 
         active_count=active_count,
-        current_page=page,      # 🟢 テンプレートに現在のページを渡す
-        has_next=has_next       # 🟢 テンプレートに次があるかを渡す
+        current_page=page,      
+        has_next=has_next       
     ))
     
     if is_new_user:
