@@ -22,10 +22,23 @@
 
 
         /* タイトルのデザイン*/
+                /* タイトルのデザイン（大きく・目立つように強化！） */
         h1 {
-            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.7);
-            margin-top: 10px;
+            font-size: 42px; /* 🟢 文字サイズをこれまでの倍近く大きく */
+            font-weight: 900; /* 🟢 文字を極太にする */
+            letter-spacing: 2px; /* 🟢 文字の間隔を少し広げておしゃれに */
+            margin-top: 5px;
+            margin-bottom: 15px;
+            
+            /* 🟢 黒い背景画像の上でも圧倒的に文字が浮き出る強力な3重の影エフェクト */
+            text-shadow: 
+                2px 2px 0px #000,
+                -2px -2px 0px #000,
+                2px -2px 0px #000,
+                -2px 2px 0px #000,
+                0px 0px 15px rgba(0, 255, 255, 0.8); /* 外側にうっ水色のネオン光を放つ */
         }
+
         
         /*上のメニューバー*/
         .menu-bar { 
