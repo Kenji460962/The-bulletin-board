@@ -88,6 +88,11 @@ def update_and_get_user_counts(current_token, location):
 @app.route('/privacy')
 def privacy():
     return render_template('privacy.html')
+    
+@app.route('/roles')
+def roles():
+    return render_template('roles.html')
+
 
 
 @app.route('/', methods=['GET', 'HEAD'])
