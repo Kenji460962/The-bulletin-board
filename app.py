@@ -115,31 +115,38 @@ def index():
         threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
 
-        # 🟢 【超重要】割り込み処理をする「前」に、次のページがあるか判定（これでボタンが消えなくなります）
+        # 【超重要】割り込み処理をする「前」に、次のページがあるか判定（これでボタンが消えなくなります）
         has_next = len(threads) == per_page
 
-        # 2. ページ数に関係なく、IDが1のスレを常に先頭に移動させる
-        pinned_thread = None
-        
-        # 取得したリストの中に ID=1 のスレがあるか探して取り出す
-        for i, t in enumerate(threads):
-            if int(t['id']) == 1:
-                pinned_thread = threads.pop(i)
-                break
-        
-        # もし現在のページのリストに入っていなかった場合、個別にデータベースから取得する
-        if not pinned_thread:
+        # 2. ページ数に関係なく、指定したIDのスレを常に先頭に固定する
+        # 固定したいスレのIDをリストで指定（IDの降順[2, 1]にすると、画面上は上が2、下が1になります。お好みで！）
+        pinned_ids = [2, 1]
+        pinned_threads = []
+
+        # 現在のページのリスト内から固定対象のスレを探して抜き出す
+        for pid in pinned_ids:
+            for i, t in enumerate(threads):
+                if int(t['id']) == pid:
+                    pinned_threads.append(threads.pop(i))
+                    break
+
+        # もし現在のページに入っていなかった場合、個別にデータベースから取得する
+        for pid in pinned_ids:
+            # 既にリストから見つかっている場合はスキップ
+            if any(int(pt['id']) == pid for pt in pinned_threads):
+                continue
             try:
-                pinned_res = supabase.table('threads').select('*').eq('id', 1).execute()
+                pinned_res = supabase.table('threads').select('*').eq('id', pid).execute()
                 if pinned_res.data:
-                    pinned_thread = pinned_res.data[0]
+                    pinned_threads.append(pinned_res.data[0])
             except Exception as pe:
-                print(f"固定スレッドの個別取得エラー: {pe}")
-        
-        # ID=1 のスレが見つかったら、リストの一番最初（先頭）に挿入する
-        if pinned_thread:
-            pinned_thread['is_pinned'] = True  # HTML側で装飾するための目印
-            threads.insert(0, pinned_thread)
+                print(f"固定スレッド(ID:{pid})の個別取得エラー: {pe}")
+
+        # 見つかった固定スレを、リストの「先頭」に1つずつ挿入していく
+        for pt in pinned_threads:
+            pt['is_pinned'] = True  # HTML側で赤文字装飾等をするための目印
+            pt['replies_count'] = None  # 固定スレはレス数を表示しない仕様を引き継ぐ
+            threads.insert(0, pt)
 
         # 各スレッドのレス件数を取得
         for t in threads:
