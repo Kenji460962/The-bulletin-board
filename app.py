@@ -474,6 +474,10 @@ def thread_updates(thread_id):
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
 
+            # 🔗 URL自動リンク化 🟢 追加（これで自動更新時もリンクに変換されます）
+            if r.get('content'):
+                r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+
     except Exception as e:
         print(f"自動更新APIエラー: {e}")
         new_replies = []
@@ -484,6 +488,12 @@ def thread_updates(thread_id):
         "is_admin_user": is_admin_user, 
         "active_count": active_count
     }
+
+
+
+
+
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
