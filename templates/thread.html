@@ -256,7 +256,7 @@
                 </form>
                 {% endif %}
             </span>
-            <p class="post-content">{{ reply.content }}</p>
+            <p class="post-content">{{ reply.content|safe}}</p>
             
             {% if reply.image_url %}
             <div style="margin-left: 2em;">
