@@ -269,14 +269,22 @@ def thread_view(thread_id):
         thread = thread_res.data[0]
 
         replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
-        
+
+        # Supabaseからスレッド内のレス一覧を取得した後の処理
         thread['replies'] = replies_res.data
+        import re # 🟢 追加
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
                 from datetime import timedelta
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # 🔗 URL自動リンク化 🟢 追加
+            if r.get('content'):
+                # https:// から始まる文字列を <a> タグに変換（別タブで開く安全な設定にしています）
+                r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+
 
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
