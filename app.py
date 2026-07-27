@@ -70,6 +70,34 @@ def check_is_admin_cookie(request):
     admin_cookie_flag = request.cookies.get('is_bbs_admin')
     return admin_cookie_flag == "true"
 
+
+# 🟢 言葉ごとに変換後の文字列を個別に指定する設定
+NG_WORDS = {
+    '死ね': '〇ね',
+    'エロ': 'エ〇',
+    'えろ': 'え〇',
+    'まんこ': 'ま〇こ',
+    'ちんこ': 'ち〇こ',
+    'マンコ': 'マ〇コ',
+    'チンコ': 'チ〇コ',
+    'セックス': 'セ。〇ス',
+    'せっくす': 'せ。〇す',
+    'バカ': 'バ*',
+    'アホ': 'ア*',
+}
+
+def filter_ng_words(text):
+    if not text:
+        return text
+    for ng_word, replaced_word in NG_WORDS.items():
+        if ng_word in text:
+            text = text.replace(ng_word, replaced_word)
+    return text
+
+
+
+
+
 ACTIVE_USERS = {}
 
 def update_and_get_user_counts(current_token, location):
