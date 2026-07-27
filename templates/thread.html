@@ -244,6 +244,7 @@
     <div id="post-container">
         {% for reply in thread.replies %}
         <div class="post-item" id="p{{ reply.id }}" data-id="{{ reply.id }}">
+        <div class="post-item" id="p{{ loop.index }}" data-id="{{ reply.id }}">
             <span class="post-meta">
                 <span class="post-num">{{ loop.index }}</span> ：
                 <span class="{% if reply.is_admin %}admin-name{% else %}post-name{% endif %}">{{ reply.author }}</span> ：
