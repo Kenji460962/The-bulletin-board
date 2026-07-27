@@ -253,6 +253,9 @@ def create_thread():
     title = request.form.get('title')
     if not title:
         return {"error": "タイトルが必要です"}, 400
+        
+    title = filter_ng_words(title)
+    
     
     title = html.escape(title)    
     
@@ -327,6 +330,9 @@ def thread_view(thread_id):
             return redirect(url_for('thread_view', thread_id=thread_id))
         
         author_input = request.form.get('author') or "名無しさん"
+
+        content = filter_ng_words(content)
+        author_input = filter_ng_words(author_input)
         
         is_admin = False
         if "#" in author_input:
