@@ -19,7 +19,6 @@
             font-family: "MS P Gothic", sans-serif; 
         }
         
-        /* 💡 ヘッダーが裏に隠れないよう z-index: 1000 を追加して最前面に固定 */
         .header-area { 
             position: absolute !important;
             top: 0 !important;
@@ -36,231 +35,98 @@
             z-index: 1000 !important; 
         }
         .header-area h1 { margin: 0 !important; font-size: 20px !important; line-height: 1.2 !important; color: #000; }
-        a:link { color: #0000ff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        .header-links { font-size: 13px !important; margin-top: 3px !important; }
+
+        #post-container { 
+            position: absolute !important;
+            top: 60px !important; 
+            bottom: 160px !important; 
+            left: 0 !important;
+            width: 100% !important;
+            overflow-y: scroll !important; 
+            padding: 20px !important; 
+            box-sizing: border-box !important; 
+            background-color: #efefef;
+            scroll-behavior: smooth;
+        }
+
+        .post-item { margin-bottom: 15px; }
+        .post-meta { font-size: 13px; color: #666; }
+        .post-num { font-weight: bold; color: #000; }
+        .post-name { font-weight: bold; color: #117743; }
+        .admin-name { font-weight: bold; color: #ff0000 !important; }
+        .post-id { font-size: 11px; color: #888; }
         
-        form { 
-            background-color: rgba(40, 44, 52, 0.75);
-            backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.15); 
-            border-radius: 8px;
-            padding: 10px; 
-            width: 100%;
-            max-width: 600px;
-            margin: 0 auto;
-            box-sizing: border-box;
-            color: #ffffff;
-            font-size: 13px;
-        }
-        .form-row { 
-            display: flex;
-            gap: 10px; 
-            align-items: center; 
-            margin-bottom: 5px; 
-        }
-        form textarea { 
-            flex: 1;
-            height: 40px; 
-            resize: none; 
-            box-sizing: border-box; 
-            background: rgba(255,255,255,0.9); 
-            border: none; 
-            border-radius: 4px; 
-            padding: 5px;
-        }
-        form input[type="text"] {
-            width: 120px;
-            box-sizing: border-box; 
-            background: rgba(255,255,255,0.9); 
-            border: none; 
-            border-radius: 4px; 
-            padding: 3px;
-        }
-        #submit-btn { 
-            background-color: #00ffff;
-            color: #000; 
-            border: none; 
-            border-radius: 4px; 
-            padding: 8px 15px; 
-            font-weight: bold; 
-            cursor: pointer; 
-            height: 40px;
-        }
-        #submit-btn:hover { background-color: #00cccc; }
-
-        .post-meta { font-weight: bold; color: #000; }
-        .post-num { color: green; }
-        .post-name { color: blue; }
-        .admin-name { 
-            color: red;
-            font-weight: bold; 
-        }
-        .post-id { 
-            color: gray;
-            font-size: 13px; 
-            font-weight: normal; 
-        }
         .post-content { 
-            color: #000;
-            margin-left: 2em;
-            margin-top: 5px;
-            white-space: pre-wrap; 
+            margin: 5px 0 5px 2em; 
+            font-size: 14px; 
+            line-height: 1.5; 
+            word-break: break-all;
+            white-space: pre-wrap;
         }
-        .anchor-link { 
-            color: #ff00ff !important;
-            font-weight: bold; }
-        .uploaded-image { 
-            display: block;
-            max-width: 100%; 
-            max-height: 200px;
-            margin-top: 5px;
-            margin-bottom: 5px;
-            border: 1px solid #ccc;
-        }
-        .delete-btn {
-            background-color: #ffcccc;
-            color: #cc0000;
-            border: 1px solid #cc0000; 
-            border-radius: 3px;
-            font-size: 11px;
-            padding: 1px 5px; 
+
+        .anchor-link {
+            color: #0000ff;
+            text-decoration: underline;
             cursor: pointer;
-            margin-left: 10px;
-        }
-        .delete-btn:hover { background-color: #ff9999; }
-        .delete-form { 
-            display: inline;
-            background: none; 
-            border: none; 
-            padding: 0; 
-            margin: 0; 
-            width: auto;
         }
 
-        /* ===========================================
-              PC用の設定
-           =========================================== */
-        @media (min-width: 769px) {
-            #post-container { 
-                position: absolute !important;
-                top: 60px !important; 
-                bottom: 115px !important; 
-                left: 0 !important;
-                width: calc(100% - 300px) !important; 
-                height: auto !important; 
-                overflow-y: auto !important;
-                padding: 10px 20px; 
-                box-sizing: border-box !important; 
-                -webkit-overflow-scrolling: touch; 
-            }
-            .footer-area { position: absolute !important; bottom: 0 !important; left: 0 !important; width: calc(100% - 300px) !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
-            .ad-area { position: absolute !important; top: 0 !important; right: 0 !important; width: 300px !important; height: 100% !important; background-color: #efefef; display: flex !important; justify-content: center !important; align-items: center !important; border-left: 1px solid #ccc; box-sizing: border-box !important; z-index: 100 !important; }
+        .uploaded-image {
+            max-width: 250px;
+            max-height: 250px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            display: block;
         }
 
-
-        /* ======================================================
-              スマホ用の設定（画面にすっぽり収め、広告は下に流す）
-           ====================================================== */
-        @media (max-width: 768px) {
-            /* 全体スクロールを許可する */
-            html, body { 
-                height: auto !important;
-                overflow-y: auto !important; 
-            }
-
-            /* ヘッダーは上に固定 */
-            .header-area {
-                position: fixed !important;
-                width: 100% !important;
-            }
-
-            /* 1. コメントエリア：固定を解除し、中身に応じて下に伸びるようにする */
-            #post-container { 
-                position: static !important; /* 画面固定を解除 */
-                width: 100% !important;
-                height: auto !important; 
-                margin-top: 60px !important; /* ヘッダーの高さ分だけ上に余白を作る */
-                padding: 10px 20px !important;
-                box-sizing: border-box !important; 
-            }
-
-            /* 2. 入力欄エリア：コメントエリアのすぐ下にそのまま配置する */
-            .footer-area { 
-                position: static !important; /* 画面固定を解除 */
-                width: 100% !important;
-                height: auto !important; /* 高さを内容に合わせる */
-                background-color: #fff;
-                border-top: 1px solid #ccc; 
-                border-bottom: 1px solid #ccc; 
-                padding: 15px 20px !important; 
-                box-sizing: border-box !important;
-            }
-
-            /* 3. 広告エリア：入力欄のさらに下に配置（スクロールすると出てくる） */
-            .ad-area { 
-                position: static !important; /* 画面固定を解除 */
-                width: 100% !important;
-                height: 60px !important; /* 320x50広告が綺麗に収まる高さ */
-                margin-top: 15px !important; /* 入力欄との間に少し隙間を作る */
-                margin-bottom: 20px !important; /* 画面最下部との間の余白 */
-                background-color: transparent !important;
-                display: flex !important; 
-                justify-content: center !important; 
-                align-items: center !important; 
-                box-sizing: border-box !important;
-            }
+        .form-area { 
+            position: absolute !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 160px !important; 
+            background-color: #efefef; 
+            border-top: 1px solid #ccc; 
+            padding: 10px 20px !important; 
+            box-sizing: border-box !important; 
+            z-index: 1000 !important; 
         }
 
+        .form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+        .form-row input[type="text"] { font-size: 12px; padding: 2px 5px; border: 1px solid #999; }
+        .form-row textarea { width: 100%; height: 50px; font-size: 13px; border: 1px solid #999; resize: none; }
+        .submit-btn { font-size: 12px; padding: 3px 15px; cursor: pointer; }
     </style>
 </head>
 <body>
-    
 
     <div class="header-area">
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <div>
-                <a href="{{ url_for('index') }}">■板一覧に戻る</a>
-                <h1 style="display: inline-block; margin-right: 15px !important;">{{ thread.title }}</h1>
-                
-                {% if is_admin_user and thread.ip_address %}
-                <span style="background: #fff; color: #000; padding: 2px 6px; border: 1px solid #ccc; font-size: 12px; font-weight: bold; border-radius: 3px;">
-                    スレ主IP: {{ thread.ip_address }}
-                </span>
-                <form class="delete-form" action="/thread/{{ thread.id }}/ban_owner" method="POST" onsubmit="return confirm('本当にこのスレ主を完全にBANし、スレッドを解体しますか？');" style="display: inline; margin-left: 5px;">
-                    <button type="submit" class="delete-btn" style="background-color: #d9534f; color: #fff; border-color: #d43f3a; padding: 2px 8px;">スレ主をBAN</button>
-                </form>
-                {% endif %}
-            </div>
-            
-            <div style="font-size: 13px; color: #28a745; font-weight: bold; background-color: rgba(40, 167, 69, 0.1); padding: 6px 12px; border-radius: 4px; border: 1px solid rgba(40, 167, 69, 0.3); white-space: nowrap; margin-right: 10px;">
-                ● <span style="color: #333; font-weight: normal;">ここを閲覧中:</span> <strong id="realtime-active-count">{{ active_count }}</strong>人
-            </div>
+        <h1>{{ thread.title }}</h1>
+        <div class="header-links">
+            <a href="{{ url_for('index') }}">■掲示板に戻る</a>
+            <span style="margin-left: 15px; color: #666; font-size: 12px;">
+                現在の閲覧者数: <strong id="active-user-count" style="color: #0088cc;">{{ active_count }}</strong>人
+            </span>
         </div>
     </div>
 
-
-
     <div id="post-container">
         {% for reply in thread.replies %}
-        <div class="post-item" id="p{{ reply.id }}" data-id="{{ reply.id }}">
         <div class="post-item" id="p{{ loop.index }}" data-id="{{ reply.id }}">
             <span class="post-meta">
                 <span class="post-num">{{ loop.index }}</span> ：
                 <span class="{% if reply.is_admin %}admin-name{% else %}post-name{% endif %}">{{ reply.author }}</span> ：
                 {{ reply.date }}
                 <span class="post-id"> ID:{{ reply.user_id }}</span>
-                
-                {% if is_admin_user and reply.author != "Deleted" and reply.author != "あぼーん" %}
-                <form class="delete-form" action="/thread/{{ thread.id }}/delete/{{ reply.id }}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
-                    <button type="submit" class="delete-btn">削除</button>
-                </form>
-                <form class="delete-form" action="/thread/{{ thread.id }}/ban/{{ reply.id }}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
-                    <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
+
+                {% if is_admin_user %}
+                <form action="/thread/{{ thread.id }}/delete_reply/{{ reply.id }}" method="POST" style="display: inline; margin-left: 10px;" onsubmit="return confirm('このレスを削除しますか？');">
+                    <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 10px; padding: 1px 5px; cursor: pointer;">削除</button>
                 </form>
                 {% endif %}
             </span>
-            <p class="post-content">{{ reply.content|safe}}</p>
+            <p class="post-content">{{ reply.content|safe }}</p>
             
             {% if reply.image_url %}
             <div style="margin-left: 2em;">
@@ -272,34 +138,38 @@
         {% endfor %}
     </div>
 
-
-    
-
-    <div class="footer-area">
-        <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
+    <div class="form-area">
+        <form action="/thread/{{ thread.id }}/post_reply" method="POST" enctype="multipart/form-data">
             <div class="form-row">
-                名前：<input type="text" name="author" placeholder="名無しさん">
-                画像：<input type="file" name="image" accept="image/*" style="color: #000; font-size: 11px; max-width: 150px;">
+                <label>名前:</label>
+                <input type="text" name="author" value="名無しさん" style="width: 150px;">
+                <input type="file" name="image" accept="image/*" style="font-size: 11px;">
+                <button type="submit" class="submit-btn">書き込む</button>
             </div>
             <div class="form-row">
-                <textarea name="content" placeholder="ここに書き込み内容を入力してください（500文字以内）" maxlength="500" required></textarea>
-                <button type="submit" id="submit-btn">書き込む</button>
+                <textarea name="content" placeholder="コメントを入力..." required></textarea>
             </div>
         </form>
     </div>
 
-    <div class="ad-area">
-        <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
-        </div>
-
     <script>
-        const threadId = {{ thread.id }};
-        let isAdminView = {{ 'true' if is_admin_user else 'false' }};
+        let lastReplyId = 0;
+        const replyItems = document.querySelectorAll('.post-item');
+        if (replyItems.length > 0) {
+            lastReplyId = parseInt(replyItems[replyItems.length - 1].getAttribute('data-id')) || 0;
+        }
 
+        function scrollToBottom() {
+            const container = document.getElementById('post-container');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        window.onload = function() {
+            scrollToBottom();
+        };
 
         function processPostContent(element) {
             let text = element.innerHTML;
-            // 🟢 >>1 や &gt;&gt;1 を安全に検出して、ジャンプ用のリンク（<a href="#p1">>>1</a>）に変換
             const anchorRegex = /(?:&gt;&gt;|>>)(\d+)/g;
             text = text.replace(anchorRegex, (match, num) => {
                 return `<a href="#p${num}" class="anchor-link">>>${num}</a>`;
@@ -309,100 +179,38 @@
 
         document.querySelectorAll('.post-content').forEach(processPostContent);
 
-        
-       
-        // 🟢 【PC・スマホ両対応】アニメーション無しで「一瞬で」一番下へジャンプする処理
-        function instantScrollToBottom() {
-            // 1. PC用のコメントエリアを一番下に
-            const container = document.getElementById('post-container');
-            if (container) {
-                container.scrollTop = container.scrollHeight;
-            }
-            // 2. スマホ用の画面全体スクロールを一番下に（一瞬でジャンプ）
-            window.scrollTo({
-                top: document.documentElement.scrollHeight,
-                behavior: 'auto' // 'smooth' ではなく 'auto' で一瞬にする
-            });
-        }
-
-        window.addEventListener('DOMContentLoaded', () => {
-            const savedAuthor = getCookie('bbs_saved_author');
-            const authorInput = document.querySelector('input[name="author"]');
-            if (savedAuthor && authorInput) {
-                authorInput.value = savedAuthor;
-            }
-            // HTMLが読み込まれた瞬間に最速で一番下へ
-            instantScrollToBottom();
-        });
-
-        // 🟢 添付画像などの読み込み完了後、位置が上にズレるのを防ぐために再度一番下に合わせる
-        window.addEventListener('load', () => {
-            instantScrollToBottom();
-        });
-
-        const saveNameForm = document.getElementById('bbs-form');
-        if (saveNameForm) {
-            saveNameForm.addEventListener('submit', () => {
-                const authorInput = document.querySelector('input[name="author"]');
-                if (authorInput) {
-                    setCookie('bbs_saved_author', authorInput.value, 365);
-                }
-            });
-        }
-
-        function setCookie(name, value, days) {
-            const date = new Date();
-            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-            document.cookie = name + "=" + encodeURIComponent(value) + ";expires=" + date.toUTCString() + ";path=/;SameSite=Strict";
-        }
-        function getCookie(name) {
-            const value = "; " + document.cookie;
-            const parts = value.split("; " + name + "=");
-            if (parts.length === 2) return decodeURIComponent(parts.pop().split(";").shift());
-            return "";
-        }
-        
-        // 掲示板の自動リアルタイム更新機能
         setInterval(async () => {
-            const postItems = document.querySelectorAll('.post-item');
-            let lastId = 0;
-            if (postItems.length > 0) {
-                lastId = parseInt(postItems[postItems.length - 1].getAttribute('data-id'));
-            }
-            
             try {
-                const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
+                const response = await fetch(`/api/thread/{{ thread.id }}/updates?last_id=${lastReplyId}`);
                 const data = await response.json();
                 
-                // サーバーから届いた最新の人数で、右上の数字を自動書き換え
-                if (data.active_count !== undefined && data.active_count !== null && data.active_count !== "") {
-                    document.getElementById('realtime-active-count').innerText = data.active_count;
+                if (data.active_count !== undefined) {
+                    const countElem = document.getElementById('active-user-count');
+                    if (countElem) countElem.textContent = data.active_count;
                 }
-                
-                if (data.is_admin_user !== undefined) {
-                    isAdminView = data.is_admin_user;
-                }
-                
+
                 let hasNewReply = false;
+                let currentCount = document.querySelectorAll('.post-item').length;
+
                 data.replies.forEach(reply => {
+                    lastReplyId = Math.max(lastReplyId, reply.id);
+                    currentCount++;
+
                     const container = document.getElementById('post-container');
                     const newDiv = document.createElement('div');
                     newDiv.className = 'post-item';
                     newDiv.id = `p${currentCount}`;
                     newDiv.setAttribute('data-id', reply.id);
-                    
+
                     let deleteButtonHtml = '';
-                    if (isAdminView && reply.author !== 'Deleted' && reply.author !== 'あぼーん') {
+                    if (data.is_admin_user) {
                         deleteButtonHtml = `
-                            <form class="delete-form" action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
-                                <button type="submit" class="delete-btn">削除</button>
-                            </form>
-                            <form class="delete-form" action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
-                                <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
+                            <form action="/thread/{{ thread.id }}/delete_reply/${reply.id}" method="POST" style="display: inline; margin-left: 10px;" onsubmit="return confirm('このレスを削除しますか？');">
+                                <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 10px; padding: 1px 5px; cursor: pointer;">削除</button>
                             </form>
                         `;
                     }
-                    
+
                     let imageHtml = '';
                     if (reply.image_url) {
                         imageHtml = `
@@ -414,7 +222,7 @@
                     
                     newDiv.innerHTML = `
                         <span class="post-meta">
-                            <span class="post-num">${reply.id}</span> ：
+                            <span class="post-num">${currentCount}</span> ：
                             <span class="${reply.is_admin ? 'admin-name' : 'post-name'}">${reply.author}</span> ：
                             ${reply.date}
                             <span class="post-id"> ID:${reply.user_id}</span>
@@ -430,9 +238,9 @@
                     const newPostContent = newDiv.querySelector('.post-content');
                     processPostContent(newPostContent);
                 });
+
                 if (hasNewReply) {
-                    // 自動更新で新しいレスが来たら、スムーズではなく一瞬で一番下に追従させる
-                    instantScrollToBottom();
+                    scrollToBottom();
                 }
             } catch (error) {
                 console.error('Auto update error:', error);
