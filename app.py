@@ -272,6 +272,7 @@ def thread_view(thread_id):
 
         # Supabaseからスレッド内のレス一覧を取得した後の処理
         thread['replies'] = replies_res.data
+        import re # 🟢 追加
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
