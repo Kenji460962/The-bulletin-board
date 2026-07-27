@@ -296,11 +296,12 @@
         const threadId = {{ thread.id }};
         let isAdminView = {{ 'true' if is_admin_user else 'false' }};
 
+
         function processPostContent(element) {
             let text = element.innerHTML;
-            const anchorRegex = /&gt;&gt;(\d+)|>>(\d+)/g;
-            text = text.replace(anchorRegex, (match, p1, p2) => {
-                const num = p1 || p2;
+            // 🟢 >>1 や &gt;&gt;1 を安全に検出して、ジャンプ用のリンク（<a href="#p1">>>1</a>）に変換
+            const anchorRegex = /(?:&gt;&gt;|>>)(\d+)/g;
+            text = text.replace(anchorRegex, (match, num) => {
                 return `<a href="#p${num}" class="anchor-link">>>${num}</a>`;
             });
             element.innerHTML = text;
@@ -308,6 +309,8 @@
 
         document.querySelectorAll('.post-content').forEach(processPostContent);
 
+        
+       
         // 🟢 【PC・スマホ両対応】アニメーション無しで「一瞬で」一番下へジャンプする処理
         function instantScrollToBottom() {
             // 1. PC用のコメントエリアを一番下に
