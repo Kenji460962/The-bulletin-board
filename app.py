@@ -498,7 +498,9 @@ def ban_thread_owner(thread_id):
         thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
         if thread_res.data and thread_res.data[0].get('ip_address'):
             owner_ip = thread_res.data[0]['ip_address']
-            supabase.table('banned_ips').insert({'ip': owner_ip}).execute()
+            
+
+            supabase.table('banned_ips').insert({'ip_address': owner_ip}).execute()
                 
             supabase.table('threads').update({'title': '【このスレッドは管理員によってBANされました】'}).eq('id', thread_id).execute()
             supabase.table('replies').delete().eq('thread_id', thread_id).execute()
