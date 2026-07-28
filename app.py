@@ -88,6 +88,7 @@ def check_is_admin_cookie(request):
 # NGワード
 NG_WORDS = {
     '死ね': '〇ね',
+    'しね': '〇ね',
     'エロ': 'エ〇',
     'えろ': 'え〇',
     'まんこ': 'ま〇こ',
