@@ -15,12 +15,11 @@ from supabase import create_client, Client
 
 app = Flask(__name__)
 
-# 無料プランのスリープを防ぎつつ、エラーログだけを完全に消し去る設定
+# スリープ防止
 @app.before_request
 def response_to_uptimerobot():
     if request.method == 'HEAD':
-        return make_response('', 200) # ←「生きてるよ！」と最速で返事をする
-
+        return make_response('', 200)
 # Cloudinaryの設定
 cloudinary.config(
     cloudinary_url = os.environ.get('cloudinary://413154997929334:1MWGTCiDlVZawKJWIm1aNpq_dhM@dpqh2ssnh'),
@@ -53,7 +52,7 @@ def get_daily_user_id(ip_address):
     return hashed[:8]
 
 def get_client_ip():
-    # 🟢 プロキシやCloudflare経由の本当のユーザーIPを取得
+    # ユーザーIPを取得
     if request.headers.get('X-Forwarded-For'):
         # カンマ区切りの先頭がクライアントのIP
         ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
@@ -63,26 +62,13 @@ def get_client_ip():
         ip = request.remote_addr or ""
     return ip
 
-
-# アクセスしてきたユーザーの実際のIPアドレスを取得する
-
-def get_client_ip():
-    # 🟢 プロキシやCloudflare経由の本当のユーザーIPを取得
-    if request.headers.get('X-Forwarded-For'):
-        # カンマ区切りの先頭がクライアントのIP
-        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    elif request.headers.get('CF-Connecting-IP'):
-        ip = request.headers.get('CF-Connecting-IP').strip()
-    else:
-        ip = request.remote_addr or ""
-    return ip
 
 #banされたIPかを確認
 def is_banned_ip(ip):
     if not ip:
         return False
     try:
-        # 🟢 Supabaseの banned_ips テーブルと照合
+        # Supabaseの banned_ips テーブルと照合
         res = supabase.table('banned_ips').select('*').eq('ip_address', ip).execute()
         return len(res.data) > 0
     except Exception as e:
@@ -99,7 +85,7 @@ def check_is_admin_cookie(request):
     return admin_cookie_flag == "true"
 
 
-# 🟢 言葉ごとに変換後の文字列を個別に指定する設定
+# NGワード
 NG_WORDS = {
     '死ね': '〇ね',
     'エロ': 'エ〇',
@@ -171,19 +157,17 @@ def index():
     end_index = start_index + per_page - 1
 
     try:
-        # 1. 普通に全スレッドを最新順（IDの降順）で取得する
+        # 全スレッドを最新順（IDの降順）で取得する
         threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
 
-        # 【超重要】割り込み処理をする「前」に、次のページがあるか判定（これでボタンが消えなくなります）
+        
         has_next = len(threads) == per_page
 
-        # 2. ページ数に関係なく、指定したIDのスレを常に先頭に固定する
-        # 固定したいスレのIDをリストで指定（IDの降順[2, 1]にすると、画面上は上が2、下が1になります。お好みで！）
+       
         pinned_ids = [2, 1]
         pinned_threads = []
 
-        # 現在のページのリスト内から固定対象のスレを探して抜き出す
         for pid in pinned_ids:
             for i, t in enumerate(threads):
                 if int(t['id']) == pid:
@@ -204,8 +188,8 @@ def index():
 
         # 見つかった固定スレを、リストの「先頭」に1つずつ挿入していく
         for pt in pinned_threads:
-            pt['is_pinned'] = True  # HTML側で赤文字装飾等をするための目印
-            pt['replies_count'] = None  # 固定スレはレス数を表示しない仕様を引き継ぐ
+            pt['is_pinned'] = True  
+            pt['replies_count'] = None  
             threads.insert(0, pt)
 
         # 各スレッドのレス件数を取得
@@ -335,7 +319,7 @@ def thread_view(thread_id):
 
         # Supabaseからスレッド内のレス一覧を取得した後の処理
         thread['replies'] = replies_res.data
-        import re # 🟢 追加
+        import re 
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
@@ -343,7 +327,7 @@ def thread_view(thread_id):
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
             
-            # 🔗 URL自動リンク化 🟢 追加
+            #  URL自動リンク化 
             if r.get('content'):
                 # https:// から始まる文字列を <a> タグに変換（別タブで開く安全な設定にしています）
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
@@ -382,7 +366,7 @@ def thread_view(thread_id):
 
         content = html.escape(content)
 
-        # 「&gt;&gt;123」を安全に「>>123」に復元（アンカーハック防止対策）
+        # 「&gt;&gt;数字」を「>>数字」に復元（アンカーハック防止対策）
         content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
 
         now = time.time()
@@ -540,7 +524,7 @@ def thread_updates(thread_id):
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
 
-            # 🔗 URL自動リンク化 🟢 追加（これで自動更新時もリンクに変換されます）
+           
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
 
