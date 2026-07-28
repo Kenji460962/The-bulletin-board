@@ -33,7 +33,7 @@ SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXV
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 DATA_FILE = 'bbs_data.json'
-ADMIN_PASSWORD = "aaaaaaaaaaaa"
+ADMIN_PASSWORD = "setokoji114514"
 
 # セキュリティ強化 ユーザーごとの最後の書き込み時間を記録する場所
 LAST_POST_TIMES = {}
