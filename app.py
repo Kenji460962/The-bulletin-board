@@ -346,13 +346,32 @@ def thread_view(thread_id):
 
     is_admin_user = check_is_admin_cookie(request)
 
-    if request.method == 'POST':
+
+
+
+
+
+
+
+if request.method == 'POST':
         content = request.form.get('content') or ""
         
         if len(content) > 500:
             return redirect(url_for('thread_view', thread_id=thread_id))
         
         author_input = request.form.get('author') or "名無しさん"
+
+        # 🟢 1. トリップ（#）を崩さずに、名前部分だけを20文字制限にする
+        if "#" in author_input:
+            name_part, pass_part = author_input.split("#", 1)
+            name_part = name_part[:20]  # 名前部分を先頭20文字までにカット
+            author_input = f"{name_part}#{pass_part}"
+        else:
+            author_input = author_input[:20]  # 通常の名前も20文字までにカット
+
+        # 🟢 2. 偽「あぼーん」の投稿を防止する
+        if author_input.strip() == "あぼーん":
+            author_input = "名無しさん"
 
         content = filter_ng_words(content)
         author_input = filter_ng_words(author_input)
@@ -370,6 +389,12 @@ def thread_view(thread_id):
         else:
             author_input = html.escape(author_input)
             user_id = get_daily_user_id(client_ip)
+
+
+
+
+
+
 
         content = html.escape(content)
 
