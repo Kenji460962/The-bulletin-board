@@ -460,7 +460,11 @@ def delete_reply(thread_id, reply_id):
     except Exception as e:
         print(f"レス削除エラー: {e}")
     return redirect(url_for('thread_view', thread_id=thread_id))
-    
+
+
+
+
+
 
 @app.route('/thread/<int:thread_id>/ban/<int:reply_id>', methods=['POST'])
 def ban_user(thread_id, reply_id):
@@ -469,22 +473,24 @@ def ban_user(thread_id, reply_id):
     
     try:
         reply_res = supabase.table('replies').select('ip_address').eq('id', reply_id).execute()
+        
+        # 1. IPがあればBANリストに登録する
         if reply_res.data and reply_res.data[0].get('ip_address'):
             b_ip = reply_res.data[0]['ip_address']
-            
             supabase.table('banned_ips').insert({'ip_address': b_ip}).execute()
             
-
-            
-            supabase.table('replies').update({
-                'author': 'あぼーん',
-                'content': 'この書き込みは管理員によってBANされました。',
-                'user_id': '???',
-                'is_admin': False,
-                'image_url': ''
-            }).eq('id', reply_id).execute()
+        # 2. IPが無くても、対象のレスは必ず「あぼーん」化する
+        supabase.table('replies').update({
+            'author': 'あぼーん',
+            'content': 'この書き込みは管理員によってBANされました。',
+            'user_id': '???',
+            'is_admin': False,
+            'image_url': ''
+        }).eq('id', reply_id).execute()
+        
     except Exception as e:
-        print(f"ユーザーBANエラー: {e}")
+        # 🚨 何かエラーが起きたら画面に直接原因を表示する！
+        return f"【BAN失敗】エラーの原因: {e}", 500
             
     return redirect(url_for('thread_view', thread_id=thread_id))
 
@@ -496,26 +502,37 @@ def ban_thread_owner(thread_id):
     
     try:
         thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
+        
+        # 1. IPがあればBANリストに登録する
         if thread_res.data and thread_res.data[0].get('ip_address'):
             owner_ip = thread_res.data[0]['ip_address']
-            
-
             supabase.table('banned_ips').insert({'ip_address': owner_ip}).execute()
                 
-            supabase.table('threads').update({'title': '【このスレッドは管理員によってBANされました】'}).eq('id', thread_id).execute()
-            supabase.table('replies').delete().eq('thread_id', thread_id).execute()
-            supabase.table('replies').insert({
-                'thread_id': thread_id,
-                'author': 'あぼーん',
-                'content': 'このスレッドの作成者はBANされました。',
-                'user_id': '???',
-                'is_admin': False,
-                'image_url': ''
-            }).execute()
+        # 2. スレッド自体は必ず「あぼーん」化する
+        supabase.table('threads').update({'title': '【このスレッドは管理員によってBANされました】'}).eq('id', thread_id).execute()
+        supabase.table('replies').delete().eq('thread_id', thread_id).execute()
+        supabase.table('replies').insert({
+            'thread_id': thread_id,
+            'author': 'あぼーん',
+            'content': 'このスレッドの作成者はBANされました。',
+            'user_id': '???',
+            'is_admin': False,
+            'image_url': ''
+        }).execute()
+        
     except Exception as e:
-        print(f"スレ主BANエラー: {e}")
+        # 🚨 何かエラーが起きたら画面に直接原因を表示する！
+        return f"【スレ主BAN失敗】エラーの原因: {e}", 500
         
     return redirect(url_for('index'))
+
+
+
+
+
+
+
+
 
 
 @app.route('/api/thread/<int:thread_id>/updates')
