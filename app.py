@@ -149,6 +149,8 @@ def roles():
 @app.route('/', methods=['GET', 'HEAD'])
 def index():
     client_ip = get_client_ip()
+
+    
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
