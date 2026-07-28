@@ -19,7 +19,7 @@
             background-size: cover;          /* 画面いっぱいに広げる */
             background-position: center;     /* 中央寄せ */
             background-attachment: fixed;    /* スクロールしても背景を固定 */
-            color: #ffffff;                  /* 文字は背景に映える白ベース */
+            color: #ffffff;                  
             font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "MS P Gothic", sans-serif; 
             padding: 20px; 
             margin: 0;
@@ -30,19 +30,19 @@
         /* タイトルのデザイン*/
                 /* タイトルのデザイン（大きく・目立つように強化！） */
         h1 {
-            font-size: 42px; /* 🟢 文字サイズをこれまでの倍近く大きく */
-            font-weight: 900; /* 🟢 文字を極太にする */
-            letter-spacing: 2px; /* 🟢 文字の間隔を少し広げておしゃれに */
+            font-size: 42px; 
+            font-weight: 900;
+            letter-spacing: 2px; 
             margin-top: 5px;
             margin-bottom: 15px;
             
-            /* 🟢 黒い背景画像の上でも圧倒的に文字が浮き出る強力な3重の影エフェクト */
+            
             text-shadow: 
                 2px 2px 0px #000,
                 -2px -2px 0px #000,
                 2px -2px 0px #000,
                 -2px 2px 0px #000,
-                0px 0px 15px rgba(0, 255, 255, 0.8); /* 外側にうっ水色のネオン光を放つ */
+                0px 0px 15px rgba(0, 255, 255, 0.8); /* 外側にうっ水色のネオン光を放つってダッサ */
         }
 
         
@@ -252,7 +252,7 @@
                 {% endif %}
             </div>
         </div>
-    </div> <!-- 💡 ここでスレ一覧タブの部屋を正しく閉じました -->
+    </div>
 
     <!-- 3. 「その他」タブ -->
     <div id="other-tab" class="content-section">
@@ -297,7 +297,7 @@
     </div>
 
         <script>
-    // 🟢 スレッド作成フォームの送信処理
+    
     document.getElementById('create-thread-form').addEventListener('submit', async (e) => {
         e.preventDefault(); 
 
@@ -313,7 +313,7 @@
             const result = await response.json();
 
             if (result.success) {
-                // スレッド作成成功時の処理
+             
                 const thread = result.thread;
                 const threadList = document.getElementById('thread-list');
                 
@@ -347,11 +347,10 @@
                 threadList.insertBefore(newLi, threadList.firstChild);
                 form.reset();
                 
-                // 🟢 成功したら最新の状態を反映するためにページをリロードする
-                //location.reload();
+
 
             } else if (result.error) {
-                // 🟢 【追加】サーバーから返ってきた「あと〇分〇秒お待ちください」をアラートで出す
+               
                 alert(result.error);
             } else {
                 alert('スレッドの作成に失敗しました。');
@@ -362,7 +361,7 @@
         }
     });
 
-    // 🟢 HTMLエスケープ処理
+    
     function escapeHtml(str) {
         return str.replace(/&/g, '&amp;')
                   .replace(/</g, '&lt;')
@@ -371,7 +370,7 @@
                   .replace(/'/g, '&#39;');
     }
 
-    // 🟢 タブ切り替えシステム
+    
     function switchTab(tabId, buttonElement) {
         var sections = document.querySelectorAll('.content-section');
         for (var i = 0; i < sections.length; i++) {
@@ -390,7 +389,7 @@
         }
     }
 
-    // 🟢 【サーバーパニック対策・完全版】
+ 
     window.addEventListener('load', function() {
         var params = new URLSearchParams(window.location.search);
         if (params.get('tab') === 'threads') {
