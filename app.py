@@ -52,19 +52,47 @@ def get_daily_user_id(ip_address):
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
 
-# アクセスしてきたユーザーの実際のIPアドレスを取得する
 def get_client_ip():
+    # 🟢 プロキシやCloudflare経由の本当のユーザーIPを取得
     if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    return request.remote_addr
+        # カンマ区切りの先頭がクライアントのIP
+        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('CF-Connecting-IP'):
+        ip = request.headers.get('CF-Connecting-IP').strip()
+    else:
+        ip = request.remote_addr or ""
+    return ip
 
-# BANされたIPかどうかを判定する
+
+# アクセスしてきたユーザーの実際のIPアドレスを取得する
+
+def get_client_ip():
+    # 🟢 プロキシやCloudflare経由の本当のユーザーIPを取得
+    if request.headers.get('X-Forwarded-For'):
+        # カンマ区切りの先頭がクライアントのIP
+        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('CF-Connecting-IP'):
+        ip = request.headers.get('CF-Connecting-IP').strip()
+    else:
+        ip = request.remote_addr or ""
+    return ip
+
+#banされたIPかを確認
 def is_banned_ip(ip):
-    try:
-        response = supabase.table('banned_ips').select('ip').eq('ip', ip).execute()
-        return len(response.data) > 0
-    except:
+    if not ip:
         return False
+    try:
+        # 🟢 Supabaseの banned_ips テーブルと照合
+        res = supabase.table('banned_ips').select('*').eq('ip_address', ip).execute()
+        return len(res.data) > 0
+    except Exception as e:
+        print(f"BANチェックエラー: {e}")
+        return False
+
+
+
+
+
 
 def check_is_admin_cookie(request):
     admin_cookie_flag = request.cookies.get('is_bbs_admin')
