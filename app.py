@@ -471,7 +471,10 @@ def ban_user(thread_id, reply_id):
         reply_res = supabase.table('replies').select('ip_address').eq('id', reply_id).execute()
         if reply_res.data and reply_res.data[0].get('ip_address'):
             b_ip = reply_res.data[0]['ip_address']
-            supabase.table('banned_ips').insert({'ip': b_ip}).execute()
+            
+            supabase.table('banned_ips').insert({'ip_address': b_ip}).execute()
+            
+
             
             supabase.table('replies').update({
                 'author': 'あぼーん',
