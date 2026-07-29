@@ -7,12 +7,18 @@ import hashlib
 import uuid
 import time
 import re
-# Cloudinaryのライブラリを読み込み
-import cloudinary
-import cloudinary.uploader
+
+
+
+
+
+
 # Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
 
+
+import boto3  
+from werkzeug.utils import secure_filename
 app = Flask(__name__)
 
 # スリープ防止
@@ -20,11 +26,25 @@ app = Flask(__name__)
 def response_to_uptimerobot():
     if request.method == 'HEAD':
         return make_response('', 200)
-# Cloudinaryの設定
-cloudinary.config(
-    cloudinary_url = os.environ.get('CLOUDINARY_URL'),
-    secure = True
+
+
+
+# Cloudflare R2 (S3互換) の設定
+s3_client = boto3.client(
+    's3',
+    endpoint_url=os.environ.get('R2_ENDPOINT'),
+    aws_access_key_id=os.environ.get('R2_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.environ.get('R2_SECRET_ACCESS_KEY'),
+    region_name='auto'
 )
+R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
+R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  # 👈 R2の公開URL用
+
+
+
+
+
+
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvjhukmy.supabase.co')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
@@ -407,15 +427,46 @@ def thread_view(thread_id):
             
             LAST_REPLY_TIMES[client_ip] = now
 
+
+
+
+
+
+
+
+
         image_url = ""
         if 'image' in request.files:
             file = request.files['image']
             if file and file.filename != '':
                 try:
-                    upload_result = cloudinary.uploader.upload(file)
-                    image_url = upload_result.get('secure_url')
+                    # ファイル名が被らないようにユニークな名前（UUID + 拡張子）にする
+                    orig_filename = secure_filename(file.filename)
+                    ext = os.path.splitext(orig_filename)[1]
+                    unique_filename = f"{uuid.uuid4()}{ext}"
+
+                    # R2へアップロード
+                    s3_client.upload_fileobj(
+                        file,
+                        R2_BUCKET_NAME,
+                        unique_filename,
+                        ExtraArgs={
+                            'ContentType': file.content_type
+                        }
+                    )
+                    
+                    # 公開URLを組み立てる
+                    image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
                 except Exception as e:
-                    print(f"Cloudinary Upload Error: {e}")
+                    print(f"R2 Upload Error: {e}")
+
+
+
+
+
+        
+
+        
 
         if content.strip() or image_url:
             try:
