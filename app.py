@@ -436,7 +436,6 @@ if request.method == 'POST':
         if is_admin:
             response.set_cookie('is_bbs_admin', 'true', max_age=60*60*24)
         return response
-
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
     if not user_token:
