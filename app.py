@@ -352,8 +352,7 @@ def thread_view(thread_id):
 
 
 
-
-if request.method == 'POST':
+    if request.method == 'POST':
         content = request.form.get('content') or ""
         
         if len(content) > 500:
