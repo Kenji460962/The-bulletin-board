@@ -22,7 +22,7 @@ def response_to_uptimerobot():
         return make_response('', 200)
 # Cloudinaryの設定
 cloudinary.config(
-    cloudinary_url = os.environ.get('cloudinary://413154997929334:1MWGTCiDlVZawKJWIm1aNpq_dhM@dpqh2ssnh'),
+    cloudinary_url = os.environ.get('CLOUDINARY_URL'),
     secure = True
 )
 
