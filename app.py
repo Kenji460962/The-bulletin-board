@@ -559,16 +559,17 @@ def ban_thread_owner(thread_id):
 
 
 
-
 @app.route('/api/thread/<int:thread_id>/updates')
 def thread_updates(thread_id):
     last_id = request.args.get('last_id', type=int, default=0)
-    
     user_token = request.cookies.get('user_bbs_token')
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
 
     try:
+
+
+
         new_replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).gt('id', last_id).order('id', desc=False).execute()
         new_replies = new_replies_res.data
         for r in new_replies:
