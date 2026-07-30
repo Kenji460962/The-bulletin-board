@@ -221,7 +221,7 @@
                             【{{ thread.id }}】 {{ thread.title }}
                         </a> 
                         
-                        {% if thread.id|int != 1 and thread.id | int != 2%}
+                        {% if thread.id|int != 1 and thread.id | int != 2 and thread.id | int != 3%}
                         <span class="res-count">({{ thread.replies_count }}レス)</span>
                         {% endif %}
                     </div>
