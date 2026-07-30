@@ -38,7 +38,7 @@ s3_client = boto3.client(
     region_name='auto'
 )
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
-R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  # 👈 R2の公開URL用
+R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
 
 
 
@@ -192,7 +192,7 @@ def index():
         has_next = len(threads) == per_page
 
        
-        pinned_ids = [3,2, 1]
+        pinned_ids = [3 ,2, 1]
         pinned_threads = []
 
         for pid in pinned_ids:
@@ -222,7 +222,7 @@ def index():
         # 各スレッドのレス件数を取得
         for t in threads:
             # 雑談（ID=1 または is_pinned）の場合は、赤文字にしてレス数を表示しない
-            if t.get('is_pinned') or int(t['id']) == 1:
+            if t.get('is_pinned') or int(t['id']) == 1 or int(t['id']) == 2 or int(t['id']) == 3:
                 t['replies_count'] = None
                 t['is_pinned'] = True
                 continue
