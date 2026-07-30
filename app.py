@@ -192,7 +192,7 @@ def index():
         has_next = len(threads) == per_page
 
        
-        pinned_ids = [2, 1]
+        pinned_ids = [3,2, 1]
         pinned_threads = []
 
         for pid in pinned_ids:
