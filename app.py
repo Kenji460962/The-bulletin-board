@@ -1,8 +1,6 @@
-from flask 
-import Flask, render_template, request, redirect, url_for, make_response, session
+from flask import Flask, render_template, request, redirect, url_for, make_response, session
 
-from datetime 
-import datetime
+from datetime import datetime
 
 import json
 import html
