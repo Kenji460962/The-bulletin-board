@@ -1,7 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response, session
-
 from datetime import datetime
-
 import json
 import html
 import os
@@ -9,13 +7,6 @@ import hashlib
 import uuid
 import time
 import re
-
-
-# その他の既存インポート...
-
-
-
-
 
 
 
@@ -331,16 +322,21 @@ def index():
     return response
 
 
+
+
 @app.route('/update_admin_message', methods=['POST'])
 def update_admin_message():
-    password = request.form.get('admin_password')
+    if not can_manage_board():
+        return "権限がありません", 403
+        
     message = request.form.get('message')
-    if password == ADMIN_PASSWORD and message:
+    if message:
         try:
             supabase.table('admin_messages').update({'message': message}).eq('id', 1).execute()
         except Exception as e:
             print(f"メッセージ更新エラー: {e}")
     return redirect(url_for('index'))
+
 
 
 @app.route('/create_thread', methods=['POST'])
@@ -427,6 +423,8 @@ def thread_view(thread_id):
 
 
 
+
+    
 
     if request.method == 'POST':
         content = request.form.get('content') or ""
