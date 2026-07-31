@@ -382,12 +382,103 @@ def create_thread():
     return {"success": True, "thread": new_thread}
 
 
+
+
+
+
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
+    # ==========================================
+    # 1. POSTリクエスト（書き込み処理）
+    # ==========================================
+    if request.method == 'POST':
+        content = request.form.get('content') or ""
+        
+        if len(content) > 500:
+            return redirect(url_for('thread_view', thread_id=thread_id))
+        
+        author_input = request.form.get('author') or "名無しさん"
+
+        # 🟢 トリップ・文字数・偽あぼーん防止
+        if "#" in author_input:
+            name_part, pass_part = author_input.split("#", 1)
+            author_input = f"{name_part[:20]}#{pass_part}"
+        else:
+            author_input = author_input[:20]
+
+        if author_input.strip() == "あぼーん":
+            author_input = "名無しさん"
+
+        content = filter_ng_words(content)
+        author_input = filter_ng_words(author_input)
+        
+        # 🟢 運営スタッフの判定ロジック
+        staff_role = get_staff_role()
+        
+        if staff_role:
+            # 運営スタッフがログインしている場合、強制的に名前と役職をセット
+            author_input = session.get('staff_name')
+            is_admin = can_manage_board() # ★マーク用（adminとsub_adminのみTrue）
+            user_id = "STAFF"
+            role_to_save = staff_role
+        else:
+            # 一般ユーザー（またはトリップ）の場合
+            is_admin = False
+            role_to_save = None
+            if "#" in author_input:
+                name_part, _ = author_input.split("#", 1)
+                author_input = html.escape(name_part) or "名無しさん"
+            else:
+                author_input = html.escape(author_input)
+            user_id = get_daily_user_id(client_ip)
+
+        content = html.escape(content)
+        content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
+
+        now = time.time()
+        if not staff_role: # スタッフ以外は連投制限
+            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
+                return redirect(url_for('thread_view', thread_id=thread_id))
+            LAST_REPLY_TIMES[client_ip] = now
+
+        # 画像アップロード処理
+        image_url = ""
+        if 'image' in request.files:
+            file = request.files['image']
+            if file and file.filename != '':
+                try:
+                    orig_filename = secure_filename(file.filename)
+                    ext = os.path.splitext(orig_filename)[1]
+                    unique_filename = f"{uuid.uuid4()}{ext}"
+                    s3_client.upload_fileobj(file, R2_BUCKET_NAME, unique_filename, ExtraArgs={'ContentType': file.content_type})
+                    image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
+                except Exception as e:
+                    print(f"R2 Upload Error: {e}")
+
+        if content.strip() or image_url:
+            try:
+                supabase.table('replies').insert({
+                    'thread_id': thread_id,
+                    'author': author_input,
+                    'content': content,
+                    'user_id': user_id,
+                    'is_admin': is_admin,
+                    'role': role_to_save, # 新規追加：役職を保存
+                    'image_url': image_url,
+                    'ip_address': client_ip
+                }).execute()
+            except Exception as e:
+                print(f"レス保存エラー: {e}")
+
+        return redirect(url_for('thread_view', thread_id=thread_id))
+
+    # ==========================================
+    # 2. GETリクエスト（画面表示処理）
+    # ==========================================
     try:
         thread_res = supabase.table('threads').select('*').eq('id', thread_id).execute()
         if not thread_res.data:
@@ -398,7 +489,6 @@ def thread_view(thread_id):
 
         # Supabaseからスレッド内のレス一覧を取得した後の処理
         thread['replies'] = replies_res.data
-        import re 
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
@@ -406,24 +496,15 @@ def thread_view(thread_id):
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
             
-            #  URL自動リンク化 
+            # URL自動リンク化
             if r.get('content'):
-                # https:// から始まる文字列を <a> タグに変換（別タブで開く安全な設定にしています）
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
-
 
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
         return "データベースエラーが発生しました", 500
 
     is_admin_user = can_manage_board()
-
-
-
-
-
-
-
     
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
@@ -447,16 +528,6 @@ def thread_view(thread_id):
     return response
 
 
-
-
-
-
-
-if request.method == 'POST':
-        content = request.form.get('content') or ""
-        
-        if len(content) > 500:
-            return redirect(url_for('thread_view', thread_id=thread_id))
         
         author_input = request.form.get('author') or "名無しさん"
 
