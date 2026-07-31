@@ -1,5 +1,9 @@
-from flask import Flask, render_template, request, redirect, url_for, make_response
-from datetime import datetime
+from flask 
+import Flask, render_template, request, redirect, url_for, make_response, session
+
+from datetime 
+import datetime
+
 import json
 import html
 import os
@@ -7,6 +11,11 @@ import hashlib
 import uuid
 import time
 import re
+
+
+# その他の既存インポート...
+
+
 
 
 
@@ -19,7 +28,9 @@ from supabase import create_client, Client
 
 import boto3  
 from werkzeug.utils import secure_filename
+
 app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
 
 # スリープ防止
 @app.before_request
@@ -100,9 +111,51 @@ def is_banned_ip(ip):
 
 
 
-def check_is_admin_cookie(request):
-    admin_cookie_flag = request.cookies.get('is_bbs_admin')
-    return admin_cookie_flag == "true"
+def get_staff_role():
+    """現在のログイン中の役職を取得"""
+    return session.get('staff_role')
+
+def can_manage_board():
+    """削除・BAN・一言更新ができるのは admin と sub_admin のみ"""
+    return session.get('staff_role') in ['admin', 'sub_admin']
+
+# --- 運営用ログイン・ログアウトルート ---
+@app.route('/login_secret_8823', methods=['GET', 'POST'])
+def staff_login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        try:
+            # Supabaseの 'staff_users' テーブルから照合
+            res = supabase.table('staff_users').select('*').eq('username', username).execute()
+            if res.data:
+                user = res.data[0]
+                # 本来はハッシュ化推奨ですが、一旦は分かりやすく平文パスワードで比較します
+                if user['password'] == password: 
+                    session['staff_id'] = user['id']
+                    session['staff_role'] = user['role']         # admin, sub_admin, pr など
+                    session['staff_name'] = user['display_name'] # 掲示板に表示する名前
+                    return redirect(url_for('index'))
+        except Exception as e:
+            print(f"Login error: {e}")
+            
+        return "ログイン失敗", 401
+        
+    return '''
+        <form method="post">
+            ID: <input type="text" name="username"><br>
+            PW: <input type="password" name="password"><br>
+            <input type="submit" value="Enter">
+        </form>
+    '''
+
+@app.route('/staff_logout')
+def staff_logout():
+    session.clear()
+    return redirect(url_for('index'))
+
+
 
 
 # NGワード
