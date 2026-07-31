@@ -309,8 +309,13 @@ def index():
         user_token = str(uuid.uuid4())
         is_new_user = True
 
+
+
+
+    
     active_count = update_and_get_user_counts(user_token, "lobby")
-    is_admin_user = check_is_admin_cookie(request)
+   
+    is_admin_user = can_manage_board()
 
     response = make_response(render_template(
         'index.html', 
@@ -358,7 +363,7 @@ def create_thread():
     if len(title) > 30:
         return {"error": "スレッド名は30文字以内で入力してください"}, 400
     
-    is_admin = check_is_admin_cookie(request)
+    is_admin = can_manage_board()
     now = time.time()
     
     if not is_admin:
@@ -417,7 +422,7 @@ def thread_view(thread_id):
         print(f"スレッド読み込みエラー: {e}")
         return "データベースエラーが発生しました", 500
 
-    is_admin_user = check_is_admin_cookie(request)
+    is_admin_user = can_manage_board()
 
 
 
