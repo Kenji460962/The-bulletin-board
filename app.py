@@ -425,121 +425,6 @@ def thread_view(thread_id):
 
 
     
-
-    if request.method == 'POST':
-        content = request.form.get('content') or ""
-        
-        if len(content) > 500:
-            return redirect(url_for('thread_view', thread_id=thread_id))
-        
-        author_input = request.form.get('author') or "名無しさん"
-
-        # 🟢 1. トリップ（#）を崩さずに、名前部分だけを20文字制限にする
-        if "#" in author_input:
-            name_part, pass_part = author_input.split("#", 1)
-            name_part = name_part[:20]  # 名前部分を先頭20文字までにカット
-            author_input = f"{name_part}#{pass_part}"
-        else:
-            author_input = author_input[:20]  # 通常の名前も20文字までにカット
-
-        # 🟢 2. 偽「あぼーん」の投稿を防止する
-        if author_input.strip() == "あぼーん":
-            author_input = "名無しさん"
-
-        content = filter_ng_words(content)
-        author_input = filter_ng_words(author_input)
-        
-        is_admin = False
-        if "#" in author_input:
-            name_part, pass_part = author_input.split("#", 1)
-            if pass_part == ADMIN_PASSWORD:
-                author_input = (html.escape(name_part) or "管理人") + " ★"
-                is_admin = True
-                user_id = "????"
-            else:
-                author_input = html.escape(name_part) or "名無しさん"
-                user_id = get_daily_user_id(client_ip)
-        else:
-            author_input = html.escape(author_input)
-            user_id = get_daily_user_id(client_ip)
-
-
-
-
-
-
-
-        content = html.escape(content)
-
-        # 「&gt;&gt;数字」を「>>数字」に復元（アンカーハック防止対策）
-        content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
-
-        now = time.time()
-        if not is_admin:
-            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
-                return redirect(url_for('thread_view', thread_id=thread_id))
-            
-            LAST_REPLY_TIMES[client_ip] = now
-
-
-
-
-
-
-
-
-
-        image_url = ""
-        if 'image' in request.files:
-            file = request.files['image']
-            if file and file.filename != '':
-                try:
-                    # ファイル名が被らないようにユニークな名前（UUID + 拡張子）にする
-                    orig_filename = secure_filename(file.filename)
-                    ext = os.path.splitext(orig_filename)[1]
-                    unique_filename = f"{uuid.uuid4()}{ext}"
-
-                    # R2へアップロード
-                    s3_client.upload_fileobj(
-                        file,
-                        R2_BUCKET_NAME,
-                        unique_filename,
-                        ExtraArgs={
-                            'ContentType': file.content_type
-                        }
-                    )
-                    
-                    # 公開URLを組み立てる
-                    image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
-                except Exception as e:
-                    print(f"R2 Upload Error: {e}")
-
-
-
-
-
-        
-
-        
-
-        if content.strip() or image_url:
-            try:
-                supabase.table('replies').insert({
-                    'thread_id': thread_id,
-                    'author': author_input,
-                    'content': content,
-                    'user_id': user_id,
-                    'is_admin': is_admin,
-                    'image_url': image_url,
-                    'ip_address': client_ip
-                }).execute()
-            except Exception as e:
-                print(f"レス保存エラー: {e}")
-
-        response = redirect(url_for('thread_view', thread_id=thread_id))
-        if is_admin:
-            response.set_cookie('is_bbs_admin', 'true', max_age=60*60*24)
-        return response
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
     if not user_token:
@@ -560,6 +445,98 @@ def thread_view(thread_id):
     if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
+
+
+
+
+
+
+
+if request.method == 'POST':
+        content = request.form.get('content') or ""
+        
+        if len(content) > 500:
+            return redirect(url_for('thread_view', thread_id=thread_id))
+        
+        author_input = request.form.get('author') or "名無しさん"
+
+        # 🟢 トリップ・文字数・偽あぼーん防止
+        if "#" in author_input:
+            name_part, pass_part = author_input.split("#", 1)
+            author_input = f"{name_part[:20]}#{pass_part}"
+        else:
+            author_input = author_input[:20]
+
+        if author_input.strip() == "あぼーん":
+            author_input = "名無しさん"
+
+        content = filter_ng_words(content)
+        author_input = filter_ng_words(author_input)
+        
+        # 🟢 運営スタッフの判定ロジック
+        staff_role = get_staff_role()
+        
+        if staff_role:
+            # 運営スタッフがログインしている場合、強制的に名前と役職をセット
+            author_input = session.get('staff_name')
+            is_admin = can_manage_board() # ★マーク用（adminとsub_adminのみTrue）
+            user_id = "STAFF"
+            role_to_save = staff_role
+        else:
+            # 一般ユーザー（またはトリップ）の場合
+            is_admin = False
+            role_to_save = None
+            if "#" in author_input:
+                name_part, _ = author_input.split("#", 1)
+                author_input = html.escape(name_part) or "名無しさん"
+            else:
+                author_input = html.escape(author_input)
+            user_id = get_daily_user_id(client_ip)
+
+        content = html.escape(content)
+        content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
+
+        now = time.time()
+        if not staff_role: # スタッフ以外は連投制限
+            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
+                return redirect(url_for('thread_view', thread_id=thread_id))
+            LAST_REPLY_TIMES[client_ip] = now
+
+        # 画像アップロード処理
+        image_url = ""
+        if 'image' in request.files:
+            file = request.files['image']
+            if file and file.filename != '':
+                try:
+                    orig_filename = secure_filename(file.filename)
+                    ext = os.path.splitext(orig_filename)[1]
+                    unique_filename = f"{uuid.uuid4()}{ext}"
+                    s3_client.upload_fileobj(file, R2_BUCKET_NAME, unique_filename, ExtraArgs={'ContentType': file.content_type})
+                    image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
+                except Exception as e:
+                    print(f"R2 Upload Error: {e}")
+
+        if content.strip() or image_url:
+            try:
+                supabase.table('replies').insert({
+                    'thread_id': thread_id,
+                    'author': author_input,
+                    'content': content,
+                    'user_id': user_id,
+                    'is_admin': is_admin,
+                    'role': role_to_save, # 新規追加：役職を保存
+                    'image_url': image_url,
+                    'ip_address': client_ip
+                }).execute()
+            except Exception as e:
+                print(f"レス保存エラー: {e}")
+
+        return redirect(url_for('thread_view', thread_id=thread_id))
+
+
+
+
+
 
 
 
