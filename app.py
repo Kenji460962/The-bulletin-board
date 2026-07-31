@@ -696,7 +696,9 @@ def thread_updates(thread_id):
         print(f"自動更新APIエラー: {e}")
         new_replies = []
         
-    is_admin_user = check_is_admin_cookie(request)
+    
+
+    is_admin_user = can_manage_board()
     return {
         "replies": new_replies, 
         "is_admin_user": is_admin_user, 
