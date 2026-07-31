@@ -540,11 +540,12 @@ if request.method == 'POST':
 
 
 
-@app.route('/delete_reply/<int:reply_id>', methods=['POST'])
-def delete_reply(reply_id):
-    if not can_manage_board(): # ← admin と sub_admin 以外はここで弾かれる
-        return "管理者権限が必要です", 403
 
+
+@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
+def delete_thread(thread_id):
+    if not can_manage_board():
+        return "権限がありません", 403
     try:
         supabase.table('threads').delete().eq('id', thread_id).execute()
     except Exception as e:
@@ -554,7 +555,7 @@ def delete_reply(reply_id):
 
 @app.route('/thread/<int:thread_id>/delete/<int:reply_id>', methods=['POST'])
 def delete_reply(thread_id, reply_id):
-    if not check_is_admin_cookie(request):
+    if not can_manage_board():
         return "権限がありません", 403
     try:
         supabase.table('replies').update({
@@ -569,24 +570,16 @@ def delete_reply(thread_id, reply_id):
     return redirect(url_for('thread_view', thread_id=thread_id))
 
 
-
-
-
-
 @app.route('/thread/<int:thread_id>/ban/<int:reply_id>', methods=['POST'])
 def ban_user(thread_id, reply_id):
-    if not check_is_admin_cookie(request):
+    if not can_manage_board():
         return "権限がありません", 403
-    
     try:
         reply_res = supabase.table('replies').select('ip_address').eq('id', reply_id).execute()
-        
-        # 1. IPがあればBANリストに登録する
         if reply_res.data and reply_res.data[0].get('ip_address'):
             b_ip = reply_res.data[0]['ip_address']
             supabase.table('banned_ips').insert({'ip_address': b_ip}).execute()
             
-        # 2. IPが無くても、対象のレスは必ず「あぼーん」化する
         supabase.table('replies').update({
             'author': 'あぼーん',
             'content': 'この書き込みは管理員によってBANされました。',
@@ -594,28 +587,21 @@ def ban_user(thread_id, reply_id):
             'is_admin': False,
             'image_url': ''
         }).eq('id', reply_id).execute()
-        
     except Exception as e:
-        # 🚨 何かエラーが起きたら画面に直接原因を表示する！
         return f"【BAN失敗】エラーの原因: {e}", 500
-            
     return redirect(url_for('thread_view', thread_id=thread_id))
 
 
 @app.route('/thread/<int:thread_id>/ban_owner', methods=['POST'])
 def ban_thread_owner(thread_id):
-    if not check_is_admin_cookie(request):
+    if not can_manage_board():
         return "権限がありません", 403
-    
     try:
         thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
-        
-        # 1. IPがあればBANリストに登録する
         if thread_res.data and thread_res.data[0].get('ip_address'):
             owner_ip = thread_res.data[0]['ip_address']
             supabase.table('banned_ips').insert({'ip_address': owner_ip}).execute()
                 
-        # 2. スレッド自体は必ず「あぼーん」化する
         supabase.table('threads').update({'title': '【このスレッドは管理員によってBANされました】'}).eq('id', thread_id).execute()
         supabase.table('replies').delete().eq('thread_id', thread_id).execute()
         supabase.table('replies').insert({
@@ -626,12 +612,10 @@ def ban_thread_owner(thread_id):
             'is_admin': False,
             'image_url': ''
         }).execute()
-        
     except Exception as e:
-        # 🚨 何かエラーが起きたら画面に直接原因を表示する！
         return f"【スレ主BAN失敗】エラーの原因: {e}", 500
-        
     return redirect(url_for('index'))
+
 
 
 
