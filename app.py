@@ -566,10 +566,12 @@ def thread_view(thread_id):
     return response
 
 
-@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
-def delete_thread(thread_id):
-    if not check_is_admin_cookie(request):
-        return "権限がありません", 403
+
+@app.route('/delete_reply/<int:reply_id>', methods=['POST'])
+def delete_reply(reply_id):
+    if not can_manage_board(): # ← admin と sub_admin 以外はここで弾かれる
+        return "管理者権限が必要です", 403
+
     try:
         supabase.table('threads').delete().eq('id', thread_id).execute()
     except Exception as e:
