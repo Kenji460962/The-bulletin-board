@@ -90,10 +90,14 @@
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
-        /* 役職ごとの色設定 */
+        /* 役職・一般ユーザーごとの色設定を完全網羅 */
+        .post-name { color: var(--text-main) !important; font-weight: 500; }
         .role-admin { color: #f87171 !important; font-weight: 700; }
         .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
         .role-moderator { color: #34d399 !important; font-weight: 700; }
+        .role-pr { color: #4ade80 !important; font-weight: 700; }
+        .role-proposal { color: #fbbf24 !important; font-weight: 700; }
+        .role-log { color: #38bdf8 !important; font-weight: 700; }
 
         input[type="text"], textarea {
             background: var(--bg-color);
@@ -149,13 +153,19 @@
             <div class="post-meta">
                 <span class="post-num">#{{ loop.index }}</span>
                 
-                {% set role_cls = '' %}
+                {% set role_cls = 'post-name' %}
                 {% if r.role == 'admin' or r.is_admin %}
                     {% set role_cls = 'role-admin' %}
                 {% elif r.role == 'sub_admin' %}
                     {% set role_cls = 'role-sub-admin' %}
                 {% elif r.role == 'moderator' %}
                     {% set role_cls = 'role-moderator' %}
+                {% elif r.role == 'pr' %}
+                    {% set role_cls = 'role-pr' %}
+                {% elif r.role == 'proposal' %}
+                    {% set role_cls = 'role-proposal' %}
+                {% elif r.role == 'log' %}
+                    {% set role_cls = 'role-log' %}
                 {% endif %}
 
                 <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
@@ -266,9 +276,9 @@
                 contentText = contentText.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
 
                 let adminStar = '';
-                let roleClass = '';
+                let roleClass = 'post-name';
                 
-                // 【修正】JavaScript側でも全役職（admin, sub_admin, moderator）のクラスと★を正しく判別する
+                // 【JavaScript側でもすべての役職と一般を正確に判定】
                 if (reply.role === 'admin' || reply.is_admin) {
                     roleClass = 'role-admin';
                     adminStar = '★';
@@ -278,6 +288,12 @@
                 } else if (reply.role === 'moderator') {
                     roleClass = 'role-moderator';
                     adminStar = '★';
+                } else if (reply.role === 'pr') {
+                    roleClass = 'role-pr';
+                } else if (reply.role === 'proposal') {
+                    roleClass = 'role-proposal';
+                } else if (reply.role === 'log') {
+                    roleClass = 'role-log';
                 }
 
                 let imageHtml = '';
@@ -371,4 +387,3 @@
     </script>
 </body>
 </html>
-
