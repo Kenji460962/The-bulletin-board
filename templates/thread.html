@@ -2,16 +2,9 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    
     <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}" type="image/png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125"
-     crossorigin="anonymous"></script>
-    
     <title>{{ thread.title }}</title>
-
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         html, body { 
@@ -36,235 +29,95 @@
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
-            z-index: 1000 !important; 
+            z-index: 10 !important;
         }
-        .header-area h1 { margin: 0 !important; font-size: 20px !important; line-height: 1.2 !important; color: #000; }
-        a:link { color: #0000ff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+
+        .posts-container { 
+            position: absolute !important;
+            top: 60px !important;
+            bottom: 120px !important;
+            left: 0 !important;
+            width: 100% !important;
+            overflow-y: scroll !important; 
+            padding: 10px 20px !important; 
+            box-sizing: border-box !important; 
+            background-color: #ffffff; 
+        }
+
+        .footer-area { 
+            position: absolute !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 120px !important; 
+            background-color: #efefef; 
+            border-top: 1px solid #ccc; 
+            padding: 8px 20px !important; 
+            box-sizing: border-box !important; 
+            z-index: 10 !important;
+        }
+
+        .post-item { margin-bottom: 12px; font-size: 15px; }
+        .post-meta { color: #000; font-size: 14px; margin-bottom: 3px; }
+        .post-num { font-weight: bold; color: #000; }
+        .post-content { margin: 3px 0 5px 0; word-break: break-all; white-space: pre-wrap; }
+        .post-image { max-width: 250px; max-height: 250px; display: block; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc; }
         
-        form { 
-            background-color: rgba(40, 44, 52, 0.75);
-            backdrop-filter: blur(5px);
-            -webkit-backdrop-filter: blur(5px);
-            border: 1px solid rgba(255, 255, 255, 0.15); 
-            border-radius: 8px;
-            padding: 10px; 
-            width: 100%;
-            max-width: 600px;
-            margin: 0 auto;
-            box-sizing: border-box;
-            color: #ffffff;
-            font-size: 13px;
-        }
-        .form-row { 
-            display: flex;
-            gap: 10px; 
-            align-items: center; 
-            margin-bottom: 5px; 
-        }
-        form textarea { 
-            flex: 1;
-            height: 40px; 
-            resize: none; 
-            box-sizing: border-box; 
-            background: rgba(255,255,255,0.9); 
-            border: none; 
-            border-radius: 4px; 
-            padding: 5px;
-        }
-        form input[type="text"] {
-            width: 120px;
-            box-sizing: border-box; 
-            background: rgba(255,255,255,0.9); 
-            border: none; 
-            border-radius: 4px; 
-            padding: 3px;
-        }
-        #submit-btn { 
-            background-color: #00ffff;
-            color: #000; 
-            border: none; 
-            border-radius: 4px; 
-            padding: 8px 15px; 
-            font-weight: bold; 
-            cursor: pointer; 
-            height: 40px;
-        }
-        #submit-btn:hover { background-color: #00cccc; }
-
-        .post-meta { font-weight: bold; color: #000; }
-        .post-num { color: green; }
-        .post-name { color: blue; } 
-        .admin-name { color: red; font-weight: bold; }
-        
-        .role-admin { color: #ff4444; font-weight: bold; }
-        .role-pr { color: #00aa00; font-weight: bold; }
-        .role-proposal { color: #ff9900; font-weight: bold; }
-        .role-log { color: #0099cc; font-weight: bold; }
-
-        .post-id { 
-            color: gray;
-            font-size: 13px; 
-            font-weight: normal; 
-        }
-        .post-content { 
-            color: #000;
-            margin-left: 2em;
-            margin-top: 5px;
-            white-space: pre-wrap; 
-        }
-        .anchor-link { 
-            color: #ff00ff !important;
-            font-weight: bold; 
-        }
-        .uploaded-image { 
-            display: block;
-            max-width: 100%; 
-            max-height: 200px;
-            margin-top: 5px;
-            margin-bottom: 5px;
-            border: 1px solid #ccc;
-        }
-        .delete-btn {
-            background-color: #ffcccc;
-            color: #cc0000;
-            border: 1px solid #cc0000; 
-            border-radius: 3px;
-            font-size: 11px;
-            padding: 1px 5px; 
-            cursor: pointer;
-            margin-left: 10px;
-        }
-        .delete-btn:hover { background-color: #ff9999; }
-        .delete-form { 
-            display: inline;
-            background: none; 
-            border: none; 
-            padding: 0; 
-            margin: 0; 
-            width: auto;
-        }
-
-        /* PC用の設定 */
-        @media (min-width: 769px) {
-            #post-container { 
-                position: absolute !important;
-                top: 60px !important; 
-                bottom: 115px !important; 
-                left: 0 !important;
-                width: calc(100% - 300px) !important; 
-                height: auto !important; 
-                overflow-y: auto !important;
-                padding: 10px 20px; 
-                box-sizing: border-box !important; 
-                -webkit-overflow-scrolling: touch; 
-            }
-            .footer-area { position: absolute !important; bottom: 0 !important; left: 0 !important; width: calc(100% - 300px) !important; height: 115px !important; background-color: #fff; border-top: 1px solid #ccc; padding: 10px 20px; box-sizing: border-box !important; z-index: 100 !important; }
-            .ad-area { position: absolute !important; top: 0 !important; right: 0 !important; width: 300px !important; height: 100% !important; background-color: #efefef; display: flex !important; justify-content: center !important; align-items: center !important; border-left: 1px solid #ccc; box-sizing: border-box !important; z-index: 100 !important; }
-        }
-
-        /* スマホ用の設定 */
-        @media (max-width: 768px) {
-            html, body { 
-                height: auto !important;
-                overflow-y: auto !important; 
-            }
-            .header-area {
-                position: fixed !important;
-                width: 100% !important;
-            }
-            #post-container { 
-                position: static !important;
-                width: 100% !important;
-                height: auto !important; 
-                margin-top: 60px !important;
-                padding: 10px 20px !important;
-                box-sizing: border-box !important; 
-            }
-            .footer-area { 
-                position: static !important;
-                width: 100% !important;
-                height: auto !important;
-                background-color: #fff;
-                border-top: 1px solid #ccc; 
-                border-bottom: 1px solid #ccc; 
-                padding: 15px 20px !important; 
-                box-sizing: border-box !important;
-            }
-            .ad-area { 
-                position: static !important;
-                width: 100% !important;
-                height: 60px !important;
-                margin-top: 15px !important;
-                margin-bottom: 20px !important;
-                background-color: transparent !important;
-                display: flex !important; 
-                justify-content: center !important; 
-                align-items: center !important; 
-                box-sizing: border-box !important;
-            }
-        }
+        .admin-star { color: red; font-weight: bold; }
+        .role-admin { color: red; font-weight: bold; }
+        .role-sub-admin { color: blue; font-weight: bold; }
+        .role-moderator { color: green; font-weight: bold; }
     </style>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    
+
     <div class="header-area">
-        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+        <div style="font-size: 16px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            {{ thread.title }}
+        </div>
+        <div style="font-size: 12px; color: #555; display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
             <div>
-                <a href="{{ url_for('index') }}">■板一覧に戻る</a>
-                <h1 style="display: inline-block; margin-right: 15px !important;">{{ thread.title }}</h1>
-                
-                {% if is_admin_user and thread.ip_address %}
-                <span style="background: #fff; color: #000; padding: 2px 6px; border: 1px solid #ccc; font-size: 12px; font-weight: bold; border-radius: 3px;">
-                    スレ主IP: {{ thread.ip_address }}
-                </span>
-                <form class="delete-form" action="/thread/{{ thread.id }}/ban_owner" method="POST" onsubmit="return confirm('本当にこのスレ主を完全にBANし、スレッドを解体しますか？');" style="display: inline; margin-left: 5px;">
-                    <button type="submit" class="delete-btn" style="background-color: #d9534f; color: #fff; border-color: #d43f3a; padding: 2px 8px;">スレ主をBAN</button>
-                </form>
-                {% endif %}
+                <a href="{{ back_to_board }}" style="color: #0000ee; text-decoration: underline;">掲示板に戻る</a>
+                <span style="margin-left: 10px;">現在のアクセス数: <strong id="active-count" style="color: #d32f2f;">{{ active_count }}</strong>人</span>
             </div>
-            
-            <div style="font-size: 13px; color: #28a745; font-weight: bold; background-color: rgba(40, 167, 69, 0.1); padding: 6px 12px; border-radius: 4px; border: 1px solid rgba(40, 167, 69, 0.3); white-space: nowrap; margin-right: 10px;">
-                ● <span style="color: #333; font-weight: normal;">ここを閲覧中:</span> <strong id="realtime-active-count">{{ active_count }}</strong>人
-            </div>
+            {% if is_admin_user %}
+            <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
+                <button type="submit" style="background-color: #ff4d4d; color: white; border: none; padding: 2px 6px; font-size: 11px; cursor: pointer; border-radius: 3px;">スレッド削除</button>
+            </form>
+            {% endif %}
         </div>
     </div>
 
-    <div id="post-container">
-        {% for reply in thread.replies %}
-        <div class="post-item" id="p{{ reply.id }}" data-id="{{ reply.id }}">
-            <span class="post-meta">
+    <div class="posts-container" id="postsContainer">
+        {% for r in thread.replies %}
+        <div class="post-item" data-reply-id="{{ r.id }}">
+            <div class="post-meta">
                 <span class="post-num">{{ loop.index }}</span> ：
-                
-                <span class="
-                    {% if reply.role in ['admin', 'sub_admin'] %} role-admin
-                    {% elif reply.role == 'pr' %} role-pr
-                    {% elif reply.role == 'proposal' %} role-proposal
-                    {% elif reply.role == 'log' %} role-log
-                    {% else %} post-name {% endif %}
-                ">
-                    {{ reply.author }}
-                    {% if reply.role in ['admin', 'sub_admin'] %} ★{% endif %}
-                </span> ：
-                
-                {{ reply.date }}
-                <span class="post-id"> ID:{{ reply.user_id }}</span>
-                
-                {% if is_admin_user and reply.author != "Deleted" and reply.author != "あぼーん" %}
-                <form class="delete-form" action="/thread/{{ thread.id }}/delete/{{ reply.id }}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
-                    <button type="submit" class="delete-btn">削除</button>
+                {% set role_cls = '' %}
+                {% if r.role == 'admin' %}{% set role_cls = 'role-admin' %}
+                {% elif r.role == 'sub_admin' %}{% set role_cls = 'role-sub-admin' %}
+                {% elif r.role == 'moderator' %}{% set role_cls = 'role-moderator' %}
+                {% elif r.is_admin %}{% set role_cls = 'role-admin' %}
+                {% endif %}
+                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span> ：
+                {{ r.date }}
+                <span class="post-id"> ID:{{ r.user_id }}</span>
+                {% if is_admin_user %}
+                <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" style="display:inline; margin-left: 5px;" onsubmit="return confirm('削除しますか？');">
+                    <button type="submit" style="font-size: 10px; background: #ddd; border: 1px solid #999; cursor: pointer;">削除</button>
                 </form>
-                <form class="delete-form" action="/thread/{{ thread.id }}/ban/{{ reply.id }}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
-                    <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
+                <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" style="display:inline; margin-left: 2px;" onsubmit="return confirm('このユーザーをBANしますか？');">
+                    <button type="submit" style="font-size: 10px; background: #f87171; color: white; border: none; cursor: pointer;">BAN</button>
                 </form>
                 {% endif %}
-            </span>
-            <p class="post-content">{{ reply.content|safe }}</p>
-            
-            {% if reply.image_url %}
-            <div style="margin-left: 2em;">
-                <img src="{{ reply.image_url }}" class="uploaded-image" alt="添付画像">
             </div>
+            <div class="post-content">{{ r.content | safe }}</div>
+            {% if r.image_url %}
+            <a href="{{ r.image_url }}" target="_blank">
+                <img src="{{ r.image_url }}" class="post-image" loading="lazy">
+            </a>
             {% endif %}
             <hr style="border:0; border-top:1px solid #ccc;">
         </div>
@@ -272,51 +125,47 @@
     </div>
 
     <div class="footer-area">
-        <form id="bbs-form" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data">
-            <div class="form-row">
-                名前：<input type="text" name="author" placeholder="名無しさん">
-                画像：<input type="file" name="image" accept="image/*" style="color: #000; font-size: 11px; max-width: 150px;">
+        <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
+                <label style="font-size: 13px;">名前: <input type="text" name="author" style="width: 130px; font-size: 13px;" value="名無しさん"></label>
+                <label style="font-size: 13px;">画像: <input type="file" name="image" accept="image/*" style="font-size: 11px; width: 160px;"></label>
+                <button type="submit" id="submitBtn" style="font-size: 13px; padding: 2px 12px; background: #e0e0e0; border: 1px solid #777; cursor: pointer; font-weight: bold;">書き込む</button>
             </div>
-            <div class="form-row">
-                <textarea name="content" placeholder="ここに書き込み内容を入力してください（500文字以内）" maxlength="500" required></textarea>
-                <button type="submit" id="submit-btn">書き込む</button>
+            <div>
+                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 13px; resize: none;" placeholder="内容を入力"></textarea>
             </div>
         </form>
     </div>
 
-    <div class="ad-area">
-        <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
-    </div>
-
     <script>
         const threadId = {{ thread.id }};
-        let isAdminView = {{ 'true' if is_admin_user else 'false' }};
+        const container = document.getElementById('postsContainer');
 
-        function processPostContent(element) {
-            let text = element.innerHTML;
-            const anchorRegex = /&gt;&gt;(\d+)|>>(\d+)/g;
-            text = text.replace(anchorRegex, (match, p1, p2) => {
-                const num = p1 || p2;
-                return `<a href="#p${num}" class="anchor-link">>>${num}</a>`;
-            });
-            element.innerHTML = text;
-        }
-
-        document.querySelectorAll('.post-content').forEach(processPostContent);
-
-        // 画面のスクロールを一番下に落とす処理
         function forceScrollBottom() {
-            const container = document.getElementById('post-container');
-            if (container) {
-                container.scrollTop = container.scrollHeight;
-            }
-            window.scrollTo({
-                top: document.documentElement.scrollHeight,
-                behavior: 'auto'
-            });
+            container.scrollTop = container.scrollHeight;
         }
 
-        // ページ読み込み完了時
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                let date = new Date();
+                date.setTime(date.getTime() + (days*24*60*60*1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/";
+        }
+
+        function getCookie(name) {
+            let nameEQ = name + "=";
+            let ca = document.cookie.split(';');
+            for(let i=0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0)==' ') c = c.substring(1,c.length);
+                if (c.indexOf(nameEQ) == 0) return decodeURIComponent(c.substring(nameEQ.length,c.length));
+            }
+            return null;
+        }
+
         document.addEventListener("DOMContentLoaded", () => {
             const savedAuthor = getCookie('bbs_saved_author');
             const authorInput = document.querySelector('input[name="author"]');
@@ -328,143 +177,102 @@
 
         window.addEventListener('load', () => {
             forceScrollBottom();
-            setTimeout(forceScrollBottom, 50);
+            setTimeout(forceScrollBottom, 100);
+            setTimeout(forceScrollBottom, 300);
+            setTimeout(forceScrollBottom, 600);
         });
 
-        // 名前をクッキーに保存
-        const saveNameForm = document.getElementById('bbs-form');
-        if (saveNameForm) {
-            saveNameForm.addEventListener('submit', () => {
-                const authorInput = document.querySelector('input[name="author"]');
+        const supabaseUrl = 'https://mpzjidhuovorzvjhukmy.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo';
+        const client = supabase.createClient(supabaseUrl, supabaseKey);
+
+        client.channel('public:replies_' + threadId)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'replies', filter: `thread_id=eq.${threadId}` }, payload => {
+                const reply = payload.new;
+                
+                if (document.querySelector(`.post-item[data-reply-id="${reply.id}"]`)) {
+                    return;
+                }
+
+                let formattedDate = reply.date || '';
+                if (formattedDate) {
+                    let dt = new Date(formattedDate);
+                    if (!isNaN(dt)) {
+                        dt.setHours(dt.getHours() + 9);
+                        formattedDate = dt.toISOString().replace('T', ' ').substring(0, 19);
+                    }
+                }
+
+                let contentText = reply.content || '';
+                contentText = contentText.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: #38bdf8; text-decoration: underline;">$1</a>');
+
+                let adminStar = '';
+                let roleClass = '';
+                if (reply.role === 'admin' || reply.is_admin) {
+                    roleClass = 'role-admin';
+                    adminStar = '★';
+                } else if (reply.role === 'sub_admin') {
+                    roleClass = 'role-sub-admin';
+                    adminStar = '★';
+                } else if (reply.role === 'moderator') {
+                    roleClass = 'role-moderator';
+                    adminStar = '★';
+                }
+
+                let imageHtml = '';
+                if (reply.image_url) {
+                    imageHtml = `<a href="${reply.image_url}" target="_blank"><img src="${reply.image_url}" class="post-image" loading="lazy"></a>`;
+                }
+
+                const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
+                let deleteButtonHtml = '';
+                if (isAdminUser) {
+                    deleteButtonHtml = `
+                        <form action="/thread/${threadId}/delete/${reply.id}" method="POST" style="display:inline; margin-left: 5px;" onsubmit="return confirm('削除しますか？');">
+                            <button type="submit" style="font-size: 10px; background: #ddd; border: 1px solid #999; cursor: pointer;">削除</button>
+                        </form>
+                        <form action="/thread/${threadId}/ban/${reply.id}" method="POST" style="display:inline; margin-left: 2px;" onsubmit="return confirm('このユーザーをBANしますか？');">
+                            <button type="submit" style="font-size: 10px; background: #f87171; color: white; border: none; cursor: pointer;">BAN</button>
+                        </form>
+                    `;
+                }
+
+                // スレッドごとの綺麗な通し番号を動的に生成
+                const currentPostCount = container.querySelectorAll('.post-item').length + 1;
+
+                const newDiv = document.createElement('div');
+                newDiv.className = 'post-item';
+                newDiv.setAttribute('data-reply-id', reply.id);
+                newDiv.innerHTML = `
+                    <div class="post-meta">
+                        <span class="post-num">${currentPostCount}</span> ：
+                        <span class="${roleClass}">${reply.author}${adminStar}</span> ：
+                        ${formattedDate}
+                        <span class="post-id"> ID:${reply.user_id}</span>
+                        ${deleteButtonHtml}
+                    </div>
+                    <div class="post-content">${contentText}</div>
+                    ${imageHtml}
+                    <hr style="border:0; border-top:1px solid #ccc;">
+                `;
+
+                container.appendChild(newDiv);
+                forceScrollBottom();
+            })
+            .subscribe();
+
+        const bbsForm = document.getElementById('bbsForm');
+        if (bbsForm) {
+            bbsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const authorInput = bbsForm.querySelector('input[name="author"]');
                 if (authorInput) {
                     setCookie('bbs_saved_author', authorInput.value, 365);
                 }
-            });
-        }
-
-        function setCookie(name, value, days) {
-            const date = new Date();
-            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-            document.cookie = name + "=" + encodeURIComponent(value) + ";expires=" + date.toUTCString() + ";path=/;SameSite=Strict";
-        }
-        function getCookie(name) {
-            const value = "; " + document.cookie;
-            const parts = value.split("; " + name + "=");
-            if (parts.length === 2) return decodeURIComponent(parts.pop().split(";").shift());
-            return "";
-        }
-
-        // ⚡ Supabase Realtime 接続処理 (即時反映)
-        const SUPABASE_URL = "https://mpzjidhuovorzvjhukmy.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo"; 
-
-        if (typeof supabase !== 'undefined' && SUPABASE_ANON_KEY.startsWith("ey")) {
-            const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-            client
-                .channel(`room-${threadId}`)
-                .on(
-                    'postgres_changes',
-                    {
-                        event: 'INSERT',
-                        schema: 'public',
-                        table: 'replies',
-                        filter: `thread_id=eq.${threadId}`
-                    },
-                    (payload) => {
-                        const reply = payload.new;
-                        const container = document.getElementById('post-container');
-                        
-                        // 二重追加を防止
-                        if (document.getElementById(`p${reply.id}`)) return;
-
-                        const newDiv = document.createElement('div');
-                        newDiv.className = 'post-item';
-                        newDiv.id = `p${reply.id}`;
-                        newDiv.setAttribute('data-id', reply.id);
-                        
-                        let deleteButtonHtml = '';
-                        if (isAdminView && reply.author !== 'Deleted' && reply.author !== 'あぼーん') {
-                            deleteButtonHtml = `
-                                <form class="delete-form" action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
-                                    <button type="submit" class="delete-btn">削除</button>
-                                </form>
-                                <form class="delete-form" action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
-                                    <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
-                                </form>
-                            `;
-                        }
-                        
-                        let imageHtml = '';
-                        if (reply.image_url) {
-                            imageHtml = `
-                                <div style="margin-left: 2em;">
-                                    <img src="${reply.image_url}" class="uploaded-image" alt="添付画像">
-                                </div>
-                            `;
-                        }
-                        
-                        let roleClass = 'post-name';
-                        let adminStar = '';
-                        
-                        if (reply.role === 'admin' || reply.role === 'sub_admin') {
-                            roleClass = 'role-admin';
-                            adminStar = ' ★';
-                        } else if (reply.role === 'pr') {
-                            roleClass = 'role-pr';
-                        } else if (reply.role === 'proposal') {
-                            roleClass = 'role-proposal';
-                        } else if (reply.role === 'log') {
-                            roleClass = 'role-log';
-                        }
-
-                        // 日付フォーマットの調整
-                        let formattedDate = reply.date ? reply.date.replace('T', ' ').substring(0, 19) : '';
-                        // 画面に現在表示されているレスの枚数を数えて、次の番号（1から始まる連番）にする
-                        const currentPostCount = container.querySelectorAll('.post-item').length + 1;
-
-                        newDiv.innerHTML = `
-                            <span class="post-meta">
-                                <span class="post-num">${currentPostCount}</span> ：
-                                <span class="${roleClass}">${reply.author}${adminStar}</span> ：
-                                ${formattedDate}
-                                <span class="post-id"> ID:${reply.user_id}</span>
-                                ${deleteButtonHtml}
-                            </span>
-                            <p class="post-content">${reply.content}</p>
-                            ${imageHtml}
-                            <hr style="border:0; border-top:1px solid #ccc;">
-                        `;
-
-
-                        
-
-
-
-                            
-                            <p class="post-content">${reply.content}</p>
-                            ${imageHtml}
-                            <hr style="border:0; border-top:1px solid #ccc;">
-                        `;
-                        
-                        container.appendChild(newDiv);
-                        processPostContent(newDiv.querySelector('.post-content'));
-                        
-                        // 投稿されたら一番下へ自動スクロール
-                        forceScrollBottom();
-                    }
-                )
-                .subscribe();
-        }
-
-        // 🚀 フォーム送信時にリロードさせず非同期で送信する処理
-        const bbsForm = document.getElementById('bbs-form'); 
-        if (bbsForm) {
-            bbsForm.addEventListener('submit', async (e) => {
-                e.preventDefault(); // リロードを阻止
 
                 const formData = new FormData(bbsForm);
-                const submitBtn = document.getElementById('submit-btn');
+                const submitBtn = document.getElementById('submitBtn');
                 
                 if (submitBtn) {
                     submitBtn.disabled = true;
@@ -480,14 +288,11 @@
                     const result = await response.json();
 
                     if (response.ok && result.success) {
-                        // 成功したら入力欄をリセット
                         const contentArea = bbsForm.querySelector('textarea[name="content"]');
                         if (contentArea) contentArea.value = '';
                         
                         const imageInput = bbsForm.querySelector('input[name="image"]');
                         if (imageInput) imageInput.value = '';
-
-                        // 投稿成功後、上の Supabase Realtime が一瞬で投稿を読み込んで画面に追加してくれます！
                     } else {
                         alert(result.error || '書き込みに失敗しました。');
                     }
