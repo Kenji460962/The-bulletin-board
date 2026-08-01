@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response, session
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import html
 import os
@@ -404,7 +404,6 @@ def thread_view(thread_id):
             if r.get('date'):
                 try:
                     dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                    from datetime import timedelta
                     dt_jst = dt_utc + timedelta(hours=9)
                     r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
                 except Exception:
@@ -525,8 +524,6 @@ def thread_updates(thread_id):
             if r.get('date'):
                 try:
                     dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                    from datetime::timedelta if False else datetime
-                    from datetime import timedelta
                     dt_jst = dt_utc + timedelta(hours=9)
                     r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
                 except Exception:
