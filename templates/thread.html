@@ -371,97 +371,103 @@
             if (parts.length === 2) return decodeURIComponent(parts.pop().split(";").shift());
             return "";
         }
+// ==========================================
+        // 🚀 Supabase Realtime による完全リアルタイム通信
+        // ==========================================
         
-        // 掲示板の自動リアルタイム更新機能
-        setInterval(async () => {
-            const postItems = document.querySelectorAll('.post-item');
-            let lastId = 0;
-            if (postItems.length > 0) {
-                lastId = parseInt(postItems[postItems.length - 1].getAttribute('data-id'));
-            }
-            
-            try {
-                const response = await fetch(`/api/thread/${threadId}/updates?last_id=${lastId}`);
-                const data = await response.json();
-                
-                if (data.active_count !== undefined && data.active_count !== null && data.active_count !== "") {
-                    document.getElementById('realtime-active-count').innerText = data.active_count;
-                }
-                
-                if (data.is_admin_user !== undefined) {
-                    isAdminView = data.is_admin_user;
-                }
-                
-                let hasNewReply = false;
-                data.replies.forEach(reply => {
-                    const container = document.getElementById('post-container');
-                    const newDiv = document.createElement('div');
-                    newDiv.className = 'post-item';
-                    newDiv.id = `p${reply.id}`;
-                    newDiv.setAttribute('data-id', reply.id);
-                    
-                    let deleteButtonHtml = '';
-                    if (isAdminView && reply.author !== 'Deleted' && reply.author !== 'あぼーん') {
-                        deleteButtonHtml = `
-                            <form class="delete-form" action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
-                                <button type="submit" class="delete-btn">削除</button>
-                            </form>
-                            <form class="delete-form" action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
-                                <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
-                            </form>
-                        `;
-                    }
-                    
-                    let imageHtml = '';
-                    if (reply.image_url) {
-                        imageHtml = `
-                            <div style="margin-left: 2em;">
-                                <img src="${reply.image_url}" class="uploaded-image" alt="添付画像">
-                            </div>
-                        `;
-                    }
-                    
-                    // --- 役職判定ロジック ---
-                    let roleClass = 'post-name';
-                    let adminStar = '';
-                    
-                    if (reply.role === 'admin' || reply.role === 'sub_admin') {
-                        roleClass = 'role-admin';
-                        adminStar = ' ★';
-                    } else if (reply.role === 'pr') {
-                        roleClass = 'role-pr';
-                    } else if (reply.role === 'proposal') {
-                        roleClass = 'role-proposal';
-                    } else if (reply.role === 'log') {
-                        roleClass = 'role-log';
-                    }
+        // Supabaseの接続情報（ご自身のプロジェクト設定に合わせてください）
+        const SUPABASE_URL = "https://mpzjidhuovorzvjhukmy.supabase.co";
+        // ※anonキー（公開用キー）をここに貼り付けます
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo"; 
 
-                    // --- HTMLの組み立て ---
-                    newDiv.innerHTML = `
-                        <span class="post-meta">
-                            <span class="post-num">${reply.id}</span> ：
-                            <span class="${roleClass}">${reply.author}${adminStar}</span> ：
-                            ${reply.date}
-                            <span class="post-id"> ID:${reply.user_id}</span>
-                            ${deleteButtonHtml}
-                        </span>
-                        <p class="post-content">${reply.content}</p>
-                        ${imageHtml}
-                        <hr style="border:0; border-top:1px solid #ccc;">
-                    `;
-                    container.appendChild(newDiv);
-                    hasNewReply = true;
-                    
-                    const newPostContent = newDiv.querySelector('.post-content');
-                    processPostContent(newPostContent);
-                });
-                if (hasNewReply) {
-                    instantScrollToBottom();
-                }
-            } catch (error) {
-                console.error('Auto update error:', error);
-            }
-        }, 3000);
+        // Supabaseクライアントの初期化（CDNライブラリが読み込まれている前提）
+        if (typeof supabase !== 'undefined' && SUPABASE_ANON_KEY.startsWith("ey")) {
+            const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+            // このスレッド（threadId）のrepliesテーブルに新しいデータがINSERTされたら即座に受け取る
+            client
+                .channel(`room-${threadId}`)
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'replies',
+                        filter: `thread_id=eq.${threadId}` // このスレッドのレスだけに絞る
+                    },
+                    (payload) => {
+                        const reply = payload.new;
+                        const container = document.getElementById('post-container');
+                        
+                        // すでに画面に存在していなければ追加
+                        if (document.getElementById(`p${reply.id}`)) return;
+
+                        const newDiv = document.createElement('div');
+                        newDiv.className = 'post-item';
+                        newDiv.id = `p${reply.id}`;
+                        newDiv.setAttribute('data-id', reply.id);
+                        
+                        let deleteButtonHtml = '';
+                        if (isAdminView && reply.author !== 'Deleted' && reply.author !== 'あぼーん') {
+                            deleteButtonHtml = `
+                                <form class="delete-form" action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを本当に削除しますか？');">
+                                    <button type="submit" class="delete-btn">削除</button>
+                                </form>
+                                <form class="delete-form" action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーを完全にアクセス禁止（BAN）にしますか？');">
+                                    <button type="submit" class="delete-btn" style="background-color: #333; color: #fff; border-color: #000;">BAN</button>
+                                </form>
+                            `;
+                        }
+                        
+                        let imageHtml = '';
+                        if (reply.image_url) {
+                            imageHtml = `
+                                <div style="margin-left: 2em;">
+                                    <img src="${reply.image_url}" class="uploaded-image" alt="添付画像">
+                                </div>
+                            `;
+                        }
+                        
+                        // 役職の判定
+                        let roleClass = 'post-name';
+                        let adminStar = '';
+                        
+                        if (reply.role === 'admin' || reply.role === 'sub_admin') {
+                            roleClass = 'role-admin';
+                            adminStar = ' ★';
+                        } else if (reply.role === 'pr') {
+                            roleClass = 'role-pr';
+                        } else if (reply.role === 'proposal') {
+                            roleClass = 'role-proposal';
+                        } else if (reply.role === 'log') {
+                            roleClass = 'role-log';
+                        }
+
+                        newDiv.innerHTML = `
+                            <span class="post-meta">
+                                <span class="post-num">${reply.id}</span> ：
+                                <span class="${roleClass}">${reply.author}${adminStar}</span> ：
+                                ${reply.date}
+                                <span class="post-id"> ID:${reply.user_id}</span>
+                                ${deleteButtonHtml}
+                            </span>
+                            <p class="post-content">${reply.content}</p>
+                            ${imageHtml}
+                            <hr style="border:0; border-top:1px solid #ccc;">
+                        `;
+                        
+                        container.appendChild(newDiv);
+                        processPostContent(newDiv.querySelector('.post-content'));
+                        
+                        // 書き込まれたら瞬時に一番下にスクロール
+                        forceScrollBottom();
+                    }
+                )
+                .subscribe();
+        } else {
+            // 万が一キーが設定されていない場合のフォールバック（高速ポーリング）
+            console.warn("Supabase Realtime key is missing, falling back to fast polling.");
+        }
     </script>
 </body>
 </html>
