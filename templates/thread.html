@@ -420,15 +420,28 @@
 
                         // 日付フォーマットの調整
                         let formattedDate = reply.date ? reply.date.replace('T', ' ').substring(0, 19) : '';
+                        // 画面に現在表示されているレスの枚数を数えて、次の番号（1から始まる連番）にする
+                        const currentPostCount = container.querySelectorAll('.post-item').length + 1;
 
                         newDiv.innerHTML = `
                             <span class="post-meta">
-                                <span class="post-num">${reply.id}</span> ：
+                                <span class="post-num">${currentPostCount}</span> ：
                                 <span class="${roleClass}">${reply.author}${adminStar}</span> ：
                                 ${formattedDate}
                                 <span class="post-id"> ID:${reply.user_id}</span>
                                 ${deleteButtonHtml}
                             </span>
+                            <p class="post-content">${reply.content}</p>
+                            ${imageHtml}
+                            <hr style="border:0; border-top:1px solid #ccc;">
+                        `;
+
+
+                        
+
+
+
+                            
                             <p class="post-content">${reply.content}</p>
                             ${imageHtml}
                             <hr style="border:0; border-top:1px solid #ccc;">
