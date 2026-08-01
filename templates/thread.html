@@ -267,18 +267,34 @@
 
                 let adminStar = '';
                 let roleClass = '';
+
+
+                let roleClass = 'role-none'; // または一般用のクラス
                 
-                // 【修正】JavaScript側でも全役職（admin, sub_admin, moderator）のクラスと★を正しく判別する
                 if (reply.role === 'admin' || reply.is_admin) {
                     roleClass = 'role-admin';
-                    adminStar = '★';
+                    adminStar = ' ★';
                 } else if (reply.role === 'sub_admin') {
-                    roleClass = 'role-sub-admin';
-                    adminStar = '★';
-                } else if (reply.role === 'moderator') {
-                    roleClass = 'role-moderator';
-                    adminStar = '★';
+                    roleClass = 'role-admin'; // もしくは role-sub-admin など（CSSの定義に合わせてください）
+                    adminStar = ' ★';
+                } else if (reply.role === 'pr') {
+                    roleClass = 'role-pr';
+                } else if (reply.role === 'proposal') {
+                    roleClass = 'role-proposal';
+                } else if (reply.role === 'log') {
+                    roleClass = 'role-log';
                 }
+
+
+
+
+
+
+
+
+
+                
+               
 
                 let imageHtml = '';
                 if (reply.image_url) {
