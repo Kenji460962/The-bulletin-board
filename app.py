@@ -474,7 +474,7 @@ def thread_view(thread_id):
             except Exception as e:
                 print(f"レス保存エラー: {e}")
 
-        return redirect(url_for('thread_view', thread_id=thread_id))
+       
 
     # ==========================================
     # 2. GETリクエスト（画面表示処理）
