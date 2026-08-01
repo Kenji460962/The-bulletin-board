@@ -90,7 +90,7 @@
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
-        /* 役職ごとの文字色を確実に反映 */
+        /* 役職ごとの色設定 */
         .role-admin { color: #f87171 !important; font-weight: 700; }
         .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
         .role-moderator { color: #34d399 !important; font-weight: 700; }
@@ -267,6 +267,8 @@
 
                 let adminStar = '';
                 let roleClass = '';
+                
+                // 【修正】JavaScript側でも全役職（admin, sub_admin, moderator）のクラスと★を正しく判別する
                 if (reply.role === 'admin' || reply.is_admin) {
                     roleClass = 'role-admin';
                     adminStar = '★';
