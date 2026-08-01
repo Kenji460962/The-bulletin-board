@@ -474,6 +474,29 @@ def thread_view(thread_id):
             except Exception as e:
                 print(f"レス保存エラー: {e}")
 
+        if content.strip() or image_url:
+            try:
+                # 挿入したレスのデータ（IDや日時など）を取得できるようにする
+                res = supabase.table('replies').insert({
+                    'thread_id': thread_id,
+                    'author': author_input,
+                    'content': content,
+                    'user_id': user_id,
+                    'is_admin': is_admin,
+                    'role': role_to_save,
+                    'image_url': image_url,
+                    'ip_address': client_ip
+                }).execute()
+                
+                # 非同期通信（Ajax）用にJSONで成功を返す
+                return {"success": True}
+            except Exception as e:
+                print(f"レス保存エラー: {e}")
+                return {"success": False, "error": "データベースエラー"}, 500
+
+        return {"success": False, "error": "内容が空です"}, 400
+
+ 
        
 
     # ==========================================
