@@ -49,11 +49,11 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        /* スマホ・デフォルト状態（フッターの下に320x50広告） */
+        /* スマホ用スクロール領域（下部のフッターの高さ分だけ余裕を持たせる：155px） */
         .posts-container { 
             position: absolute !important;
             top: 65px !important;
-            bottom: 150px !important; 
+            bottom: 155px !important; 
             left: 0 !important;
             width: 100% !important;
             overflow-y: scroll !important; 
@@ -62,12 +62,13 @@
             background-color: var(--bg-color); 
         }
 
+        /* スマホ用フッター（入力欄＋その下に320x50広告を配置するエリア） */
         .footer-area { 
             position: absolute !important;
             bottom: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            height: 150px !important; 
+            height: 155px !important; 
             background-color: var(--panel-bg); 
             border-top: 1px solid var(--border-color); 
             padding: 10px 16px !important; 
@@ -85,6 +86,8 @@
             align-items: center;
             justify-content: center;
             overflow: hidden;
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
         }
 
         .ad-space-pc {
@@ -106,10 +109,11 @@
                 width: calc(100% - 330px) !important;
                 height: 110px !important;
                 padding: 12px 20px !important;
+                justify-content: center;
             }
 
             .ad-space-sp {
-                display: none; /* スマホ用広告は非表示 */
+                display: none; /* PCではスマホ用広告を非表示 */
             }
 
             .ad-space-pc {
@@ -255,7 +259,7 @@
 
     <div class="footer-area">
         <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
-            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 3px; flex-wrap: wrap;">
                 <label style="font-size: 12px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 130px; font-size: 12px;" value="名無しさん"></label>
                 <label style="font-size: 12px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
                 <button type="submit" id="submit-btn" style="font-size: 12px; padding: 4px 14px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
