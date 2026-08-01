@@ -15,7 +15,7 @@ import boto3
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') 
 
 # スリープ防止
 @app.before_request
@@ -37,17 +37,14 @@ R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvjhukmy.supabase.co')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
 
-# Supabaseに接続するロボットを起動
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 ADMIN_PASSWORD = "setokoji114514810072"
 
-# セキュリティ強化 ユーザーごとの最後の書き込み時間を記録する場所
 LAST_POST_TIMES = {}
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
 
-# IPアドレスを元に毎日変わるIDを生成
 def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
     raw_str = f"{ip_address}_{today_str}"
@@ -110,25 +107,11 @@ def staff_logout():
     return redirect(url_for('index'))
 
 NG_WORDS = {
-    '死ね': '〇ね',
-    'しね': '〇ね',
-    'エロ': 'エ〇',
-    'えろ': 'え〇',
-    'まんこ': 'ま〇こ',
-    'ちんこ': 'ち〇こ',
-    'マンコ': 'マ〇こ',
-    'チンコ': 'チ〇こ',
-    'セックス': 'セ。〇ス',
-    'せっくす': 'せ。〇す',
-    'おっぱい': 'お。〇い',
-    'オッパイ': 'オ。〇イ',
-    'レイプ': 'レ〇プ',
-    'れいぷ': 'れ〇ぷ',
-    'バカ': 'バ*',
-    'アホ': 'ア*',
-    'シコシコ':'4545',
-    'オナニー':'0721',
-    '射精':'身寸米青',
+    '死ね': '〇ね', 'しね': '〇ね', 'エロ': 'エ〇', 'えろ': 'え〇',
+    'まんこ': 'ま〇こ', 'ちんこ': 'ち〇こ', 'マンコ': 'マ〇こ', 'チンコ': 'チ〇こ',
+    'セックス': 'セ。〇ス', 'せっくす': 'せ。〇す', 'おっぱい': 'お。〇い', 'オッパイ': 'オ。〇イ',
+    'レイプ': 'レ〇プ', 'れいぷ': 'れ〇ぷ', 'バカ': 'バ*', 'アホ': 'ア*',
+    'シコシコ':'4545', 'オナニー':'0721', '射精':'身寸米青',
 }
 
 def filter_ng_words(text):
@@ -317,7 +300,6 @@ def thread_view(thread_id):
         
         author_input = request.form.get('author') or "名無しさん"
 
-        # 安全な名前・トリップの切り出し
         if "#" in author_input:
             parts = author_input.split("#", 1)
             name_part = parts[0][:20]
