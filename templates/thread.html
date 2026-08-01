@@ -24,65 +24,77 @@
             --danger-color: #f43f5e;
         }
 
-        body { 
-            margin: 0; 
-            padding: 0; 
+        html, body { 
+            height: 100% !important;
+            margin: 0 !important; 
+            padding: 0 !important; 
+            overflow: hidden !important; 
             background-color: var(--bg-color); 
             color: var(--text-main);
             font-family: 'Inter', sans-serif; 
         }
         
         .header-area { 
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            padding: 10px 24px; 
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            padding: 10px 24px !important; 
             background-color: var(--panel-bg); 
             border-bottom: 1px solid var(--border-color); 
-            height: 65px; 
-            box-sizing: border-box; 
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            z-index: 10;
+            height: 65px !important; 
+            box-sizing: border-box !important; 
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
+            z-index: 10 !important;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        /* スマホ用：通常スクロール（ヘッダー分の余白を上に空ける） */
-        .main-container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 85px 16px 40px 16px;
-            box-sizing: border-box;
+        /* スマホ用スクロール領域（下部の固定入力欄の高さ分だけあける: 95px） */
+        .posts-container { 
+            position: absolute !important;
+            top: 65px !important;
+            bottom: 95px !important; 
+            left: 0 !important;
+            width: 100% !important;
+            overflow-y: scroll !important; 
+            padding: 16px 16px 40px 16px !important; 
+            box-sizing: border-box !important; 
+            background-color: var(--bg-color); 
         }
 
-        .posts-container { 
+        /* スマホ用：入力欄のみを画面下に常時固定（被らない高さ 95px） */
+        .footer-area { 
+            position: absolute !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 95px !important; 
+            background-color: var(--panel-bg); 
+            border-top: 1px solid var(--border-color); 
+            padding: 10px 16px !important; 
+            box-sizing: border-box !important; 
+            z-index: 10 !important;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            justify-content: center;
         }
 
-        /* スマホ用フォーム＆入力欄の下に配置する広告エリア */
-        .footer-area {
-            margin-top: 24px;
-            background-color: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px;
-            box-sizing: border-box;
-        }
-
-        .ad-space-sp {
+        /* スマホ用：レス一覧のいちばん最後、スクロールしたときに入力欄の「下」に現れる広告 */
+        .ad-item-sp {
             width: 100%;
-            height: 50px;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
-            margin-top: 16px;
-            background: rgba(0,0,0,0.2);
-            border-radius: 4px;
+            margin-top: 24px;
+            margin-bottom: 16px;
+            padding: 12px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-sizing: border-box;
         }
 
         .ad-space-pc {
@@ -93,22 +105,30 @@
         /* PC画面（横幅768px以上）：右側に300x250広告を固定配置 */
         /* ----------------------------------------- */
         @media (min-width: 768px) {
-            .main-container {
-                max-width: none;
-                margin-right: 350px; /* 右側広告のスペースを確保 */
-                padding: 85px 24px 40px 24px;
+            .posts-container {
+                right: 330px !important;
+                width: calc(100% - 330px) !important;
+                bottom: 80px !important;
+                padding: 16px 24px !important;
             }
 
-            .ad-space-sp {
+            .footer-area {
+                right: 330px !important;
+                width: calc(100% - 330px) !important;
+                height: 80px !important;
+                padding: 12px 20px !important;
+            }
+
+            .ad-item-sp {
                 display: none; /* PCではスマホ用広告を非表示 */
             }
 
             .ad-space-pc {
                 display: flex;
-                position: fixed;
+                position: absolute;
                 top: 65px;
                 right: 0;
-                width: 350px;
+                width: 330px;
                 bottom: 0;
                 background-color: var(--panel-bg);
                 border-left: 1px solid var(--border-color);
@@ -122,6 +142,7 @@
         }
 
         .post-item { 
+            margin-bottom: 16px; 
             font-size: 14px; 
             background: var(--panel-bg);
             padding: 12px 16px;
@@ -147,7 +168,7 @@
             border: 1px solid var(--border-color);
             color: var(--text-main);
             border-radius: 4px;
-            padding: 6px 10px;
+            padding: 5px 10px;
             outline: none;
             transition: border-color 0.2s;
         }
@@ -197,79 +218,78 @@
         </div>
     </div>
 
-    <div class="main-container">
-        <div class="posts-container" id="postsContainer">
-            {% for r in thread.replies %}
-            <div class="post-item" data-reply-id="{{ r.id }}">
-                <div class="post-meta">
-                    <span class="post-num">#{{ loop.index }}</span>
-                    
-                    {% set role_cls = 'post-name' %}
-                    {% if r.role == 'admin' or r.is_admin %}
-                        {% set role_cls = 'role-admin' %}
-                    {% elif r.role == 'sub_admin' %}
-                        {% set role_cls = 'role-sub-admin' %}
-                    {% elif r.role == 'moderator' %}
-                        {% set role_cls = 'role-moderator' %}
-                    {% elif r.role == 'pr' %}
-                        {% set role_cls = 'role-pr' %}
-                    {% elif r.role == 'proposal' %}
-                        {% set role_cls = 'role-proposal' %}
-                    {% elif r.role == 'log' %}
-                        {% set role_cls = 'role-log' %}
-                    {% endif %}
+    <div class="posts-container" id="postsContainer">
+        {% for r in thread.replies %}
+        <div class="post-item" data-reply-id="{{ r.id }}">
+            <div class="post-meta">
+                <span class="post-num">#{{ loop.index }}</span>
+                
+                {% set role_cls = 'post-name' %}
+                {% if r.role == 'admin' or r.is_admin %}
+                    {% set role_cls = 'role-admin' %}
+                {% elif r.role == 'sub_admin' %}
+                    {% set role_cls = 'role-sub-admin' %}
+                {% elif r.role == 'moderator' %}
+                    {% set role_cls = 'role-moderator' %}
+                {% elif r.role == 'pr' %}
+                    {% set role_cls = 'role-pr' %}
+                {% elif r.role == 'proposal' %}
+                    {% set role_cls = 'role-proposal' %}
+                {% elif r.role == 'log' %}
+                    {% set role_cls = 'role-log' %}
+                {% endif %}
 
-                    <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
-                    <span>{{ r.date }}</span>
-                    <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
-                    
-                    {% if is_admin_user %}
-                    <div style="margin-left: auto; display: flex; gap: 4px;">
-                        <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
-                            <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
-                        </form>
-                        <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
-                            <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
-                        </form>
-                    </div>
-                    {% endif %}
+                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                <span>{{ r.date }}</span>
+                <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
+                
+                {% if is_admin_user %}
+                <div style="margin-left: auto; display: flex; gap: 4px;">
+                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
+                        <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                    </form>
+                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                        <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                    </form>
                 </div>
-                <div class="post-content">{{ r.content | safe }}</div>
-                {% if r.image_url %}
-                <a href="{{ r.image_url }}" target="_blank">
-                    <img src="{{ r.image_url }}" class="post-image" loading="lazy">
-                </a>
                 {% endif %}
             </div>
-            {% endfor %}
+            <div class="post-content">{{ r.content | safe }}</div>
+            {% if r.image_url %}
+            <a href="{{ r.image_url }}" target="_blank">
+                <img src="{{ r.image_url }}" class="post-image" loading="lazy">
+            </a>
+            {% endif %}
         </div>
+        {% endfor %}
 
-        <div class="footer-area">
-            <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
-                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
-                    <label style="font-size: 12px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 130px; font-size: 12px;" value="名無しさん"></label>
-                    <label style="font-size: 12px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
-                    <button type="submit" id="submit-btn" style="font-size: 12px; padding: 5px 14px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
-                </div>
-                <div>
-                    <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 13px; resize: vertical;" placeholder="メッセージを入力..."></textarea>
-                </div>
-            </form>
-
-            <div class="ad-space-sp">
-                <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                    <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
-                </div>
+        <div class="ad-item-sp">
+            <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 4px;">スポンサーリンク</div>
+            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
             </div>
         </div>
+    </div>
+
+    <div class="footer-area">
+        <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
+                <label style="font-size: 12px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 130px; font-size: 12px;" value="名無しさん"></label>
+                <label style="font-size: 12px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
+                <button type="submit" id="submit-btn" style="font-size: 12px; padding: 4px 14px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
+            </div>
+            <div>
+                <textarea name="content" rows="1" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
+            </div>
+        </form>
     </div>
 
     <script>
         const threadId = {{ thread.id }};
         const container = document.getElementById('postsContainer');
 
-        function scrollToBottom() {
-            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        function forceScrollBottom() {
+            container.scrollTop = container.scrollHeight;
         }
 
         function setCookie(name, value, days) {
@@ -299,7 +319,14 @@
             if (savedAuthor && authorInput) {
                 authorInput.value = savedAuthor;
             }
-            window.scrollTo(0, document.body.scrollHeight);
+            forceScrollBottom();
+        });
+
+        window.addEventListener('load', () => {
+            forceScrollBottom();
+            setTimeout(forceScrollBottom, 100);
+            setTimeout(forceScrollBottom, 300);
+            setTimeout(forceScrollBottom, 600);
         });
 
         const supabaseUrl = 'https://mpzjidhuovorzvjhukmy.supabase.co';
@@ -383,8 +410,10 @@
                     ${imageHtml}
                 `;
 
-                container.appendChild(newDiv);
-                scrollToBottom();
+                // 広告要素の「前に」新しいレスを挿入する
+                const adItemSp = container.querySelector('.ad-item-sp');
+                container.insertBefore(newDiv, adItemSp);
+                forceScrollBottom();
             })
             .subscribe();
 
