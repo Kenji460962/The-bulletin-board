@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     
     <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}" type="image/png">
-    
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125"
      crossorigin="anonymous"></script>
     
     <title>{{ thread.title }}</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         html, body { 
@@ -303,7 +304,7 @@
 
         document.querySelectorAll('.post-content').forEach(processPostContent);
 
-        // 画面のコンテナとページ全体のスクロールを、一瞬で一番下に固定する関数
+        // 画面のスクロールを一番下に落とす処理
         function forceScrollBottom() {
             const container = document.getElementById('post-container');
             if (container) {
@@ -315,7 +316,7 @@
             });
         }
 
-        // ページ読み込み時
+        // ページ読み込み完了時
         document.addEventListener("DOMContentLoaded", () => {
             const savedAuthor = getCookie('bbs_saved_author');
             const authorInput = document.querySelector('input[name="author"]');
@@ -325,13 +326,12 @@
             forceScrollBottom();
         });
 
-        // 完全読み込み時
         window.addEventListener('load', () => {
             forceScrollBottom();
             setTimeout(forceScrollBottom, 50);
         });
 
-        // 名前保存
+        // 名前をクッキーに保存
         const saveNameForm = document.getElementById('bbs-form');
         if (saveNameForm) {
             saveNameForm.addEventListener('submit', () => {
@@ -354,7 +354,7 @@
             return "";
         }
 
-        // Supabase Realtime
+        // ⚡ Supabase Realtime 接続処理 (即時反映)
         const SUPABASE_URL = "https://mpzjidhuovorzvjhukmy.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo"; 
 
@@ -375,6 +375,7 @@
                         const reply = payload.new;
                         const container = document.getElementById('post-container');
                         
+                        // 二重追加を防止
                         if (document.getElementById(`p${reply.id}`)) return;
 
                         const newDiv = document.createElement('div');
@@ -417,11 +418,14 @@
                             roleClass = 'role-log';
                         }
 
+                        // 日付フォーマットの調整
+                        let formattedDate = reply.date ? reply.date.replace('T', ' ').substring(0, 19) : '';
+
                         newDiv.innerHTML = `
                             <span class="post-meta">
                                 <span class="post-num">${reply.id}</span> ：
                                 <span class="${roleClass}">${reply.author}${adminStar}</span> ：
-                                ${reply.date}
+                                ${formattedDate}
                                 <span class="post-id"> ID:${reply.user_id}</span>
                                 ${deleteButtonHtml}
                             </span>
@@ -433,19 +437,18 @@
                         container.appendChild(newDiv);
                         processPostContent(newDiv.querySelector('.post-content'));
                         
+                        // 投稿されたら一番下へ自動スクロール
                         forceScrollBottom();
                     }
                 )
                 .subscribe();
-        } else {
-            console.warn("Supabase Realtime key is missing, falling back to fast polling.");
         }
 
-        // 🚀 フォーム送信時にリロードさせずに非同期（Ajax）で確実・安全に送信する処理
+        // 🚀 フォーム送信時にリロードさせず非同期で送信する処理
         const bbsForm = document.getElementById('bbs-form'); 
         if (bbsForm) {
             bbsForm.addEventListener('submit', async (e) => {
-                e.preventDefault(); 
+                e.preventDefault(); // リロードを阻止
 
                 const formData = new FormData(bbsForm);
                 const submitBtn = document.getElementById('submit-btn');
@@ -464,15 +467,15 @@
                     const result = await response.json();
 
                     if (response.ok && result.success) {
+                        // 成功したら入力欄をリセット
                         const contentArea = bbsForm.querySelector('textarea[name="content"]');
                         if (contentArea) contentArea.value = '';
                         
                         const imageInput = bbsForm.querySelector('input[name="image"]');
                         if (imageInput) imageInput.value = '';
 
-                        // 送信が成功すると、上のSupabase Realtimeが即座に反応して画面下部にレスが追加されます。
+                        // 投稿成功後、上の Supabase Realtime が一瞬で投稿を読み込んで画面に追加してくれます！
                     } else {
-                        // サーバー側（app.py）が返したエラー文（例: 3秒連投制限など）を表示
                         alert(result.error || '書き込みに失敗しました。');
                     }
                 } catch (error) {
