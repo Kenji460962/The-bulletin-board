@@ -40,16 +40,12 @@ SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXV
 # Supabaseに接続するロボットを起動
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-DATA_FILE = 'bbs_data.json'
 ADMIN_PASSWORD = "setokoji114514810072"
 
 # セキュリティ強化 ユーザーごとの最後の書き込み時間を記録する場所
 LAST_POST_TIMES = {}
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
-
-def auto_migrate_from_json():
-    pass
 
 # IPアドレスを元に毎日変わるIDを生成
 def get_daily_user_id(ip_address):
@@ -321,7 +317,7 @@ def thread_view(thread_id):
         
         author_input = request.form.get('author') or "名無しさん"
 
-        # 🛠️ 安全にトリップ（#）を分割する処理に修正
+        # 安全な名前・トリップの切り出し
         if "#" in author_input:
             parts = author_input.split("#", 1)
             name_part = parts[0][:20]
@@ -406,10 +402,13 @@ def thread_view(thread_id):
         thread['replies'] = replies_res.data
         for r in thread['replies']:
             if r.get('date'):
-                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                from datetime import timedelta
-                dt_jst = dt_utc + timedelta(hours=9)
-                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                try:
+                    dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                    from datetime import timedelta
+                    dt_jst = dt_utc + timedelta(hours=9)
+                    r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
             
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
@@ -524,10 +523,14 @@ def thread_updates(thread_id):
         new_replies = new_replies_res.data
         for r in new_replies:
             if r.get('date'):
-                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                from datetime import timedelta
-                dt_jst = dt_utc + timedelta(hours=9)
-                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                try:
+                    dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                    from datetime::timedelta if False else datetime
+                    from datetime import timedelta
+                    dt_jst = dt_utc + timedelta(hours=9)
+                    r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
 
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
