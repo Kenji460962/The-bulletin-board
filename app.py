@@ -8,12 +8,8 @@ import uuid
 import time
 import re
 
-
-
-
 # Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
-
 
 import boto3  
 from werkzeug.utils import secure_filename
@@ -27,8 +23,6 @@ def response_to_uptimerobot():
     if request.method == 'HEAD':
         return make_response('', 200)
 
-
-
 # Cloudflare R2 (S3互換) の設定
 s3_client = boto3.client(
     's3',
@@ -39,12 +33,6 @@ s3_client = boto3.client(
 )
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
-
-
-
-
-
-
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvjhukmy.supabase.co')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
@@ -82,7 +70,6 @@ def get_client_ip():
         ip = request.remote_addr or ""
     return ip
 
-
 #banされたIPかを確認
 def is_banned_ip(ip):
     if not ip:
@@ -94,11 +81,6 @@ def is_banned_ip(ip):
     except Exception as e:
         print(f"BANチェックエラー: {e}")
         return False
-
-
-
-
-
 
 def get_staff_role():
     """現在のログイン中の役職を取得"""
@@ -120,11 +102,10 @@ def staff_login():
             res = supabase.table('staff_users').select('*').eq('username', username).execute()
             if res.data:
                 user = res.data[0]
-                # 本来はハッシュ化推奨ですが、一旦は分かりやすく平文パスワードで比較します
                 if user['password'] == password: 
                     session['staff_id'] = user['id']
-                    session['staff_role'] = user['role']         # admin, sub_admin, pr など
-                    session['staff_name'] = user['display_name'] # 掲示板に表示する名前
+                    session['staff_role'] = user['role']
+                    session['staff_name'] = user['display_name']
                     return redirect(url_for('index'))
         except Exception as e:
             print(f"Login error: {e}")
@@ -143,9 +124,6 @@ def staff_login():
 def staff_logout():
     session.clear()
     return redirect(url_for('index'))
-
-
-
 
 # NGワード
 NG_WORDS = {
@@ -168,7 +146,6 @@ NG_WORDS = {
     'シコシコ':'4545',
     'オナニー':'0721',
     '射精':'身寸米青',
-    
 }
 
 def filter_ng_words(text):
@@ -178,10 +155,6 @@ def filter_ng_words(text):
         if ng_word in text:
             text = text.replace(ng_word, replaced_word)
     return text
-
-
-
-
 
 ACTIVE_USERS = {}
 
@@ -206,12 +179,9 @@ def privacy():
 def roles():
     return render_template('roles.html')
 
-
-
 @app.route('/', methods=['GET', 'HEAD'])
 def index():
     client_ip = get_client_ip()
-
     
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
@@ -219,21 +189,16 @@ def index():
     if request.method == 'HEAD':
         return make_response('', 200)
 
-    # 現在のページ番号を取得
     page = request.args.get('page', default=1, type=int)
-    per_page = 20  # 1ページあたりの表示件数
+    per_page = 20
     start_index = (page - 1) * per_page
     end_index = start_index + per_page - 1
 
     try:
-        # 全スレッドを最新順（IDの降順）で取得する
         threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
-
-        
         has_next = len(threads) == per_page
 
-       
         pinned_ids = [3 ,2, 1]
         pinned_threads = []
 
@@ -243,9 +208,7 @@ def index():
                     pinned_threads.append(threads.pop(i))
                     break
 
-        # もし現在のページに入っていなかった場合、個別にデータベースから取得する
         for pid in pinned_ids:
-            # 既にリストから見つかっている場合はスキップ
             if any(int(pt['id']) == pid for pt in pinned_threads):
                 continue
             try:
@@ -253,38 +216,28 @@ def index():
                 if pinned_res.data:
                     pinned_threads.append(pinned_res.data[0])
             except Exception as pe:
-                print(f"固定スレッド(ID:{pid})の個別取得エラー: {pe}")
+                print(f"固定スレッド取得エラー: {pe}")
 
-        # 見つかった固定スレを、リストの「先頭」に1つずつ挿入していく
         for pt in pinned_threads:
             pt['is_pinned'] = True  
             pt['replies_count'] = None  
             threads.insert(0, pt)
 
-        # 各スレッドのレス件数を取得
         for t in threads:
-            # 雑談（ID=1 または is_pinned）の場合は、赤文字にしてレス数を表示しない
-            if t.get('is_pinned') or int(t['id']) == 1 or int(t['id']) == 2 or int(t['id']) == 3:
+            if t.get('is_pinned') or int(t['id']) in [1, 2, 3]:
                 t['replies_count'] = None
                 t['is_pinned'] = True
                 continue
-
             try:
                 replies_res = supabase.table('replies').select('id').eq('thread_id', int(t['id'])).execute()
-                if replies_res.data:
-                    t['replies_count'] = len(replies_res.data)
-                else:
-                    t['replies_count'] = 0
+                t['replies_count'] = len(replies_res.data) if replies_res.data else 0
             except Exception as re:
-                print(f"レス件数取得エラー (スレID {t['id']}): {re}")
                 t['replies_count'] = 0
 
-        # 管理者メッセージの取得
         try:
             admin_res = supabase.table('admin_messages').select('message').eq('id', 1).execute()
             admin_message = admin_res.data[0]['message'] if admin_res.data else "ここに管理者の一言が表示されます。"
         except Exception as ae:
-            print(f"管理者メッセージ取得エラー: {ae}")
             admin_message = "管理者の一言の取得に失敗しました。"
 
     except Exception as e:
@@ -298,12 +251,7 @@ def index():
         user_token = str(uuid.uuid4())
         is_new_user = True
 
-
-
-
-    
     active_count = update_and_get_user_counts(user_token, "lobby")
-   
     is_admin_user = can_manage_board()
 
     response = make_response(render_template(
@@ -321,14 +269,10 @@ def index():
         
     return response
 
-
-
-
 @app.route('/update_admin_message', methods=['POST'])
 def update_admin_message():
     if not can_manage_board():
         return "権限がありません", 403
-        
     message = request.form.get('message')
     if message:
         try:
@@ -336,8 +280,6 @@ def update_admin_message():
         except Exception as e:
             print(f"メッセージ更新エラー: {e}")
     return redirect(url_for('index'))
-
-
 
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
@@ -350,8 +292,6 @@ def create_thread():
         return {"error": "タイトルが必要です"}, 400
         
     title = filter_ng_words(title)
-    
-    
     title = html.escape(title)    
     
     if len(title) > 30:
@@ -381,11 +321,6 @@ def create_thread():
         
     return {"success": True, "thread": new_thread}
 
-
-
-
-
-
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
     client_ip = get_client_ip()
@@ -393,17 +328,16 @@ def thread_view(thread_id):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
     # ==========================================
-    # 1. POSTリクエスト（書き込み処理）
+    # 1. POSTリクエスト（書き込み処理） ※非同期JSON対応済
     # ==========================================
     if request.method == 'POST':
         content = request.form.get('content') or ""
         
         if len(content) > 500:
-            return redirect(url_for('thread_view', thread_id=thread_id))
+            return {"success": False, "error": "500文字以内で入力してください。"}, 400
         
         author_input = request.form.get('author') or "名無しさん"
 
-        # 🟢 トリップ・文字数・偽あぼーん防止
         if "#" in author_input:
             name_part, pass_part = author_input.split("#", 1)
             author_input = f"{name_part[:20]}#{pass_part}"
@@ -416,17 +350,14 @@ def thread_view(thread_id):
         content = filter_ng_words(content)
         author_input = filter_ng_words(author_input)
         
-        # 🟢 運営スタッフの判定ロジック
         staff_role = get_staff_role()
         
         if staff_role:
-            # 運営スタッフがログインしている場合、強制的に名前と役職をセット
             author_input = session.get('staff_name')
-            is_admin = can_manage_board() # ★マーク用（adminとsub_adminのみTrue）
+            is_admin = can_manage_board()
             user_id = "STAFF"
             role_to_save = staff_role
         else:
-            # 一般ユーザー（またはトリップ）の場合
             is_admin = False
             role_to_save = None
             if "#" in author_input:
@@ -440,12 +371,11 @@ def thread_view(thread_id):
         content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
 
         now = time.time()
-        if not staff_role: # スタッフ以外は連投制限
+        if not staff_role:
             if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
-                return redirect(url_for('thread_view', thread_id=thread_id))
+                return {"success": False, "error": "連続投稿はできません。3秒お待ちください。"}, 429
             LAST_REPLY_TIMES[client_ip] = now
 
-        # 画像アップロード処理
         image_url = ""
         if 'image' in request.files:
             file = request.files['image']
@@ -459,18 +389,9 @@ def thread_view(thread_id):
                 except Exception as e:
                     print(f"R2 Upload Error: {e}")
 
-
-
-
-
-
-
-
-
         if content.strip() or image_url:
             try:
-                # 挿入したレスのデータ（IDや日時など）を取得できるようにする
-                res = supabase.table('replies').insert({
+                supabase.table('replies').insert({
                     'thread_id': thread_id,
                     'author': author_input,
                     'content': content,
@@ -481,23 +402,12 @@ def thread_view(thread_id):
                     'ip_address': client_ip
                 }).execute()
                 
-                # 非同期通信（Ajax）用にJSONで成功を返す
                 return {"success": True}
             except Exception as e:
                 print(f"レス保存エラー: {e}")
-                return {"success": False, "error": "データベースエラー"}, 500
+                return {"success": False, "error": "データベースエラーが発生しました。"}, 500
 
-        return {"success": False, "error": "内容が空です"}, 400
-
-
-
-
-
-
-
-    
- 
-       
+        return {"success": False, "error": "書き込み内容が空です。"}, 400
 
     # ==========================================
     # 2. GETリクエスト（画面表示処理）
@@ -510,7 +420,6 @@ def thread_view(thread_id):
 
         replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
 
-        # Supabaseからスレッド内のレス一覧を取得した後の処理
         thread['replies'] = replies_res.data
         for r in thread['replies']:
             if r.get('date'):
@@ -519,7 +428,6 @@ def thread_view(thread_id):
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
             
-            # URL自動リンク化
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
 
@@ -550,14 +458,6 @@ def thread_view(thread_id):
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
 
-
-     
-
-
-
-
-
-
 @app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
 def delete_thread(thread_id):
     if not can_manage_board():
@@ -567,7 +467,6 @@ def delete_thread(thread_id):
     except Exception as e:
         print(f"スレッド削除エラー: {e}")
     return redirect(url_for('index'))
-
 
 @app.route('/thread/<int:thread_id>/delete/<int:reply_id>', methods=['POST'])
 def delete_reply(thread_id, reply_id):
@@ -584,7 +483,6 @@ def delete_reply(thread_id, reply_id):
     except Exception as e:
         print(f"レス削除エラー: {e}")
     return redirect(url_for('thread_view', thread_id=thread_id))
-
 
 @app.route('/thread/<int:thread_id>/ban/<int:reply_id>', methods=['POST'])
 def ban_user(thread_id, reply_id):
@@ -606,7 +504,6 @@ def ban_user(thread_id, reply_id):
     except Exception as e:
         return f"【BAN失敗】エラーの原因: {e}", 500
     return redirect(url_for('thread_view', thread_id=thread_id))
-
 
 @app.route('/thread/<int:thread_id>/ban_owner', methods=['POST'])
 def ban_thread_owner(thread_id):
@@ -632,15 +529,6 @@ def ban_thread_owner(thread_id):
         return f"【スレ主BAN失敗】エラーの原因: {e}", 500
     return redirect(url_for('index'))
 
-
-
-
-
-
-
-
-
-
 @app.route('/api/thread/<int:thread_id>/updates')
 def thread_updates(thread_id):
     last_id = request.args.get('last_id', type=int, default=0)
@@ -649,9 +537,6 @@ def thread_updates(thread_id):
     active_count = update_and_get_user_counts(user_token, location_key)
 
     try:
-
-
-
         new_replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).gt('id', last_id).order('id', desc=False).execute()
         new_replies = new_replies_res.data
         for r in new_replies:
@@ -661,7 +546,6 @@ def thread_updates(thread_id):
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
 
-           
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
 
@@ -669,20 +553,12 @@ def thread_updates(thread_id):
         print(f"自動更新APIエラー: {e}")
         new_replies = []
         
-    
-
     is_admin_user = can_manage_board()
     return {
         "replies": new_replies, 
         "is_admin_user": is_admin_user, 
         "active_count": active_count
     }
-
-
-
-
-
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
