@@ -45,7 +45,6 @@ ADMIN_PASSWORD = "setokoji114514810072"
 
 # セキュリティ強化 ユーザーごとの最後の書き込み時間を記録する場所
 LAST_POST_TIMES = {}
-# ユーザーごとの最後の「スレ立て」「レス投稿」の時間を分けて記録
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
 
@@ -60,9 +59,7 @@ def get_daily_user_id(ip_address):
     return hashed[:8]
 
 def get_client_ip():
-    # ユーザーIPを取得
     if request.headers.get('X-Forwarded-For'):
-        # カンマ区切りの先頭がクライアントのIP
         ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
     elif request.headers.get('CF-Connecting-IP'):
         ip = request.headers.get('CF-Connecting-IP').strip()
@@ -70,12 +67,10 @@ def get_client_ip():
         ip = request.remote_addr or ""
     return ip
 
-#banされたIPかを確認
 def is_banned_ip(ip):
     if not ip:
         return False
     try:
-        # Supabaseの banned_ips テーブルと照合
         res = supabase.table('banned_ips').select('*').eq('ip_address', ip).execute()
         return len(res.data) > 0
     except Exception as e:
@@ -83,22 +78,17 @@ def is_banned_ip(ip):
         return False
 
 def get_staff_role():
-    """現在のログイン中の役職を取得"""
     return session.get('staff_role')
 
 def can_manage_board():
-    """削除・BAN・一言更新ができるのは admin と sub_admin のみ"""
     return session.get('staff_role') in ['admin', 'sub_admin']
 
-# --- 運営用ログイン・ログアウトルート ---
 @app.route('/login_secret_8823', methods=['GET', 'POST'])
 def staff_login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        
         try:
-            # Supabaseの 'staff_users' テーブルから照合
             res = supabase.table('staff_users').select('*').eq('username', username).execute()
             if res.data:
                 user = res.data[0]
@@ -109,9 +99,7 @@ def staff_login():
                     return redirect(url_for('index'))
         except Exception as e:
             print(f"Login error: {e}")
-            
         return "ログイン失敗", 401
-        
     return '''
         <form method="post">
             ID: <input type="text" name="username"><br>
@@ -125,7 +113,6 @@ def staff_logout():
     session.clear()
     return redirect(url_for('index'))
 
-# NGワード
 NG_WORDS = {
     '死ね': '〇ね',
     'しね': '〇ね',
@@ -133,8 +120,8 @@ NG_WORDS = {
     'えろ': 'え〇',
     'まんこ': 'ま〇こ',
     'ちんこ': 'ち〇こ',
-    'マンコ': 'マ〇コ',
-    'チンコ': 'チ〇コ',
+    'マンコ': 'マ〇こ',
+    'チンコ': 'チ〇こ',
     'セックス': 'セ。〇ス',
     'せっくす': 'せ。〇す',
     'おっぱい': 'お。〇い',
@@ -182,7 +169,6 @@ def roles():
 @app.route('/', methods=['GET', 'HEAD'])
 def index():
     client_ip = get_client_ip()
-    
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
@@ -199,7 +185,7 @@ def index():
         threads = threads_response.data
         has_next = len(threads) == per_page
 
-        pinned_ids = [3 ,2, 1]
+        pinned_ids = [3, 2, 1]
         pinned_threads = []
 
         for pid in pinned_ids:
@@ -327,9 +313,6 @@ def thread_view(thread_id):
     if is_banned_ip(client_ip):
         return "あなたはアクセス禁止（BAN）されています。", 403
 
-    # ==========================================
-    # 1. POSTリクエスト（書き込み処理） ※非同期JSON対応済
-    # ==========================================
     if request.method == 'POST':
         content = request.form.get('content') or ""
         
@@ -338,9 +321,12 @@ def thread_view(thread_id):
         
         author_input = request.form.get('author') or "名無しさん"
 
+        # 🛠️ 安全にトリップ（#）を分割する処理に修正
         if "#" in author_input:
-            name_part, pass_part = author_input.split("#", 1)
-            author_input = f"{name_part[:20]}#{pass_part}"
+            parts = author_input.split("#", 1)
+            name_part = parts[0][:20]
+            pass_part = parts[1]
+            author_input = f"{name_part}#{pass_part}"
         else:
             author_input = author_input[:20]
 
@@ -409,9 +395,6 @@ def thread_view(thread_id):
 
         return {"success": False, "error": "書き込み内容が空です。"}, 400
 
-    # ==========================================
-    # 2. GETリクエスト（画面表示処理）
-    # ==========================================
     try:
         thread_res = supabase.table('threads').select('*').eq('id', thread_id).execute()
         if not thread_res.data:
