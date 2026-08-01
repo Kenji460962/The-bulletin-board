@@ -10,15 +10,28 @@
     <title>{{ thread.title }}</title>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --danger-color: #f43f5e;
+        }
+
         html, body { 
             height: 100% !important;
             margin: 0 !important; 
             padding: 0 !important; 
             overflow: hidden !important; 
-            background-color: #efefef; 
-            font-family: "MS P Gothic", sans-serif; 
+            background-color: var(--bg-color); 
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif; 
         }
         
         .header-area { 
@@ -26,27 +39,28 @@
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            padding: 5px 20px !important; 
-            background-color: #efefef; 
-            border-bottom: 1px solid #ccc; 
-            height: 60px !important; 
+            padding: 12px 24px !important; 
+            background-color: var(--panel-bg); 
+            border-bottom: 1px solid var(--border-color); 
+            height: 65px !important; 
             box-sizing: border-box !important; 
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
             z-index: 10 !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
         .posts-container { 
             position: absolute !important;
-            top: 60px !important;
-            bottom: 120px !important;
+            top: 65px !important;
+            bottom: 130px !important;
             left: 0 !important;
             width: 100% !important;
             overflow-y: scroll !important; 
-            padding: 10px 20px !important; 
+            padding: 16px 24px !important; 
             box-sizing: border-box !important; 
-            background-color: #ffffff; 
+            background-color: var(--bg-color); 
         }
 
         .footer-area { 
@@ -54,40 +68,75 @@
             bottom: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            height: 120px !important; 
-            background-color: #efefef; 
-            border-top: 1px solid #ccc; 
-            padding: 8px 20px !important; 
+            height: 130px !important; 
+            background-color: var(--panel-bg); 
+            border-top: 1px solid var(--border-color); 
+            padding: 12px 24px !important; 
             box-sizing: border-box !important; 
             z-index: 10 !important;
+            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        .post-item { margin-bottom: 12px; font-size: 15px; }
-        .post-meta { color: #000; font-size: 14px; margin-bottom: 3px; }
-        .post-num { font-weight: bold; color: #000; }
-        .post-content { margin: 3px 0 5px 0; word-break: break-all; white-space: pre-wrap; }
-        .post-image { max-width: 250px; max-height: 250px; display: block; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc; }
+        .post-item { 
+            margin-bottom: 16px; 
+            font-size: 14px; 
+            background: var(--panel-bg);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .post-num { font-weight: 700; color: var(--accent-color); }
+        .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
+        .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
-        .admin-star { color: red; font-weight: bold; }
-        .role-admin { color: red; font-weight: bold; }
-        .role-sub-admin { color: blue; font-weight: bold; }
-        .role-moderator { color: green; font-weight: bold; }
+        .role-admin { color: #f87171 !important; font-weight: 700; }
+        .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
+        .role-moderator { color: #34d399 !important; font-weight: 700; }
+
+        input[type="text"], textarea {
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 4px;
+            padding: 6px 10px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus, textarea:focus {
+            border-color: var(--accent-color);
+        }
+
+        button {
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
 
     <div class="header-area">
-        <div style="font-size: 16px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+        <div style="font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);">
             {{ thread.title }}
         </div>
-        <div style="font-size: 12px; color: #555; display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+        <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
             <div>
-                <a href="{{ back_to_board }}" style="color: #0000ee; text-decoration: underline;">掲示板に戻る</a>
-                <span style="margin-left: 10px;">現在のアクセス数: <strong id="active-count" style="color: #d32f2f;">{{ active_count }}</strong>人</span>
+                <a href="{{ back_to_board }}">← 掲示板に戻る</a>
+                <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
             </div>
             {% if is_admin_user %}
             <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
-                <button type="submit" style="background-color: #ff4d4d; color: white; border: none; padding: 2px 6px; font-size: 11px; cursor: pointer; border-radius: 3px;">スレッド削除</button>
+                <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 3px 8px; font-size: 11px;">スレッド削除</button>
             </form>
             {% endif %}
         </div>
@@ -97,23 +146,25 @@
         {% for r in thread.replies %}
         <div class="post-item" data-reply-id="{{ r.id }}">
             <div class="post-meta">
-                <span class="post-num">{{ loop.index }}</span> ：
+                <span class="post-num">#{{ loop.index }}</span>
                 {% set role_cls = '' %}
                 {% if r.role == 'admin' %}{% set role_cls = 'role-admin' %}
                 {% elif r.role == 'sub_admin' %}{% set role_cls = 'role-sub-admin' %}
                 {% elif r.role == 'moderator' %}{% set role_cls = 'role-moderator' %}
                 {% elif r.is_admin %}{% set role_cls = 'role-admin' %}
                 {% endif %}
-                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span> ：
-                {{ r.date }}
-                <span class="post-id"> ID:{{ r.user_id }}</span>
+                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                <span>{{ r.date }}</span>
+                <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
                 {% if is_admin_user %}
-                <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" style="display:inline; margin-left: 5px;" onsubmit="return confirm('削除しますか？');">
-                    <button type="submit" style="font-size: 10px; background: #ddd; border: 1px solid #999; cursor: pointer;">削除</button>
-                </form>
-                <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" style="display:inline; margin-left: 2px;" onsubmit="return confirm('このユーザーをBANしますか？');">
-                    <button type="submit" style="font-size: 10px; background: #f87171; color: white; border: none; cursor: pointer;">BAN</button>
-                </form>
+                <div style="margin-left: auto; display: flex; gap: 4px;">
+                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
+                        <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                    </form>
+                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                        <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                    </form>
+                </div>
                 {% endif %}
             </div>
             <div class="post-content">{{ r.content | safe }}</div>
@@ -122,20 +173,19 @@
                 <img src="{{ r.image_url }}" class="post-image" loading="lazy">
             </a>
             {% endif %}
-            <hr style="border:0; border-top:1px solid #ccc;">
         </div>
         {% endfor %}
     </div>
 
     <div class="footer-area">
         <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
-                <label style="font-size: 13px;">名前: <input type="text" name="author" style="width: 130px; font-size: 13px;" value="名無しさん"></label>
-                <label style="font-size: 13px;">画像: <input type="file" name="image" accept="image/*" style="font-size: 11px; width: 160px;"></label>
-                <button type="submit" id="submit-btn" style="font-size: 13px; padding: 2px 12px; background: #e0e0e0; border: 1px solid #777; cursor: pointer; font-weight: bold;">書き込む</button>
+            <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+                <label style="font-size: 13px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 140px; font-size: 13px;" value="名無しさん"></label>
+                <label style="font-size: 13px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 11px; color: var(--text-muted);"></label>
+                <button type="submit" id="submit-btn" style="font-size: 13px; padding: 5px 16px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
             </div>
             <div>
-                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 13px; resize: none;" placeholder="内容を入力"></textarea>
+                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 13px; resize: none;" placeholder="メッセージを入力..."></textarea>
             </div>
         </form>
     </div>
@@ -207,7 +257,7 @@
                 }
 
                 let contentText = reply.content || '';
-                contentText = contentText.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: #38bdf8; text-decoration: underline;">$1</a>');
+                contentText = contentText.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
 
                 let adminStar = '';
                 let roleClass = '';
@@ -228,15 +278,17 @@
                 }
 
                 const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
-                let deleteButtonHtml = '';
+                let adminButtonsHtml = '';
                 if (isAdminUser) {
-                    deleteButtonHtml = `
-                        <form action="/thread/${threadId}/delete/${reply.id}" method="POST" style="display:inline; margin-left: 5px;" onsubmit="return confirm('削除しますか？');">
-                            <button type="submit" style="font-size: 10px; background: #ddd; border: 1px solid #999; cursor: pointer;">削除</button>
-                        </form>
-                        <form action="/thread/${threadId}/ban/${reply.id}" method="POST" style="display:inline; margin-left: 2px;" onsubmit="return confirm('このユーザーをBANしますか？');">
-                            <button type="submit" style="font-size: 10px; background: #f87171; color: white; border: none; cursor: pointer;">BAN</button>
-                        </form>
+                    adminButtonsHtml = `
+                        <div style="margin-left: auto; display: flex; gap: 4px;">
+                            <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');">
+                                <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                            </form>
+                            <form action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                                <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                            </form>
+                        </div>
                     `;
                 }
 
@@ -247,15 +299,14 @@
                 newDiv.setAttribute('data-reply-id', reply.id);
                 newDiv.innerHTML = `
                     <div class="post-meta">
-                        <span class="post-num">${currentPostCount}</span> ：
-                        <span class="${roleClass}">${reply.author}${adminStar}</span> ：
-                        ${formattedDate}
-                        <span class="post-id"> ID:${reply.user_id}</span>
-                        ${deleteButtonHtml}
+                        <span class="post-num">#${currentPostCount}</span>
+                        <span class="${roleClass}">${reply.author}${adminStar}</span>
+                        <span>${formattedDate}</span>
+                        <span style="color: var(--text-muted);">ID:${reply.user_id}</span>
+                        ${adminButtonsHtml}
                     </div>
                     <div class="post-content">${contentText}</div>
                     ${imageHtml}
-                    <hr style="border:0; border-top:1px solid #ccc;">
                 `;
 
                 container.appendChild(newDiv);
