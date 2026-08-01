@@ -468,6 +468,50 @@
             // 万が一キーが設定されていない場合のフォールバック（高速ポーリング）
             console.warn("Supabase Realtime key is missing, falling back to fast polling.");
         }
+
+
+        
+        // フォームが送信されたときに、ページを再読み込みせずにAjaxで送信する
+        const bbsForm = document.getElementById('bbs-form');
+        if (bbsForm) {
+            bbsForm.addEventListener('submit', async (e) => {
+                e.preventDefault(); // デフォルトのページ遷移・再読み込みを完全に防ぐ
+
+                const formData = new FormData(bbsForm);
+                const submitBtn = document.getElementById('submit-btn');
+                
+                // 連打防止＆送信中表示
+                submitBtn.disabled = true;
+                submitBtn.style.opacity = '0.6';
+
+                try {
+                    const response = await window.fetch(bbsForm.action, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        // 入力欄をクリア（テキストエリアのみ。名前はクッキーに保存されているのでそのまま）
+                        const contentArea = bbsForm.querySelector('textarea[name="content"]');
+                        if (contentArea) contentArea.value = '';
+                        
+                        const imageInput = bbsForm.querySelector('input[name="image"]');
+                        if (imageInput) imageInput.value = '';
+
+                        // 送信成功したら、リアルタイム（または1秒ごとの更新）がすぐにキャッチして画面に追加してくれます
+                    } else {
+                        alert('書き込みに失敗しました。内容を確認してください。');
+                    }
+                } catch (error) {
+                    console.error('送信エラー:', error);
+                    alert('通信エラーが発生しました。');
+                } finally {
+                    // ボタンを元に戻す
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                }
+            });
+        }
     </script>
 </body>
 </html>
