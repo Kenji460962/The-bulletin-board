@@ -51,49 +51,46 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        /* スマホ用スクロール領域（下部の固定入力欄の高さ分だけあける: 95px） */
+        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：145px） */
         .posts-container { 
             position: absolute !important;
             top: 65px !important;
-            bottom: 95px !important; 
+            bottom: 145px !important; 
             left: 0 !important;
             width: 100% !important;
             overflow-y: scroll !important; 
-            padding: 16px 16px 40px 16px !important; 
+            padding: 16px 16px 30px 16px !important; 
             box-sizing: border-box !important; 
             background-color: var(--bg-color); 
         }
 
-        /* スマホ用：入力欄のみを画面下に常時固定（被らない高さ 95px） */
+        /* スマホ用：入力欄と、そのすぐ下にある広告をまとめた固定フッターエリア（145px） */
         .footer-area { 
             position: absolute !important;
             bottom: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            height: 95px !important; 
+            height: 145px !important; 
             background-color: var(--panel-bg); 
             border-top: 1px solid var(--border-color); 
-            padding: 10px 16px !important; 
+            padding: 8px 16px !important; 
             box-sizing: border-box !important; 
             z-index: 10 !important;
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            justify-content: space-between;
         }
 
-        /* スマホ用：レス一覧のいちばん最後、スクロールしたときに入力欄の「下」に現れる広告 */
+        /* 入力欄のすぐ下に配置するスマホ用広告スペース（320x50） */
         .ad-item-sp {
             width: 100%;
+            height: 50px;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            margin-top: 24px;
-            margin-bottom: 16px;
-            padding: 12px;
-            background: var(--panel-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
+            overflow: hidden;
             box-sizing: border-box;
         }
 
@@ -108,15 +105,16 @@
             .posts-container {
                 right: 330px !important;
                 width: calc(100% - 330px) !important;
-                bottom: 80px !important;
+                bottom: 85px !important;
                 padding: 16px 24px !important;
             }
 
             .footer-area {
                 right: 330px !important;
                 width: calc(100% - 330px) !important;
-                height: 80px !important;
+                height: 85px !important;
                 padding: 12px 20px !important;
+                justify-content: center;
             }
 
             .ad-item-sp {
@@ -168,7 +166,7 @@
             border: 1px solid var(--border-color);
             color: var(--text-main);
             border-radius: 4px;
-            padding: 5px 10px;
+            padding: 4px 8px;
             outline: none;
             transition: border-color 0.2s;
         }
@@ -262,26 +260,25 @@
             {% endif %}
         </div>
         {% endfor %}
-
-        <div class="ad-item-sp">
-            <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 4px;">スポンサーリンク</div>
-            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
-            </div>
-        </div>
     </div>
 
     <div class="footer-area">
         <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
-            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
-                <label style="font-size: 12px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 130px; font-size: 12px;" value="名無しさん"></label>
-                <label style="font-size: 12px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
-                <button type="submit" id="submit-btn" style="font-size: 12px; padding: 4px 14px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
+                <label style="font-size: 11px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 11px;" value="名無しさん"></label>
+                <label style="font-size: 11px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
+                <button type="submit" id="submit-btn" style="font-size: 11px; padding: 3px 12px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
             </div>
             <div>
                 <textarea name="content" rows="1" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
             </div>
         </form>
+
+        <div class="ad-item-sp">
+            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -410,9 +407,7 @@
                     ${imageHtml}
                 `;
 
-                // 広告要素の「前に」新しいレスを挿入する
-                const adItemSp = container.querySelector('.ad-item-sp');
-                container.insertBefore(newDiv, adItemSp);
+                container.appendChild(newDiv);
                 forceScrollBottom();
             })
             .subscribe();
