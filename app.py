@@ -379,7 +379,8 @@ def thread_view(thread_id):
             return "スレッドが見つかりません", 404
         thread = thread_res.data[0]
 
-        replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
+        # 【修正】1000件の制限を突破するために .limit(5000) を追加！
+        replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).limit(5000).execute()
 
         thread['replies'] = replies_res.data
         for r in thread['replies']:
