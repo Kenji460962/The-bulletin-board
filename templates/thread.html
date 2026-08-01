@@ -9,6 +9,8 @@
     
     <title>{{ thread.title }}</title>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <style>
         html, body { 
             height: 100% !important;
@@ -71,8 +73,6 @@
         .role-sub-admin { color: blue; font-weight: bold; }
         .role-moderator { color: green; font-weight: bold; }
     </style>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -132,7 +132,7 @@
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px;">
                 <label style="font-size: 13px;">名前: <input type="text" name="author" style="width: 130px; font-size: 13px;" value="名無しさん"></label>
                 <label style="font-size: 13px;">画像: <input type="file" name="image" accept="image/*" style="font-size: 11px; width: 160px;"></label>
-                <button type="submit" id="submitBtn" style="font-size: 13px; padding: 2px 12px; background: #e0e0e0; border: 1px solid #777; cursor: pointer; font-weight: bold;">書き込む</button>
+                <button type="submit" id="submit-btn" style="font-size: 13px; padding: 2px 12px; background: #e0e0e0; border: 1px solid #777; cursor: pointer; font-weight: bold;">書き込む</button>
             </div>
             <div>
                 <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 13px; resize: none;" placeholder="内容を入力"></textarea>
@@ -274,7 +274,7 @@
                 }
 
                 const formData = new FormData(bbsForm);
-                const submitBtn = document.getElementById('submitBtn');
+                const submitBtn = document.getElementById('submit-btn');
                 
                 if (submitBtn) {
                     submitBtn.disabled = true;
