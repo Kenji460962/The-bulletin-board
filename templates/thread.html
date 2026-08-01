@@ -90,6 +90,7 @@
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
+        /* 役職ごとの文字色を確実に反映 */
         .role-admin { color: #f87171 !important; font-weight: 700; }
         .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
         .role-moderator { color: #34d399 !important; font-weight: 700; }
@@ -147,15 +148,20 @@
         <div class="post-item" data-reply-id="{{ r.id }}">
             <div class="post-meta">
                 <span class="post-num">#{{ loop.index }}</span>
+                
                 {% set role_cls = '' %}
-                {% if r.role == 'admin' %}{% set role_cls = 'role-admin' %}
-                {% elif r.role == 'sub_admin' %}{% set role_cls = 'role-sub-admin' %}
-                {% elif r.role == 'moderator' %}{% set role_cls = 'role-moderator' %}
-                {% elif r.is_admin %}{% set role_cls = 'role-admin' %}
+                {% if r.role == 'admin' or r.is_admin %}
+                    {% set role_cls = 'role-admin' %}
+                {% elif r.role == 'sub_admin' %}
+                    {% set role_cls = 'role-sub-admin' %}
+                {% elif r.role == 'moderator' %}
+                    {% set role_cls = 'role-moderator' %}
                 {% endif %}
+
                 <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
                 <span>{{ r.date }}</span>
                 <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
+                
                 {% if is_admin_user %}
                 <div style="margin-left: auto; display: flex; gap: 4px;">
                     <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
