@@ -51,26 +51,27 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：145px） */
+        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：165pxに調整） */
         .posts-container { 
             position: absolute !important;
             top: 65px !important;
-            bottom: 145px !important; 
+            bottom: 165px !important; 
             left: 0 !important;
             width: 100% !important;
             overflow-y: scroll !important; 
             padding: 16px 16px 30px 16px !important; 
             box-sizing: border-box !important; 
             background-color: var(--bg-color); 
+            scroll-behavior: smooth;
         }
 
-        /* スマホ用：入力欄と、そのすぐ下にある広告をまとめた固定フッターエリア（145px） */
+        /* スマホ用：入力欄と広告をまとめた固定フッターエリア（165px） */
         .footer-area { 
             position: absolute !important;
             bottom: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            height: 145px !important; 
+            height: 165px !important; 
             background-color: var(--panel-bg); 
             border-top: 1px solid var(--border-color); 
             padding: 8px 16px !important; 
@@ -105,14 +106,14 @@
             .posts-container {
                 right: 330px !important;
                 width: calc(100% - 330px) !important;
-                bottom: 85px !important;
+                bottom: 110px !important;
                 padding: 16px 24px !important;
             }
 
             .footer-area {
                 right: 330px !important;
                 width: calc(100% - 330px) !important;
-                height: 85px !important;
+                height: 110px !important;
                 padding: 12px 20px !important;
                 justify-content: center;
             }
@@ -148,7 +149,28 @@
             border: 1px solid var(--border-color);
         }
         .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .post-num { font-weight: 700; color: var(--accent-color); }
+        
+        /* 番号リンク（クリックで入力欄に引用） */
+        .post-num { 
+            font-weight: 700; 
+            color: var(--accent-color); 
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .post-num:hover { 
+            text-decoration: underline; 
+        }
+
+        /* >>アンカーのスタイル（色付き・ジャンプ用） */
+        .post-anchor {
+            color: #f43f5e;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .post-anchor:hover {
+            text-decoration: underline;
+        }
+
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
@@ -218,9 +240,9 @@
 
     <div class="posts-container" id="postsContainer">
         {% for r in thread.replies %}
-        <div class="post-item" data-reply-id="{{ r.id }}">
+        <div class="post-item" id="post-{{ loop.index }}" data-reply-id="{{ r.id }}">
             <div class="post-meta">
-                <span class="post-num">#{{ loop.index }}</span>
+                <span class="post-num" onclick="quoteReply({{ loop.index }})">#{{ loop.index }}</span>
                 
                 {% set role_cls = 'post-name' %}
                 {% if r.role == 'admin' or r.is_admin %}
@@ -270,7 +292,7 @@
                 <button type="submit" id="submit-btn" style="font-size: 11px; padding: 3px 12px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
             </div>
             <div>
-                <textarea name="content" rows="1" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
+                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
             </div>
         </form>
 
@@ -287,6 +309,34 @@
 
         function forceScrollBottom() {
             container.scrollTop = container.scrollHeight;
+        }
+
+        // #番号をクリックした時に呼ばれる関数（>>989\nを挿入）
+        function quoteReply(num) {
+            const textarea = document.querySelector('textarea[name="content"]');
+            if (textarea) {
+                const addText = `>>${num}\n`;
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const val = textarea.value;
+                
+                textarea.value = val.substring(0, start) + addText + val.substring(end);
+                textarea.selectionStart = textarea.selectionEnd = start + addText.length;
+                textarea.focus();
+            }
+        }
+
+        // 本文中の >>数字 をリンクに変換する関数
+        function formatContent(text) {
+            if (!text) return '';
+            // URLリンク化
+            let formatted = text.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
+            // >>数字 をアンカーリンクに変換
+            formatted = formatted.replace(/&gt;&gt;(\d+)|>>(\d+)/g, (match, p1, p2) => {
+                const num = p1 || p2;
+                return `<a href="#post-${num}" class="post-anchor">&gt;&gt;${num}</a>`;
+            });
+            return formatted;
         }
 
         function setCookie(name, value, days) {
@@ -316,6 +366,12 @@
             if (savedAuthor && authorInput) {
                 authorInput.value = savedAuthor;
             }
+
+            // 既存のレスの本文も >>アンカー形式に整形
+            document.querySelectorAll('.post-content').forEach(el => {
+                el.innerHTML = formatContent(el.textContent);
+            });
+
             forceScrollBottom();
         });
 
@@ -348,7 +404,7 @@
                 }
 
                 let contentText = reply.content || '';
-                contentText = contentText.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
+                let formattedContentText = formatContent(contentText);
 
                 let adminStar = '';
                 let roleClass = 'post-name';
@@ -394,16 +450,17 @@
 
                 const newDiv = document.createElement('div');
                 newDiv.className = 'post-item';
+                newDiv.id = `post-${currentPostCount}`;
                 newDiv.setAttribute('data-reply-id', reply.id);
                 newDiv.innerHTML = `
                     <div class="post-meta">
-                        <span class="post-num">#${currentPostCount}</span>
+                        <span class="post-num" onclick="quoteReply(${currentPostCount})">#${currentPostCount}</span>
                         <span class="${roleClass}">${reply.author}${adminStar}</span>
                         <span>${formattedDate}</span>
                         <span style="color: var(--text-muted);">ID:${reply.user_id}</span>
                         ${adminButtonsHtml}
                     </div>
-                    <div class="post-content">${contentText}</div>
+                    <div class="post-content">${formattedContentText}</div>
                     ${imageHtml}
                 `;
 
