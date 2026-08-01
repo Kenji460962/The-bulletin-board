@@ -315,13 +315,35 @@
             });
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
+// 【新しく追加・修正するスクロール処理】
+        // 画面のコンテナとページ全体のスクロールを、一瞬で一番下に固定する関数
+        function forceScrollBottom() {
+            const container = document.getElementById('post-container');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+            window.scrollTo({
+                top: document.documentElement.scrollHeight,
+                behavior: 'auto'
+            });
+        }
+
+        // 1. ページが読み込まれた瞬間（DOMContentLoaded）の処理
+        document.addEventListener("DOMContentLoaded", () => {
             const savedAuthor = getCookie('bbs_saved_author');
             const authorInput = document.querySelector('input[name="author"]');
             if (savedAuthor && authorInput) {
                 authorInput.value = savedAuthor;
             }
-            instantScrollToBottom();
+            forceScrollBottom();
+        });
+
+        // 2. 画面や画像の読み込みが完全に終わった瞬間（load）の処理
+        window.addEventListener('load', () => {
+            forceScrollBottom();
+            
+            // 3. 読み込み直後にズレるのを防ぐため、0.05秒後にもう一度だけ強制的に下に固定する
+            setTimeout(forceScrollBottom, 50);
         });
 
         window.addEventListener('load', () => {
