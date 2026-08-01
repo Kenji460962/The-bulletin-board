@@ -512,6 +512,54 @@
                 }
             });
         }
+
+
+        // 🚀 フォーム送信時にリロードさせずに非同期（Ajax）で送信する処理
+        const bbsForm = document.getElementById('bbs-form'); // ※フォームのidが bbs-form であること
+        if (bbsForm) {
+            bbsForm.addEventListener('submit', async (e) => {
+                e.preventDefault(); // ページの強制リロードを完全にブロック！
+
+                const formData = new FormData(bbsForm);
+                const submitBtn = document.getElementById('submit-btn'); // 送信ボタン
+                
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.6';
+                }
+
+                try {
+                    const response = await fetch(bbsForm.action, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await response.json();
+
+                    if (response.ok && result.success) {
+                        // 送信成功！テキストエリアの中身を空にする（名前はクッキーに残す）
+                        const contentArea = bbsForm.querySelector('textarea[name="content"]');
+                        if (contentArea) contentArea.value = '';
+                        
+                        const imageInput = bbsForm.querySelector('input[name="image"]');
+                        if (imageInput) imageInput.value = '';
+
+                        // ※すでに組んでいる「1秒ごとの自動更新」または「Supabase Realtime」が
+                        //   数秒（または一瞬）で新しいレスを検知して一番下に自動追加してくれます！
+                    } else {
+                        alert(result.error || '書き込みに失敗しました。');
+                    }
+                } catch (error) {
+                    console.error('送信エラー:', error);
+                    alert('通信エラーが発生しました。');
+                } finally {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.style.opacity = '1';
+                    }
+                }
+            });
+        }
     </script>
 </body>
 </html>
