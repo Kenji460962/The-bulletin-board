@@ -459,20 +459,13 @@ def thread_view(thread_id):
                 except Exception as e:
                     print(f"R2 Upload Error: {e}")
 
-        if content.strip() or image_url:
-            try:
-                supabase.table('replies').insert({
-                    'thread_id': thread_id,
-                    'author': author_input,
-                    'content': content,
-                    'user_id': user_id,
-                    'is_admin': is_admin,
-                    'role': role_to_save, # 新規追加：役職を保存
-                    'image_url': image_url,
-                    'ip_address': client_ip
-                }).execute()
-            except Exception as e:
-                print(f"レス保存エラー: {e}")
+
+
+
+
+
+
+
 
         if content.strip() or image_url:
             try:
@@ -496,6 +489,13 @@ def thread_view(thread_id):
 
         return {"success": False, "error": "内容が空です"}, 400
 
+
+
+
+
+
+
+    
  
        
 
