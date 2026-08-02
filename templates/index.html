@@ -227,7 +227,7 @@
                 {% for thread in threads %}
                 <li style="display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;">
                     <div>
-                        <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}" {% if thread.id|int == 1 or thread.id | int == 2 or thread.id | int == 3 %}style="color: #ff3344 !important; font-weight: bold;"{% endif %}>
+                        <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}" {% if thread.id|int == 1 or thread.id | int == 2 or thread.id | int == 3 or thread.id | int == 4 %}style="color: #ff3344 !important; font-weight: bold;"{% endif %}>
                             【{{ thread.id }}】 {{ thread.title }}
                         </a> 
                         
