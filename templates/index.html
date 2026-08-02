@@ -224,6 +224,9 @@
                         {% if thread.id|int != 1 and thread.id | int != 2 and thread.id | int != 3%}
                         <span class="res-count">({{ thread.replies_count }}レス)</span>
                         {% endif %}
+                        {% if thread.thread_active_count and thread.thread_active_count > 0 %}
+                        <span class="res-count" style="color: #4ade80;">👀 {{ thread.thread_active_count }}人</span>
+                        {% endif %}
                     </div>
 
                     {% if is_admin_user %}
