@@ -5,6 +5,7 @@
     
     <link rel="icon" href="{{ url_for('static', filename='favicon2.png') }}" type="image/png">
        
+    <!--スマホ対応-->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125"
@@ -29,273 +30,383 @@
         /* タイトルのデザイン*/
                 /* タイトルのデザイン（大きく・目立つように強化！） */
         h1 {
-            font-size: 36px;                 /* 文字サイズを大きく */
-            font-weight: 900;                /* めっちゃ太字 */
-            color: #ffffff;                  /* 文字色を白に */
-            text-align: center;              /* 中央寄せ */
-            margin-top: 20px;
-            margin-bottom: 25px;
+            font-size: 42px; 
+            font-weight: 900;
+            letter-spacing: 2px; 
+            margin-top: 5px;
+            margin-bottom: 15px;
             
-            /* 文字に黒い影（ネオン風）をつけて、どんな背景でも浮き上がって見えるようにする */
+            
             text-shadow: 
-                0 0 10px rgba(0, 0, 0, 0.9),
-                2px 2px 4px rgba(0, 0, 0, 0.8),
-                -2px -2px 4px rgba(0, 0, 0, 0.8);
-            
-            letter-spacing: 2px;             /* 文字同士の間隔を少し広げておしゃれに */
+                2px 2px 0px #000,
+                -2px -2px 0px #000,
+                2px -2px 0px #000,
+                -2px 2px 0px #000,
+                0px 0px 15px rgba(0, 255, 255, 0.8); /* 外側にうっ水色のネオン光を放つってダッサ */
         }
 
-        /* 共通ボタン（ネオン風） */
-        button, input[type="submit"] {
-            background-color: #007bff;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            font-size: 16px;
+        
+        /*上のメニューバー*/
+        .menu-bar { 
+            background-color: rgba(40, 44, 52, 0.75); 
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.15); 
+            border-radius: 8px;
+            padding: 8px; 
+            margin-bottom: 25px; 
+            display: flex; 
+            gap: 12px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* メニューのボタン */
+        .menu-btn { 
+            background-color: rgba(255, 255, 255, 0.1); 
+            color: #ccc;
+            border: 1px solid rgba(255, 255, 255, 0.2); 
             border-radius: 5px;
-            cursor: pointer;
-            box-shadow: 0 0 10px rgba(0,123,255,0.5);
-            transition: all 0.3s ease;
+            padding: 8px 20px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            transition: all 0.2s ease;
         }
 
-        button:hover, input[type="submit"]:hover {
-            background-color: #0056b3;
-            box-shadow: 0 0 15px rgba(0,123,255,0.8);
+        /* マウスを乗せたとき */
+        .menu-btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: #fff;
         }
 
-        /* 入力フォームのデザイン */
-        input[type="text"], textarea {
-            width: 100%;
-            max-width: 500px;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            margin-bottom: 10px;
-            box-sizing: border-box;
+        .menu-btn.active { 
+            background-color: #007bff; 
+            color: #fff;
+            border-color: #007bff;
+            box-shadow: 0 0 10px rgba(0, 123, 255, 0.5);
+        }
+        
+        /* タブのコンテンツ表示切り替え */
+        .content-section { display: none; }
+        .content-section.active { display: block; }
+        
+        .glass-panel {
+            background-color: rgba(0, 0, 0, 0.65);
+            backdrop-filter: blur(3px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+
+        /* フォームの調整 */
+        form { 
+            max-width: 450px; 
+        }
+        form h3 { margin-top: 0; }
+        input[type="text"], input[type="password"], textarea {
             background-color: rgba(255, 255, 255, 0.9);
             color: #000;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 6px;
         }
-
-        /* リンクのデザイン */
-        a {
-            color: #00ffff; /* ネオンブルー */
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        a:hover {
-            text-decoration: underline;
-        }
-
-        /* タブメニューのデザイン */
-        .tab-menu {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .menu-btn {
-            background-color: rgba(0, 0, 0, 0.6);
+        button {
+            background-color: #28a745;
             color: white;
-            border: 1px solid #007bff;
-            padding: 10px 20px;
-            font-size: 16px;
-            border-radius: 5px;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 15px;
+            font-weight: bold;
             cursor: pointer;
-            box-shadow: none;
+        }
+        button:hover { background-color: #218838; }
+
+        /* スレ一覧のリンク */
+        ul { padding-left: 20px; }
+        li { margin-bottom: 10px; font-size: 18px; }
+        .thread-link { color: #4dabff !important; font-weight: bold; text-decoration: none; }
+        .thread-link:hover { text-decoration: underline; }
+        .res-count { color: #aaa; font-size: 14px; margin-left: 5px; }
+
+        /* 管理者の一言ボックス */
+        .admin-box { 
+            background-color: rgba(0, 123, 255, 0.15); 
+            border: 1px solid rgba(0, 123, 255, 0.3); 
+            border-left: 5px solid #007bff; 
+            border-radius: 4px;
+            padding: 15px; 
+            font-size: 18px; 
+            min-height: 80px; 
+            white-space: pre-wrap; 
+            color: #99ccff; 
+            font-weight: bold; 
         }
 
-        .menu-btn.active {
-            background-color: #007bff;
-            box-shadow: 0 0 10px rgba(0,123,255,0.8);
+        /* ロビー */
+        .lobby-welcome { 
+            text-align: center; 
+            padding: 40px 20px; 
         }
-
-        /* 表示・非表示の切り替え */
-        .content-section {
-            display: none;
-        }
-
-        .content-section.active {
-            display: block;
+        .lobby-title { 
+            font-size: 36px; 
+            color: #fff; 
+            font-family: "Georgia", serif; 
+            margin-bottom: 20px; 
+            font-weight: bold; 
+            letter-spacing: 3px; 
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
         }
     </style>
+   
 </head>
 <body>
 
-    <h1> talk-ch トークちゃんねる </h1>
+    <h1> talk-ch </h1>
 
-    <div class="tab-menu">
-        <button class="menu-btn active" onclick="switchTab('create-tab', this)">新規スレ作成</button>
-        <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
-    </div>
 
-    <div id="create-tab" class="content-section active">
-        <h2>新規スレッド作成</h2>
-        <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
-            <div>
-                <label for="title">スレッド名:</label><br>
-                <input type="text" id="title" name="title" required placeholder="スレッドのタイトルを入力">
-            </div>
-            <div>
-                <label for="content">1の書き込み（本文）:</label><br>
-                <textarea id="content" name="content" rows="4" required placeholder="最初の書き込み内容を入力"></textarea>
-            </div>
-            <button type="submit">スレッドを作成する</button>
-        </form>
-    </div>
 
-    <div id="threads-tab" class="content-section">
-        <h2>いま立っている板一覧</h2>
-        <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
 
-        <div style="background-color: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); padding: 12px; border-radius: 8px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; max-width: 600px;">
-            <div>
-                <input type="text" id="threadSearchInput" placeholder="スレッドのタイトルで検索..." onkeyup="filterThreads()" style="width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; background-color: rgba(255, 255, 255, 0.9); color: #000; outline: none; margin-bottom: 0;">
-            </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="number" id="jumpThreadIdInput" placeholder="スレッド番号を入力" min="1" style="flex: 1; box-sizing: border-box; padding: 8px 10px; font-size: 14px; border-radius: 4px; border: 1px solid #ccc; background-color: rgba(255, 255, 255, 0.9); color: #000; outline: none; margin-bottom: 0;">
-                <button type="button" onclick="jumpToThread()" style="background-color: #007bff; color: white; border: none; border-radius: 4px; padding: 8px 15px; font-size: 14px; font-weight: bold; cursor: pointer;">移動</button>
-            </div>
+        <!-- 上のメニューバー -->
+    <div class="menu-bar" style="justify-content: space-between; align-items: center; display: flex; width: 100%; box-sizing: border-box;">
+        <!-- 左側：タブ切り替えボタン群 -->
+        <div style="display: flex; gap: 12px; align-items: center;">
+            <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</button>
+            <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
+            <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
+            <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
         </div>
 
-        <ul id="thread-list" style="list-style: none; padding: 0;">
-            {% for thread in threads %}
-            <li class="thread-item" style="display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;">
-                <div>
-                    <span style="color: #aaa; font-size: 14px; margin-right: 8px;">#{{ thread.id }}</span>
-                    <a href="{{ url_for('thread_view', thread_id=thread.id) }}" style="font-size: 18px;">{{ thread.title }}</a>
-                </div>
-                {% if is_admin_user %}
-                <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当に削除しますか？');" style="margin: 0;">
-                    <button type="submit" style="background-color: #ff4d4d; padding: 4px 8px; font-size: 12px; border-radius: 3px;">削除</button>
-                </form>
-                {% endif %}
-            </li>
-            {% endfor %}
-        </ul>
+        <!-- 右側：バーの右端に固定されたオンライン人数 -->
+        <div style="color: #4dabff; font-weight: bold; font-size: 14px; padding-right: 15px; text-shadow: 0 0 5px rgba(77, 171, 255, 0.4); white-space: nowrap;">
+            🟢 オンライン: {{ active_count }}人
+        </div>
     </div>
 
-    <script>
-        document.getElementById('create-thread-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
+   
+    <!-- 1. ロビータブ -->
+    <div id="lobby-tab" class="content-section active">
+        <div class="glass-panel lobby-welcome">
+            <div class="lobby-title">Welcome to  talk-ch!</div>
+            <p style="font-size: 16px; color: #ddd; text-shadow: 1px 1px 2px #000; line-height: 1.6;">
+                トークちゃんねるは完全匿名、登録不要の掲示板です。<br>
+                上の「スレ一覧」から自由にトピックを作って会話を始めましょう！
+            </p>
+        </div>
+    </div>
 
-            try {
-                const response = await fetch(this.action, {
-                    method: 'POST',
-                    body: formData
-                });
-                const result = await response.json();
+    <!-- 2. スレ一覧タブ（フォームも板一覧もすべてこの部屋に入れます） -->
+    <div id="threads-tab" class="content-section">
+        <!-- 上段：スレ立てフォーム -->
+        <div class="glass-panel">
+            <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
+                <h3>新しい板（スレッド）を立てる</h3>
+                <input type="text" name="title" placeholder="スレッドのタイトルを入力（50文字以内）" style="width: 80%;" maxlength="50" required>
+                <button type="submit">新規スレッド作成</button>
+            </form>
+        </div>
 
-                if (response.ok && result.success) {
-                    const threadList = document.getElementById('thread-list');
-                    if (threadList) {
-                        const newLi = document.createElement('li');
-                        newLi.className = 'thread-item';
-                        newLi.style.cssText = "display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;";
+        <!-- 下段：いま立っている板一覧 -->
+        <div class="glass-panel">
+            <h2>いま立っている板一覧</h2>
+            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
+            <ul id="thread-list">
+                
+                
+                
+                {% for thread in threads %}
+                <li style="display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;">
+                    <div>
+                        <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}" {% if thread.id|int == 1 or thread.id | int == 2 or thread.id | int == 3 %}style="color: #ff3344 !important; font-weight: bold;"{% endif %}>
+                            【{{ thread.id }}】 {{ thread.title }}
+                        </a> 
                         
-                        let deleteButtonHtml = '';
-                        {% if is_admin_user %}
-                        deleteButtonHtml = `
-                            <form action="/delete_thread/${result.thread_id}" method="POST" onsubmit="return confirm('本当に削除しますか？');" style="margin: 0;">
-                                <button type="submit" style="background-color: #ff4d4d; padding: 4px 8px; font-size: 12px; border-radius: 3px;">削除</button>
-                            </form>
-                        `;
+                        {% if thread.id|int != 1 and thread.id | int != 2 and thread.id | int != 3%}
+                        <span class="res-count">({{ thread.replies_count }}レス)</span>
                         {% endif %}
+                        {% if thread.thread_active_count and thread.thread_active_count > 0 %}
+                        <span class="res-count" style="color: #4ade80;">👀 {{ thread.thread_active_count }}人</span>
+                        {% endif %}
+                    </div>
 
-                        newLi.innerHTML = `
-                            <div>
-                                <span style="color: #aaa; font-size: 14px; margin-right: 8px;">#${result.thread_id}</span>
-                                <a href="/thread/${result.thread_id}" style="font-size: 18px;">${escapeHtml(formData.get('title'))}</a>
-                            </div>
-                            ${deleteButtonHtml}
-                        `;
-                        threadList.insertBefore(newLi, threadList.firstChild);
-                    }
+                    {% if is_admin_user %}
+                    <form action="/thread/{{ thread.id }}/delete_thread" method="POST" style="display: inline; margin: 0; padding: 0; width: auto;" onsubmit="return confirm('このスレッドを中身ごと完全に削除しますか？');">
+                        <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer;">スレ削除</button>
+                    </form>
+                    {% endif %}
+
+
+                </li>
+                {% else %}
+                <li id="no-thread-msg">まだ板がありません。新しい板を立ててみましょう！</li>
+                {% endfor %}
+            </ul>
+
+            <!-- ページ切り替え（ボタン）パーツ -->
+            <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center;">
+                {% if current_page > 1 %}
+                    <a href="/?tab=threads&page={{ current_page - 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">◀ 前のページ</a>
+                {% endif %}
+                
+                <span style="color: #bbb;">ページ {{ current_page }}</span>
+                
+                {% if has_next %}
+                    <a href="/?tab=threads&page={{ current_page + 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">次のページ ▶</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 「その他」タブ -->
+    <div id="other-tab" class="content-section">
+        <div class="glass-panel">
+            <h3 style="margin-top: 0;">その他メニュー</h3>
+            <ul>
+                <li>
+                    <a class="thread-link" href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a>
+                </li>
+
+                 <li>
+                    <a class="thread-link" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank" style="font-size: 18px;">
+                        お問い合わせ・通報窓口
+                    </a>
+                </li>
+                
+                <li>
+                    <a class="thread-link" href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
+                </li>
                     
-                    this.reset();
-                    var threadTabBtn = document.querySelectorAll('.menu-btn')[1];
-                    switchTab('threads-tab', threadTabBtn);
-                } else {
-                    alert(result.error || 'スレッドの作成に失敗しました。');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('通信エラーが発生しました。');
-            }
-        });
+            </ul>
+        </div>
+    </div>
 
-        function escapeHtml(str) {
-            return str.replace(/&/g, '&amp;')
-                      .replace(/</g, '&lt;')
-                      .replace(/>/g, '&gt;')
-                      .replace(/"/g, '&quot;')
-                      .replace(/'/g, '&#39;');
-        }
 
-        function switchTab(tabId, buttonElement) {
-            var sections = document.querySelectorAll('.content-section');
-            for (var i = 0; i < sections.length; i++) {
-                sections[i].classList.remove('active');
-            }
-            var buttons = document.querySelectorAll('.menu-btn');
-            for (var j = 0; j < buttons.length; j++) {
-                buttons[j].classList.remove('active');
-            }
-            var targetSection = document.getElementById(tabId);
-            if (targetSection) {
-                targetSection.classList.add('active');
-            }
-            if (buttonElement) {
-                buttonElement.classList.add('active');
-            }
-        }
+    <!-- 3. 管理者の一言タブ -->
+    <div id="admin-tab" class="content-section">
+        <div class="glass-panel">
+            <h2> 管理者の一言</h2>
+            <div class="admin-box">{{ admin_message }}</div>
+        </div>
+        
+        <div class="glass-panel">
+            <h3>【管理者専用】一言を更新する</h3>
+            <form action="{{ url_for('update_admin_message') }}" method="POST">
+                パスワード：<input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
+                新しいメッセージ：<br>
+                <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required></textarea><br><br>
+                <button type="submit">一言を更新する</button>
+            </form>
+        </div>
+    </div>
 
-        // 🔍 キーワード検索関数（追加）
-        function filterThreads() {
-            const input = document.getElementById('threadSearchInput').value.toLowerCase();
-            const threads = document.querySelectorAll('.thread-item');
+        <script>
+    
+    document.getElementById('create-thread-form').addEventListener('submit', async (e) => {
+        e.preventDefault(); 
 
-            threads.forEach(thread => {
-                const text = thread.textContent.toLowerCase();
-                if (text.includes(input)) {
-                    thread.style.display = "flex";
-                } else {
-                    thread.style.display = "none";
-                }
+        const form = e.target;
+        const formData = new FormData(form);
+
+        try {
+            const response = await fetch(form.action, {
+                method: 'POST',
+                body: formData
             });
-        }
 
-        // 🔍 スレッド番号ジャンプ関数（追加）
-        function jumpToThread() {
-            const input = document.getElementById('jumpThreadIdInput');
-            if (!input) return;
-            const threadId = input.value.trim();
-            if (!threadId) return;
-            window.location.href = `/thread/${threadId}`;
-        }
+            const result = await response.json();
 
-        window.addEventListener('load', function() {
-            var params = new URLSearchParams(window.location.search);
-            if (params.get('tab') === 'threads') {
-                var btns = document.querySelectorAll('.menu-btn');
-                for (var k = 0; k < btns.length; k++) {
-                    if (btns[k].textContent.trim() === 'スレ一覧') {
-                        switchTab('threads-tab', btns[k]);
-                    }
+            if (result.success) {
+             
+                const thread = result.thread;
+                const threadList = document.getElementById('thread-list');
+                
+                const noThreadMsg = document.getElementById('no-thread-msg');
+                if (noThreadMsg) {
+                    noThreadMsg.remove();
+                }
+
+                const newLi = document.createElement('li');
+                newLi.style.cssText = "display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;";
+                
+                let deleteButtonHtml = '';
+                if ({{ 'true' if is_admin_user else 'false' }}) {
+                    deleteButtonHtml = `
+                        <form action="/thread/${thread.id}/delete_thread" method="POST" style="display: inline; margin: 0; padding: 0; width: auto;" onsubmit="return confirm('このスレッドを中身ごと完全に削除しますか？');">
+                            <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer;">スレ削除</button>
+                        </form>
+                    `;
+                }
+
+                newLi.innerHTML = `
+                    <div>
+                        <a class="thread-link" href="/thread/${thread.id}">
+                            【${thread.id}】 ${escapeHtml(thread.title)}
+                        </a> 
+                        <span class="res-count">(0レス)</span>
+                    </div>
+                    ${deleteButtonHtml}
+                `;
+
+                threadList.insertBefore(newLi, threadList.firstChild);
+                form.reset();
+                
+
+
+            } else if (result.error) {
+               
+                alert(result.error);
+            } else {
+                alert('スレッドの作成に失敗しました。');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('通信エラーが発生しました。');
+        }
+    });
+
+    
+    function escapeHtml(str) {
+        return str.replace(/&/g, '&amp;')
+                  .replace(/</g, '&lt;')
+                  .replace(/>/g, '&gt;')
+                  .replace(/"/g, '&quot;')
+                  .replace(/'/g, '&#39;');
+    }
+
+    
+    function switchTab(tabId, buttonElement) {
+        var sections = document.querySelectorAll('.content-section');
+        for (var i = 0; i < sections.length; i++) {
+            sections[i].classList.remove('active');
+        }
+        var buttons = document.querySelectorAll('.menu-btn');
+        for (var j = 0; j < buttons.length; j++) {
+            buttons[j].classList.remove('active');
+        }
+        var targetSection = document.getElementById(tabId);
+        if (targetSection) {
+            targetSection.classList.add('active');
+        }
+        if (buttonElement) {
+            buttonElement.classList.add('active');
+        }
+    }
+
+ 
+    window.addEventListener('load', function() {
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('tab') === 'threads') {
+            var btns = document.querySelectorAll('.menu-btn');
+            for (var k = 0; k < btns.length; k++) {
+                if (btns[k].textContent.trim() === 'スレ一覧') {
+                    switchTab('threads-tab', btns[k]);
+                    break;
                 }
             }
-
-            const jumpInput = document.getElementById('jumpThreadIdInput');
-            if (jumpInput) {
-                jumpInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        e.preventDefault();
-                        jumpToThread();
-                    }
-                });
-            }
-        });
+        }
+    });
     </script>
+
 </body>
 </html>
+
