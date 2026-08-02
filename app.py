@@ -7,18 +7,16 @@ import hashlib
 import uuid
 import time
 import re
-from werkzeug.middleware.proxy_fix import ProxyFix 
 
 # Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
 
 import boto3  
+import httpx  # supabaseの依存として既にインストールされているのでそのまま使う
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
-
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # スリープ防止
 @app.before_request
@@ -61,21 +59,50 @@ def get_daily_user_id(ip_address):
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
 
-def get_client_ip():
-    # ProxyFixが有効な環境では request.remote_addr が正しいクライアントIPを保持します
-    if request.remote_addr:
-        return request.remote_addr
-    
-    # 万が一のためのフォールバック
-    if request.headers.get('CF-Connecting-IP'):
-        return request.headers.get('CF-Connecting-IP').strip()
-    
-    x_forwarded_for = request.headers.get('X-Forwarded-For')
-    if x_forwarded_for:
-        return x_forwarded_for.split(',')[0].strip()
-        
-    return "127.0.0.1"
+CF_SHARED_SECRET = os.environ.get('CF_SHARED_SECRET')
 
+def get_client_ip():
+    """
+    1. Cloudflareの合言葉ヘッダーが一致する場合のみ CF-Connecting-IP を信頼する
+    2. 一致しない場合はヘッダーを信用せず remote_addr のみを使う
+    """
+    if CF_SHARED_SECRET and request.headers.get('X-Origin-Verify') == CF_SHARED_SECRET:
+        cf_ip = request.headers.get('CF-Connecting-IP', '').strip()
+        if cf_ip:
+            return cf_ip
+    return request.remote_addr or ""
+
+
+PROXYCHECK_API_KEY = os.environ.get('PROXYCHECK_API_KEY', '')
+_PROXY_CHECK_CACHE = {}
+_PROXY_CACHE_TTL = 60 * 60 * 24  # 24時間キャッシュ(同じIPへの無駄な問い合わせを減らしAPI消費を抑える)
+
+def is_proxy_or_vpn(ip):
+    if not ip:
+        return False
+    cached = _PROXY_CHECK_CACHE.get(ip)
+    now = time.time()
+    if cached and (now - cached["checked_at"] < _PROXY_CACHE_TTL):
+        return cached["is_proxy"]
+
+    is_proxy = False
+    try:
+        params = {"vpn": "1", "asn": "0", "risk": "1"}
+        if PROXYCHECK_API_KEY:
+            params["key"] = PROXYCHECK_API_KEY
+        resp = httpx.get(f"https://proxycheck.io/v2/{ip}", params=params, timeout=2.5)
+        data = resp.json()
+        info = data.get(ip, {})
+        if info.get("proxy") == "yes":
+            is_proxy = True
+        elif info.get("risk") is not None and int(info.get("risk", 0)) >= 66:
+            is_proxy = True
+    except Exception as e:
+        print(f"プロキシ判定APIエラー: {e}")
+        is_proxy = False
+
+    _PROXY_CHECK_CACHE[ip] = {"is_proxy": is_proxy, "checked_at": now}
+    return is_proxy
 
 def is_banned_ip(ip):
     if not ip:
@@ -295,10 +322,15 @@ def create_thread():
     
     is_admin = can_manage_board()
     now = time.time()
-    
+
+    # VPN/プロキシ経由の場合はスレ立て間隔を長めにする(通常180秒 → 600秒)
+    thread_cooldown = 180
+    if not is_admin and is_proxy_or_vpn(client_ip):
+        thread_cooldown = 600
+
     if not is_admin:
-        if client_ip in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[client_ip] < 180:
-            remaining_time = int(180 - (now - LAST_THREAD_TIMES[client_ip]))
+        if client_ip in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[client_ip] < thread_cooldown:
+            remaining_time = int(thread_cooldown - (now - LAST_THREAD_TIMES[client_ip]))
             minutes = remaining_time // 60
             seconds = remaining_time % 60
             return {"error": f"スレッド作成は3分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
@@ -368,8 +400,10 @@ def thread_view(thread_id):
 
         now = time.time()
         if not staff_role:
-            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < 3:
-                return {"success": False, "error": "連続投稿はできません。3秒お待ちください。"}, 429
+            # VPN/プロキシ経由の場合は連投間隔を長めにする(通常3秒 → 8秒)
+            reply_cooldown = 8 if is_proxy_or_vpn(client_ip) else 3
+            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < reply_cooldown:
+                return {"success": False, "error": f"連続投稿はできません。{reply_cooldown}秒お待ちください。"}, 429
             LAST_REPLY_TIMES[client_ip] = now
 
         image_url = ""
