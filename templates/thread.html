@@ -47,7 +47,6 @@
             transition: background-color 0.3s, color 0.3s;
         }
         
-        /* ヘッダーエリア：高さを75pxに調整して重なりを防止 */
         .header-area { 
             position: absolute !important;
             top: 0 !important;
@@ -66,7 +65,6 @@
             transition: background-color 0.3s, border-color 0.3s;
         }
 
-        /* レス一覧エリア：topを75pxにしてヘッダーとの重なりを解決 */
         .posts-container { 
             position: absolute !important;
             top: 75px !important;
@@ -110,14 +108,23 @@
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; transition: color 0.3s; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
-        /* 🎨 役職ごとの文字色設定（完全復活） */
+        /* >>アンカーのスタイル復活 */
+        .post-anchor {
+            color: var(--danger-color);
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .post-anchor:hover {
+            text-decoration: underline;
+        }
+
         .post-name { color: var(--text-main) !important; font-weight: 500; }
-        .role-admin { color: #f87171 !important; font-weight: 700; }     /* 管理者：赤 */
-        .role-sub-admin { color: #60a5fa !important; font-weight: 700; } /* 副管理者：青 */
-        .role-moderator { color: #34d399 !important; font-weight: 700; } /* モデレーター：緑 */
-        .role-pr { color: #4ade80 !important; font-weight: 700; }        /* PR：黄緑 */
-        .role-proposal { color: #fbbf24 !important; font-weight: 700; }  /* 提案：黄 */
-        .role-log { color: #38bdf8 !important; font-weight: 700; }       /* ログ：水色 */
+        .role-admin { color: #f87171 !important; font-weight: 700; }
+        .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
+        .role-moderator { color: #34d399 !important; font-weight: 700; }
+        .role-pr { color: #4ade80 !important; font-weight: 700; }
+        .role-proposal { color: #fbbf24 !important; font-weight: 700; }
+        .role-log { color: #38bdf8 !important; font-weight: 700; }
 
         input[type="text"], textarea {
             background: var(--bg-color);
@@ -231,7 +238,6 @@
         const threadId = {{ thread.id }};
         const container = document.getElementById('postsContainer');
 
-        // テーマ（ダーク/ライト）切り替えの処理
         function toggleTheme() {
             document.body.classList.toggle('light-mode');
             if (document.body.classList.contains('light-mode')) {
@@ -241,7 +247,6 @@
             }
         }
 
-        // #番号クリックでレス引用
         function quoteReply(num) {
             const textarea = document.querySelector('textarea[name="content"]');
             if (textarea) {
@@ -254,6 +259,17 @@
                 textarea.selectionStart = textarea.selectionEnd = start + addText.length;
                 textarea.focus();
             }
+        }
+
+        // アンカー機能復活！本文中の >>数字 をリンクに変換する関数
+        function formatContent(text) {
+            if (!text) return '';
+            let formatted = text.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
+            formatted = formatted.replace(/&gt;&gt;(\d+)|>>(\d+)/g, (match, p1, p2) => {
+                const num = p1 || p2;
+                return `<a href="#post-${num}" class="post-anchor">&gt;&gt;${num}</a>`;
+            });
+            return formatted;
         }
 
         function forceScrollBottomInstant() {
@@ -292,6 +308,12 @@
             if (savedAuthor && authorInput) {
                 authorInput.value = savedAuthor;
             }
+
+            // 既存のレスにも >>アンカーリンクを適用！
+            document.querySelectorAll('.post-content').forEach(el => {
+                el.innerHTML = formatContent(el.innerHTML); // textContentからinnerHTMLに変更(URLリンク等が二重置換されないように)
+            });
+
             forceScrollBottomInstant();
         });
 
@@ -321,12 +343,12 @@
                 }
 
                 let contentText = reply.content || '';
-                contentText = contentText.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
+                // リアルタイムで追加されたレスにも >>アンカーリンクを適用！
+                let formattedContentText = formatContent(contentText);
 
                 let adminStar = '';
                 let roleClass = 'post-name';
                 
-                // 🎨 リアルタイム追加時の役職判定（修正完了）
                 if (reply.role === 'admin' || reply.is_admin) {
                     roleClass = 'role-admin';
                     adminStar = '★';
@@ -372,71 +394,4 @@
                 newDiv.setAttribute('data-reply-id', reply.id);
                 newDiv.innerHTML = `
                     <div class="post-meta">
-                        <span class="post-num" onclick="quoteReply(${currentPostCount})">#${currentPostCount}</span>
-                        <span class="${roleClass}">${reply.author}${adminStar}</span>
-                        <span>${formattedDate}</span>
-                        <span style="color: var(--text-muted);">ID:${reply.user_id}</span>
-                        ${adminButtonsHtml}
-                    </div>
-                    <div class="post-content">${contentText}</div>
-                    ${imageHtml}
-                `;
-
-                container.appendChild(newDiv);
-                
-                container.scrollTo({
-                    top: container.scrollHeight,
-                    behavior: 'smooth'
-                });
-            })
-            .subscribe();
-
-        const bbsForm = document.getElementById('bbsForm');
-        if (bbsForm) {
-            bbsForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                const authorInput = bbsForm.querySelector('input[name="author"]');
-                if (authorInput) {
-                    setCookie('bbs_saved_author', authorInput.value, 365);
-                }
-
-                const formData = new FormData(bbsForm);
-                const submitBtn = document.getElementById('submit-btn');
-                
-                if (submitBtn) {
-                    submitBtn.disabled = true;
-                    submitBtn.style.opacity = '0.6';
-                }
-
-                try {
-                    const response = await fetch(bbsForm.action, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    const result = await response.json();
-
-                    if (response.ok && result.success) {
-                        const contentArea = bbsForm.querySelector('textarea[name="content"]');
-                        if (contentArea) contentArea.value = '';
-                        
-                        const imageInput = bbsForm.querySelector('input[name="image"]');
-                        if (imageInput) imageInput.value = '';
-                    } else {
-                        alert(result.error || '書き込みに失敗しました。');
-                    }
-                } catch (error) {
-                    console.error('送信エラー:', error);
-                    alert('通信エラーが発生しました。');
-                } finally {
-                    if (submitBtn) {
-                        submitBtn.disabled = false;
-                        submitBtn.style.opacity = '1';
-                    }
-                }
-            });
-        }
-    </script>
-</body>
-</html>
+                        <span class="post-num" onclick="
