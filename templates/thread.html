@@ -13,7 +13,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        /* デフォルト（ダークモード）の変数 */
         :root {
             --bg-color: #0f172a;
             --panel-bg: #1e293b;
@@ -25,17 +24,6 @@
             --danger-color: #f43f5e;
         }
 
-        /* ライトモードの変数 */
-        body.light-mode {
-            --bg-color: #f8fafc;
-            --panel-bg: #ffffff;
-            --border-color: #cbd5e1;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --accent-color: #0284c7;
-            --accent-hover: #0369a1;
-        }
-
         html, body { 
             height: 100% !important;
             margin: 0 !important; 
@@ -44,7 +32,6 @@
             background-color: var(--bg-color); 
             color: var(--text-main);
             font-family: 'Inter', sans-serif; 
-            transition: background-color 0.3s, color 0.3s;
         }
         
         .header-area { 
@@ -52,95 +39,93 @@
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            padding: 8px 16px !important; 
+            padding: 10px 24px !important; 
             background-color: var(--panel-bg); 
             border-bottom: 1px solid var(--border-color); 
-            height: 75px !important; 
+            height: 65px !important; 
             box-sizing: border-box !important; 
             display: flex !important;
             flex-direction: column !important;
             justify-content: center !important;
             z-index: 10 !important;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            transition: background-color 0.3s, border-color 0.3s;
         }
 
-        /* スマホ基本レイアウト（広告スペース含む） */
+        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：165pxに調整） */
         .posts-container { 
             position: absolute !important;
-            top: 75px !important;
-            bottom: 175px !important; 
+            top: 65px !important;
+            bottom: 165px !important; 
             left: 0 !important;
             width: 100% !important;
             overflow-y: scroll !important; 
-            padding: 16px 16px !important; 
+            padding: 16px 16px 30px 16px !important; 
             box-sizing: border-box !important; 
             background-color: var(--bg-color); 
-            transition: background-color 0.3s;
+            scroll-behavior: smooth;
         }
 
+        /* スマホ用：入力欄と広告をまとめた固定フッターエリア（165px） */
         .footer-area { 
             position: absolute !important;
             bottom: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            height: 175px !important; 
+            height: 165px !important; 
             background-color: var(--panel-bg); 
             border-top: 1px solid var(--border-color); 
-            padding: 10px 16px !important; 
+            padding: 8px 16px !important; 
             box-sizing: border-box !important; 
             z-index: 10 !important;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
-            transition: background-color 0.3s, border-color 0.3s;
         }
 
-        /* スマホ用広告枠 */
+        /* 入力欄のすぐ下に配置するスマホ用広告スペース（320x50） */
         .ad-item-sp {
             width: 100%;
             height: 50px;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(0,0,0,0.1);
+            background: rgba(0,0,0,0.2);
             border-radius: 4px;
             overflow: hidden;
             box-sizing: border-box;
-            margin-top: 8px;
         }
 
         .ad-space-pc {
-            display: none; 
+            display: none; /* スマホでは非表示 */
         }
 
-        /* ========================================= */
-        /* PC画面（横幅768px以上）：右側に広告を固定 */
-        /* ========================================= */
+        /* ----------------------------------------- */
+        /* PC画面（横幅768px以上）：右側に300x250広告を固定配置 */
+        /* ----------------------------------------- */
         @media (min-width: 768px) {
             .posts-container {
                 right: 330px !important;
                 width: calc(100% - 330px) !important;
-                bottom: 120px !important; 
+                bottom: 110px !important;
+                padding: 16px 24px !important;
             }
 
             .footer-area {
                 right: 330px !important;
                 width: calc(100% - 330px) !important;
-                height: 120px !important;
+                height: 110px !important;
                 padding: 12px 20px !important;
                 justify-content: center;
             }
 
             .ad-item-sp {
-                display: none; 
+                display: none; /* PCではスマホ用広告を非表示 */
             }
 
             .ad-space-pc {
                 display: flex;
                 position: absolute;
-                top: 75px; 
+                top: 65px;
                 right: 0;
                 width: 330px;
                 bottom: 0;
@@ -152,7 +137,6 @@
                 z-index: 9;
                 box-sizing: border-box;
                 padding: 10px;
-                transition: background-color 0.3s, border-color 0.3s;
             }
         }
 
@@ -163,23 +147,34 @@
             padding: 12px 16px;
             border-radius: 8px;
             border: 1px solid var(--border-color);
-            transition: background-color 0.3s, border-color 0.3s;
         }
-        
         .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        .post-num { font-weight: 700; color: var(--accent-color); cursor: pointer; }
-        .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; transition: color 0.3s; }
-        .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
-        /* >>アンカーのスタイル */
+        /* 番号リンク（クリックで入力欄に引用） */
+        .post-num { 
+            font-weight: 700; 
+            color: var(--accent-color); 
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .post-num:hover { 
+            text-decoration: underline; 
+        }
+
+        /* >>アンカーのスタイル（色付き・ジャンプ用） */
         .post-anchor {
-            color: var(--danger-color);
+            color: #f43f5e;
             font-weight: 600;
             text-decoration: none;
         }
-        .post-anchor:hover { text-decoration: underline; }
+        .post-anchor:hover {
+            text-decoration: underline;
+        }
 
-        /* 役職ごとの色 */
+        .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
+        .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
+        
+        /* 役職ごとの色設定 */
         .post-name { color: var(--text-main) !important; font-weight: 500; }
         .role-admin { color: #f87171 !important; font-weight: 700; }
         .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
@@ -193,9 +188,9 @@
             border: 1px solid var(--border-color);
             color: var(--text-main);
             border-radius: 4px;
-            padding: 6px 10px;
+            padding: 4px 8px;
             outline: none;
-            transition: border-color 0.2s, background-color 0.3s, color 0.3s;
+            transition: border-color 0.2s;
         }
         input[type="text"]:focus, textarea:focus {
             border-color: var(--accent-color);
@@ -208,25 +203,29 @@
             transition: background 0.2s;
         }
 
-        a { color: var(--accent-color); text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
 
     <div class="header-area">
-        <div style="font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); line-height: 1.3;">
+        <div style="font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);">
             {{ thread.title }}
         </div>
-        <div style="font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <a href="{{ back_to_board }}" style="font-size: 11px;">← 掲示板に戻る</a>
-                <span>アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
-                <button type="button" onclick="toggleTheme()" style="font-size: 10px; padding: 2px 5px; background: var(--border-color); color: var(--text-main); border: none; border-radius: 4px;">🌓 切替</button>
+        <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px;">
+            <div>
+                <a href="{{ back_to_board }}">← 掲示板に戻る</a>
+                <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
             </div>
             {% if is_admin_user %}
             <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
-                <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 10px;">スレッド削除</button>
+                <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 11px;">スレッド削除</button>
             </form>
             {% endif %}
         </div>
@@ -234,7 +233,7 @@
 
     <div class="ad-space-pc">
         <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">スポンサーリンク</div>
-        <div style="width: 300px; height: 250px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden;">
+        <div style="width: 300px; height: 250px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); border-radius: 4px; overflow: hidden;">
             <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
         </div>
     </div>
@@ -261,6 +260,9 @@
                 {% endif %}
 
                 <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                {% if r.is_op %}
+                <span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>
+                {% endif %}
                 <span>{{ r.date }}</span>
                 <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
                 
@@ -287,10 +289,10 @@
 
     <div class="footer-area">
         <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap;">
-                <label style="font-size: 12px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 12px;" value="名無しさん"></label>
-                <label style="font-size: 12px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
-                <button type="submit" id="submit-btn" style="font-size: 12px; padding: 4px 12px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
+                <label style="font-size: 11px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 11px;" value="名無しさん"></label>
+                <label style="font-size: 11px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
+                <button type="submit" id="submit-btn" style="font-size: 11px; padding: 3px 12px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
             </div>
             <div>
                 <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
@@ -308,15 +310,11 @@
         const threadId = {{ thread.id }};
         const container = document.getElementById('postsContainer');
 
-        function toggleTheme() {
-            document.body.classList.toggle('light-mode');
-            if (document.body.classList.contains('light-mode')) {
-                localStorage.setItem('bbs_theme', 'light');
-            } else {
-                localStorage.setItem('bbs_theme', 'dark');
-            }
+        function forceScrollBottom() {
+            container.scrollTop = container.scrollHeight;
         }
 
+        // #番号をクリックした時に呼ばれる関数（>>989\nを挿入）
         function quoteReply(num) {
             const textarea = document.querySelector('textarea[name="content"]');
             if (textarea) {
@@ -331,25 +329,17 @@
             }
         }
 
-        // 🔧 【修正部分】 URLの二重リンク化（バグ）を防止する処理！
+        // 本文中の >>数字 をリンクに変換する関数
         function formatContent(text) {
             if (!text) return '';
-            
-            // すでにPython側でリンク（<a href=...）に変換されている場合はURL変換をスキップする
-            if (!text.includes('<a href=')) {
-                text = text.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
-            }
-
-            // >>数字 は常にアンカーリンクに変換
-            text = text.replace(/&gt;&gt;(\d+)|>>(\d+)/g, (match, p1, p2) => {
+            // URLリンク化
+            let formatted = text.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
+            // >>数字 をアンカーリンクに変換
+            formatted = formatted.replace(/&gt;&gt;(\d+)|>>(\d+)/g, (match, p1, p2) => {
                 const num = p1 || p2;
                 return `<a href="#post-${num}" class="post-anchor">&gt;&gt;${num}</a>`;
             });
-            return text;
-        }
-
-        function forceScrollBottomInstant() {
-            container.scrollTop = container.scrollHeight;
+            return formatted;
         }
 
         function setCookie(name, value, days) {
@@ -374,26 +364,25 @@
         }
 
         document.addEventListener("DOMContentLoaded", () => {
-            const savedTheme = localStorage.getItem('bbs_theme');
-            if (savedTheme === 'light') {
-                document.body.classList.add('light-mode');
-            }
-
             const savedAuthor = getCookie('bbs_saved_author');
             const authorInput = document.querySelector('input[name="author"]');
             if (savedAuthor && authorInput) {
                 authorInput.value = savedAuthor;
             }
 
+            // 既存のレスの本文も >>アンカー形式に整形
             document.querySelectorAll('.post-content').forEach(el => {
-                el.innerHTML = formatContent(el.innerHTML);
+                el.innerHTML = formatContent(el.textContent);
             });
 
-            forceScrollBottomInstant();
+            forceScrollBottom();
         });
 
         window.addEventListener('load', () => {
-            forceScrollBottomInstant();
+            forceScrollBottom();
+            setTimeout(forceScrollBottom, 100);
+            setTimeout(forceScrollBottom, 300);
+            setTimeout(forceScrollBottom, 600);
         });
 
         const supabaseUrl = 'https://mpzjidhuovorzvjhukmy.supabase.co';
@@ -470,6 +459,7 @@
                     <div class="post-meta">
                         <span class="post-num" onclick="quoteReply(${currentPostCount})">#${currentPostCount}</span>
                         <span class="${roleClass}">${reply.author}${adminStar}</span>
+                        ${reply.is_op ? '<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>' : ''}
                         <span>${formattedDate}</span>
                         <span style="color: var(--text-muted);">ID:${reply.user_id}</span>
                         ${adminButtonsHtml}
@@ -479,11 +469,7 @@
                 `;
 
                 container.appendChild(newDiv);
-                
-                container.scrollTo({
-                    top: container.scrollHeight,
-                    behavior: 'smooth'
-                });
+                forceScrollBottom();
             })
             .subscribe();
 
