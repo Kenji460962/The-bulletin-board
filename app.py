@@ -38,12 +38,6 @@ R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 SUPABASE_URL = os.environ.get('SUPABASE_URL')
 SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY')
 
-# --- デバッグ用(原因が分かったら削除してください) ---
-print(f"[DEBUG] SUPABASE_URL: {SUPABASE_URL!r}")
-print(f"[DEBUG] SUPABASE_SERVICE_KEY length: {len(SUPABASE_SERVICE_KEY) if SUPABASE_SERVICE_KEY else 0}")
-print(f"[DEBUG] 'SUPABASE'を含む環境変数名一覧: {[k for k in os.environ.keys() if 'SUPABASE' in k.upper()]}")
-# --- ここまで ---
-
 if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
     raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY が設定されていません。Railwayの環境変数を確認してください。")
 
