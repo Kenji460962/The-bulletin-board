@@ -65,10 +65,11 @@
             transition: background-color 0.3s, border-color 0.3s;
         }
 
+        /* スマホ基本レイアウト（広告スペース含む） */
         .posts-container { 
             position: absolute !important;
             top: 75px !important;
-            bottom: 130px !important;
+            bottom: 175px !important; /* スマホ時はフッター(広告込)を避ける */
             left: 0 !important;
             width: 100% !important;
             overflow-y: scroll !important; 
@@ -83,14 +84,76 @@
             bottom: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            height: 130px !important; 
+            height: 175px !important; /* スマホ用：入力欄＋広告スペース */
             background-color: var(--panel-bg); 
             border-top: 1px solid var(--border-color); 
-            padding: 12px 16px !important; 
+            padding: 10px 16px !important; 
             box-sizing: border-box !important; 
             z-index: 10 !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
             box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
             transition: background-color 0.3s, border-color 0.3s;
+        }
+
+        /* スマホ用広告枠 */
+        .ad-item-sp {
+            width: 100%;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            box-sizing: border-box;
+            margin-top: 8px;
+        }
+
+        .ad-space-pc {
+            display: none; /* スマホではPC用広告を非表示 */
+        }
+
+        /* ========================================= */
+        /* PC画面（横幅768px以上）：右側に広告を固定 */
+        /* ========================================= */
+        @media (min-width: 768px) {
+            .posts-container {
+                right: 330px !important;
+                width: calc(100% - 330px) !important;
+                bottom: 120px !important; /* PCはフッター広告なしなので高さを縮める */
+            }
+
+            .footer-area {
+                right: 330px !important;
+                width: calc(100% - 330px) !important;
+                height: 120px !important;
+                padding: 12px 20px !important;
+                justify-content: center;
+            }
+
+            .ad-item-sp {
+                display: none; /* PCではスマホ用広告を非表示 */
+            }
+
+            .ad-space-pc {
+                display: flex;
+                position: absolute;
+                top: 75px; /* ヘッダーの高さに合わせる */
+                right: 0;
+                width: 330px;
+                bottom: 0;
+                background-color: var(--panel-bg);
+                border-left: 1px solid var(--border-color);
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                z-index: 9;
+                box-sizing: border-box;
+                padding: 10px;
+                transition: background-color 0.3s, border-color 0.3s;
+            }
         }
 
         .post-item { 
@@ -108,16 +171,15 @@
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; transition: color 0.3s; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
-        /* >>アンカーのスタイル復活 */
+        /* >>アンカーのスタイル */
         .post-anchor {
             color: var(--danger-color);
             font-weight: 600;
             text-decoration: none;
         }
-        .post-anchor:hover {
-            text-decoration: underline;
-        }
+        .post-anchor:hover { text-decoration: underline; }
 
+        /* 役職ごとの色 */
         .post-name { color: var(--text-main) !important; font-weight: 500; }
         .role-admin { color: #f87171 !important; font-weight: 700; }
         .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
@@ -146,13 +208,8 @@
             transition: background 0.2s;
         }
 
-        a {
-            color: var(--accent-color);
-            text-decoration: none;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
+        a { color: var(--accent-color); text-decoration: none; }
+        a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -172,6 +229,13 @@
                 <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 10px;">スレッド削除</button>
             </form>
             {% endif %}
+        </div>
+    </div>
+
+    <div class="ad-space-pc">
+        <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">スポンサーリンク</div>
+        <div style="width: 300px; height: 250px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.1); border-radius: 4px; overflow: hidden;">
+            <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
         </div>
     </div>
 
@@ -232,6 +296,12 @@
                 <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
             </div>
         </form>
+
+        <div class="ad-item-sp">
+            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -261,7 +331,6 @@
             }
         }
 
-        // アンカー機能復活！本文中の >>数字 をリンクに変換する関数
         function formatContent(text) {
             if (!text) return '';
             let formatted = text.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
@@ -309,9 +378,8 @@
                 authorInput.value = savedAuthor;
             }
 
-            // 既存のレスにも >>アンカーリンクを適用！
             document.querySelectorAll('.post-content').forEach(el => {
-                el.innerHTML = formatContent(el.innerHTML); // textContentからinnerHTMLに変更(URLリンク等が二重置換されないように)
+                el.innerHTML = formatContent(el.innerHTML);
             });
 
             forceScrollBottomInstant();
@@ -343,7 +411,6 @@
                 }
 
                 let contentText = reply.content || '';
-                // リアルタイムで追加されたレスにも >>アンカーリンクを適用！
                 let formattedContentText = formatContent(contentText);
 
                 let adminStar = '';
