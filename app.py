@@ -248,7 +248,7 @@ def index():
         threads = threads_response.data
         has_next = len(threads) == per_page
 
-        pinned_ids = [3, 2, 1]
+        pinned_ids = [4, 3, 2, 1]
         pinned_threads = []
 
         for pid in pinned_ids:
@@ -271,7 +271,7 @@ def index():
             threads.insert(0, pt)
 
         for t in threads:
-            if t.get('is_pinned') or int(t['id']) in [1, 2, 3]:
+            if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
                 t['is_pinned'] = True
             try:
                 replies_res = supabase.table('replies').select('id').eq('thread_id', int(t['id'])).execute()
