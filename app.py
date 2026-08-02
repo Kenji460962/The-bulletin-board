@@ -266,23 +266,19 @@ def index():
                     pinned_threads.append(pinned_res.data[0])
             except Exception as pe:
                 print(f"固定スレッド取得エラー: {pe}")
-
         for pt in pinned_threads:
             pt['is_pinned'] = True  
-            pt['replies_count'] = None  
             threads.insert(0, pt)
 
         for t in threads:
             if t.get('is_pinned') or int(t['id']) in [1, 2, 3]:
-                t['replies_count'] = None
                 t['is_pinned'] = True
-                continue
             try:
                 replies_res = supabase.table('replies').select('id').eq('thread_id', int(t['id'])).execute()
                 t['replies_count'] = len(replies_res.data) if replies_res.data else 0
             except Exception as re:
                 t['replies_count'] = 0
-
+        
         try:
             active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
             active_res = supabase.table('active_users').select('location').gte('last_seen', active_cutoff).execute()
