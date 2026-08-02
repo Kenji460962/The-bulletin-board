@@ -7,6 +7,7 @@ import hashlib
 import uuid
 import time
 import re
+from werkzeug.middleware.proxy_fix import ProxyFix 
 
 # Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
@@ -16,6 +17,8 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
+
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # スリープ防止
 @app.before_request
@@ -59,13 +62,20 @@ def get_daily_user_id(ip_address):
     return hashed[:8]
 
 def get_client_ip():
-    if request.headers.get('X-Forwarded-For'):
-        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    elif request.headers.get('CF-Connecting-IP'):
-        ip = request.headers.get('CF-Connecting-IP').strip()
-    else:
-        ip = request.remote_addr or ""
-    return ip
+    # ProxyFixが有効な環境では request.remote_addr が正しいクライアントIPを保持します
+    if request.remote_addr:
+        return request.remote_addr
+    
+    # 万が一のためのフォールバック
+    if request.headers.get('CF-Connecting-IP'):
+        return request.headers.get('CF-Connecting-IP').strip()
+    
+    x_forwarded_for = request.headers.get('X-Forwarded-For')
+    if x_forwarded_for:
+        return x_forwarded_for.split(',')[0].strip()
+        
+    return "127.0.0.1"
+
 
 def is_banned_ip(ip):
     if not ip:
