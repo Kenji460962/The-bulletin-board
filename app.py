@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response, session
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import html
 import os
@@ -7,7 +7,6 @@ import hashlib
 import uuid
 import time
 import re
-import random
 
 # Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
@@ -36,11 +35,14 @@ s3_client = boto3.client(
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
 
-SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvjhukmy.supabase.co')
-SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
+SUPABASE_URL = os.environ.get('SUPABASE_URL')
+SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY')
 
-# Supabaseに接続するロボットを起動
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY が設定されていません。Railwayの環境変数を確認してください。")
+
+# Supabaseに接続するロボットを起動(service_roleキー: RLSを無視してアクセスできる。サーバー側でのみ使用しブラウザには絶対渡さない)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 DATA_FILE = 'bbs_data.json'
 ADMIN_PASSWORD = "setokoji114514810072"
@@ -181,6 +183,9 @@ def filter_ng_words(text):
             text = text.replace(ng_word, replaced_word)
     return text
 
+import random
+from datetime import timedelta
+
 def update_and_get_user_counts(current_token, location):
     """
     アクセス中人数の集計。以前はプロセス内のdict(ACTIVE_USERS)で管理していたが、
@@ -234,21 +239,16 @@ def index():
         return make_response('', 200)
 
     page = request.args.get('page', default=1, type=int)
-    search_query = request.args.get('search', '').strip()
     per_page = 20
     start_index = (page - 1) * per_page
     end_index = start_index + per_page - 1
 
     try:
-        query = supabase.table('threads').select('*')
-        if search_query:
-            query = query.ilike('title', f'%{search_query}%')
-
-        threads_response = query.order('id', desc=True).range(start_index, end_index).execute()
+        threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
         has_next = len(threads) == per_page
 
-        pinned_ids = [4, 3, 2, 1]
+        pinned_ids = [3, 2, 1]
         pinned_threads = []
 
         for pid in pinned_ids:
@@ -266,19 +266,23 @@ def index():
                     pinned_threads.append(pinned_res.data[0])
             except Exception as pe:
                 print(f"固定スレッド取得エラー: {pe}")
+
         for pt in pinned_threads:
             pt['is_pinned'] = True  
+            pt['replies_count'] = None  
             threads.insert(0, pt)
 
         for t in threads:
-            if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
+            if t.get('is_pinned') or int(t['id']) in [1, 2, 3]:
+                t['replies_count'] = None
                 t['is_pinned'] = True
+                continue
             try:
                 replies_res = supabase.table('replies').select('id').eq('thread_id', int(t['id'])).execute()
                 t['replies_count'] = len(replies_res.data) if replies_res.data else 0
             except Exception as re:
                 t['replies_count'] = 0
-        
+
         try:
             active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
             active_res = supabase.table('active_users').select('location').gte('last_seen', active_cutoff).execute()
@@ -320,8 +324,7 @@ def index():
         is_admin_user=is_admin_user, 
         active_count=active_count,
         current_page=page,      
-        has_next=has_next,
-        search_query=search_query
+        has_next=has_next       
     ))
     
     if is_new_user:
@@ -488,11 +491,17 @@ def thread_view(thread_id):
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                from datetime import timedelta
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
             
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+
+        # スレ主(OP)判定: スレ立て時のIPと同じ日次IDを持つレスに目印を付ける
+        op_user_id = get_daily_user_id(thread.get('ip_address', '')) if thread.get('ip_address') else None
+        for r in thread['replies']:
+            r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
 
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
@@ -600,16 +609,23 @@ def thread_updates(thread_id):
     active_count = update_and_get_user_counts(user_token, location_key)
 
     try:
+        thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
+        op_ip = thread_res.data[0]['ip_address'] if thread_res.data else None
+        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+
         new_replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).gt('id', last_id).order('id', desc=False).execute()
         new_replies = new_replies_res.data
         for r in new_replies:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                from datetime import timedelta
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
 
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+
+            r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
 
     except Exception as e:
         print(f"自動更新APIエラー: {e}")
