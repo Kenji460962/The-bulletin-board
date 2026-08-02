@@ -208,7 +208,7 @@
                         <input type="text" id="search" name="search" value="{{ search_query if search_query else '' }}" placeholder="全ページからタイトルを検索..." style="width: 80%; max-width: 450px;">
                         <button type="submit" style="background-color: #007bff;">検索</button>
                         {% if search_query %}
-                            <a href="/?tab=threads" style="color: #aaa; font-size: 13px; text-decoration: underline;">解除</a>
+                            <a href="/?tab=threads" style="color: #aaa; font-size: 13px; text-decoration: underline; margin-left: 5px;">クリア</a>
                         {% endif %}
                     </div>
                 </form>
@@ -270,11 +270,13 @@
                 <li>
                     <a class="thread-link" href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a>
                 </li>
+
                  <li>
                     <a class="thread-link" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank" style="font-size: 18px;">
                         お問い合わせ・通報窓口
                     </a>
                 </li>
+                
                 <li>
                     <a class="thread-link" href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
                 </li>
@@ -302,6 +304,7 @@
     <script>
     document.getElementById('create-thread-form').addEventListener('submit', async (e) => {
         e.preventDefault(); 
+
         const form = e.target;
         const formData = new FormData(form);
 
@@ -310,6 +313,7 @@
                 method: 'POST',
                 body: formData
             });
+
             const result = await response.json();
 
             if (result.success) {
@@ -382,7 +386,7 @@
         }
     }
 
-    // スレッド番号指定移動関数
+    // スレッド番号直接移動関数
     function jumpToThread() {
         const input = document.getElementById('jumpThreadIdInput');
         if (!input) return;
@@ -393,7 +397,7 @@
 
     window.addEventListener('load', function() {
         var params = new URLSearchParams(window.location.search);
-        // 検索パラメータがあるか、tab=threadsの場合はスレ一覧タブを開く
+        // tab=threads または 検索クエリ(search) が存在する場合は「スレ一覧」タブを初期表示
         if (params.get('tab') === 'threads' || params.has('search')) {
             var btns = document.querySelectorAll('.menu-btn');
             for (var k = 0; k < btns.length; k++) {
@@ -404,7 +408,7 @@
             }
         }
 
-        // Enterキーでスレッド番号へ移動
+        // Enterキーでスレッド番号移動を実行
         const jumpInput = document.getElementById('jumpThreadIdInput');
         if (jumpInput) {
             jumpInput.addEventListener('keypress', (e) => {
