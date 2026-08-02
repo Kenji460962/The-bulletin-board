@@ -1,9 +1,9 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response, session
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import html
 import os
-import hashlibdef 
+import hashlib
 import uuid
 import time
 import re
@@ -15,7 +15,7 @@ import boto3
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') 
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
 
 # スリープ防止
 @app.before_request
@@ -37,33 +37,35 @@ R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvjhukmy.supabase.co')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
 
+# Supabaseに接続するロボットを起動
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+DATA_FILE = 'bbs_data.json'
 ADMIN_PASSWORD = "setokoji114514810072"
 
+# セキュリティ強化 ユーザーごとの最後の書き込み時間を記録する場所
 LAST_POST_TIMES = {}
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
 
+def auto_migrate_from_json():
+    pass
+
+# IPアドレスを元に毎日変わるIDを生成
 def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
     raw_str = f"{ip_address}_{today_str}"
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
 
-
-
 def get_client_ip():
-    # Cloudflareやリバースプロキシを使っている場合に対応
-    if request.headers.get('CF-Connecting-IP'):
-        return request.headers.get('CF-Connecting-IP')
-    
-    x_forwarded_for = request.headers.get('X-Forwarded-For')
-    if x_forwarded_for:
-        # 複数ある場合は一番最初のものが元のユーザーIP
-        return x_forwarded_for.split(',')[0].strip()
-        
-    return request.remote_addr
+    if request.headers.get('X-Forwarded-For'):
+        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
+    elif request.headers.get('CF-Connecting-IP'):
+        ip = request.headers.get('CF-Connecting-IP').strip()
+    else:
+        ip = request.remote_addr or ""
+    return ip
 
 def is_banned_ip(ip):
     if not ip:
@@ -112,11 +114,25 @@ def staff_logout():
     return redirect(url_for('index'))
 
 NG_WORDS = {
-    '死ね': '〇ね', 'しね': '〇ね', 'エロ': 'エ〇', 'えろ': 'え〇',
-    'まんこ': 'ま〇こ', 'ちんこ': 'ち〇こ', 'マンコ': 'マ〇こ', 'チンコ': 'チ〇こ',
-    'セックス': 'セ。〇ス', 'せっくす': 'せ。〇す', 'おっぱい': 'お。〇い', 'オッパイ': 'オ。〇イ',
-    'レイプ': 'レ〇プ', 'れいぷ': 'れ〇ぷ', 'バカ': 'バ*', 'アホ': 'ア*',
-    'シコシコ':'4545', 'オナニー':'0721', '射精':'身寸米青',
+    '死ね': '〇ね',
+    'しね': '〇ね',
+    'エロ': 'エ〇',
+    'えろ': 'え〇',
+    'まんこ': 'ま〇こ',
+    'ちんこ': 'ち〇こ',
+    'マンコ': 'マ〇こ',
+    'チンコ': 'チ〇こ',
+    'セックス': 'セ。〇ス',
+    'せっくす': 'せ。〇す',
+    'おっぱい': 'お。〇い',
+    'オッパイ': 'オ。〇イ',
+    'レイプ': 'レ〇プ',
+    'れいぷ': 'れ〇ぷ',
+    'バカ': 'バ*',
+    'アホ': 'ア*',
+    'シコシコ':'4545',
+    'オナニー':'0721',
+    '射精':'身寸米青',
 }
 
 def filter_ng_words(text):
@@ -305,6 +321,7 @@ def thread_view(thread_id):
         
         author_input = request.form.get('author') or "名無しさん"
 
+        # 🛠️ 安全にトリップ（#）を分割する処理に修正
         if "#" in author_input:
             parts = author_input.split("#", 1)
             name_part = parts[0][:20]
@@ -384,18 +401,15 @@ def thread_view(thread_id):
             return "スレッドが見つかりません", 404
         thread = thread_res.data[0]
 
-        # 【修正】1000件の制限を突破するために .limit(5000) を追加！
-        replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).limit(5000).execute()
+        replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
 
         thread['replies'] = replies_res.data
         for r in thread['replies']:
             if r.get('date'):
-                try:
-                    dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                    dt_jst = dt_utc + timedelta(hours=9)
-                    r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
-                except Exception:
-                    pass
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                from datetime import timedelta
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
             
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
@@ -510,12 +524,10 @@ def thread_updates(thread_id):
         new_replies = new_replies_res.data
         for r in new_replies:
             if r.get('date'):
-                try:
-                    dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                    dt_jst = dt_utc + timedelta(hours=9)
-                    r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
-                except Exception:
-                    pass
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                from datetime import timedelta
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
 
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
