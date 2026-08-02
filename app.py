@@ -66,6 +66,13 @@ def get_client_ip():
     1. Cloudflareの合言葉ヘッダーが一致する場合のみ CF-Connecting-IP を信頼する
     2. 一致しない場合はヘッダーを信用せず remote_addr のみを使う
     """
+    # --- デバッグ用(原因が分かったら削除してください) ---
+    print(f"[DEBUG] X-Origin-Verify received: {request.headers.get('X-Origin-Verify')!r}")
+    print(f"[DEBUG] CF_SHARED_SECRET configured: {bool(CF_SHARED_SECRET)}")
+    print(f"[DEBUG] CF-Connecting-IP received: {request.headers.get('CF-Connecting-IP')!r}")
+    print(f"[DEBUG] remote_addr: {request.remote_addr!r}")
+    # --- ここまで ---
+
     if CF_SHARED_SECRET and request.headers.get('X-Origin-Verify') == CF_SHARED_SECRET:
         cf_ip = request.headers.get('CF-Connecting-IP', '').strip()
         if cf_ip:
