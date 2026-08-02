@@ -163,10 +163,7 @@
 
     <h1> talk-ch </h1>
 
-
-
-
-        <div class="menu-bar" style="justify-content: space-between; align-items: center; display: flex; width: 100%; box-sizing: border-box;">
+    <div class="menu-bar" style="justify-content: space-between; align-items: center; display: flex; width: 100%; box-sizing: border-box;">
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</button>
             <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
@@ -204,10 +201,18 @@
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin-bottom: 15px;">
 
             <div style="margin-bottom: 20px;">
-                <div style="margin-bottom: 12px;">
-                    <label for="threadSearchInput" style="font-weight: bold; font-size: 14px; color: #ddd; display: block; margin-bottom: 4px;">スレッド検索:</label>
-                    <input type="text" id="threadSearchInput" onkeyup="filterThreads()" placeholder="スレッドのタイトルを入力" style="width: 80%; max-width: 450px;">
-                </div>
+                <form action="/" method="GET" style="max-width: none; margin-bottom: 12px;">
+                    <input type="hidden" name="tab" value="threads">
+                    <label for="search" style="font-weight: bold; font-size: 14px; color: #ddd; display: block; margin-bottom: 4px;">全スレッド検索:</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="search" name="search" value="{{ search_query if search_query else '' }}" placeholder="全ページからタイトルを検索..." style="width: 80%; max-width: 450px;">
+                        <button type="submit" style="background-color: #007bff;">検索</button>
+                        {% if search_query %}
+                            <a href="/?tab=threads" style="color: #aaa; font-size: 13px; text-decoration: underline;">解除</a>
+                        {% endif %}
+                    </div>
+                </form>
+
                 <div>
                     <label for="jumpThreadIdInput" style="font-weight: bold; font-size: 14px; color: #ddd; display: block; margin-bottom: 4px;">スレッド番号指定移動:</label>
                     <div style="display: flex; gap: 8px; align-items: center;">
@@ -218,9 +223,6 @@
             </div>
 
             <ul id="thread-list">
-                
-                
-                
                 {% for thread in threads %}
                 <li style="display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;">
                     <div>
@@ -241,23 +243,21 @@
                         <button type="submit" style="background-color: #ffcccc; color: #cc0000; border: 1px solid #cc0000; border-radius: 3px; font-size: 11px; padding: 2px 8px; cursor: pointer;">スレ削除</button>
                     </form>
                     {% endif %}
-
-
                 </li>
                 {% else %}
-                <li id="no-thread-msg">まだ板がありません。新しい板を立ててみましょう！</li>
+                <li id="no-thread-msg">該当するスレッドが見つかりませんでした。</li>
                 {% endfor %}
             </ul>
 
             <div style="margin-top: 20px; display: flex; gap: 10px; align-items: center;">
                 {% if current_page > 1 %}
-                    <a href="/?tab=threads&page={{ current_page - 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">◀ 前のページ</a>
+                    <a href="/?tab=threads&page={{ current_page - 1 }}{% if search_query %}&search={{ search_query }}{% endif %}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">◀ 前のページ</a>
                 {% endif %}
                 
                 <span style="color: #bbb;">ページ {{ current_page }}</span>
                 
                 {% if has_next %}
-                    <a href="/?tab=threads&page={{ current_page + 1 }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">次のページ ▶</a>
+                    <a href="/?tab=threads&page={{ current_page + 1 }}{% if search_query %}&search={{ search_query }}{% endif %}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 6px 12px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">次のページ ▶</a>
                 {% endif %}
             </div>
         </div>
@@ -270,21 +270,17 @@
                 <li>
                     <a class="thread-link" href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a>
                 </li>
-
                  <li>
                     <a class="thread-link" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank" style="font-size: 18px;">
                         お問い合わせ・通報窓口
                     </a>
                 </li>
-                
                 <li>
                     <a class="thread-link" href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
                 </li>
-                    
             </ul>
         </div>
     </div>
-
 
     <div id="admin-tab" class="content-section">
         <div class="glass-panel">
@@ -303,11 +299,9 @@
         </div>
     </div>
 
-        <script>
-    
+    <script>
     document.getElementById('create-thread-form').addEventListener('submit', async (e) => {
         e.preventDefault(); 
-
         const form = e.target;
         const formData = new FormData(form);
 
@@ -316,11 +310,9 @@
                 method: 'POST',
                 body: formData
             });
-
             const result = await response.json();
 
             if (result.success) {
-             
                 const thread = result.thread;
                 const threadList = document.getElementById('thread-list');
                 
@@ -353,11 +345,7 @@
 
                 threadList.insertBefore(newLi, threadList.firstChild);
                 form.reset();
-                
-
-
             } else if (result.error) {
-               
                 alert(result.error);
             } else {
                 alert('スレッドの作成に失敗しました。');
@@ -368,7 +356,6 @@
         }
     });
 
-    
     function escapeHtml(str) {
         return str.replace(/&/g, '&amp;')
                   .replace(/</g, '&lt;')
@@ -377,7 +364,6 @@
                   .replace(/'/g, '&#39;');
     }
 
-    
     function switchTab(tabId, buttonElement) {
         var sections = document.querySelectorAll('.content-section');
         for (var i = 0; i < sections.length; i++) {
@@ -396,22 +382,7 @@
         }
     }
 
-    // 検索処理
-    function filterThreads() {
-        const query = document.getElementById('threadSearchInput').value.toLowerCase();
-        const items = document.querySelectorAll('#thread-list > li');
-
-        items.forEach(item => {
-            const text = item.textContent.toLowerCase();
-            if (text.includes(query)) {
-                item.style.display = "flex";
-            } else {
-                item.style.display = "none";
-            }
-        });
-    }
-
-    // スレッド番号へ移動
+    // スレッド番号指定移動関数
     function jumpToThread() {
         const input = document.getElementById('jumpThreadIdInput');
         if (!input) return;
@@ -420,10 +391,10 @@
         window.location.href = `/thread/${threadId}`;
     }
 
- 
     window.addEventListener('load', function() {
         var params = new URLSearchParams(window.location.search);
-        if (params.get('tab') === 'threads') {
+        // 検索パラメータがあるか、tab=threadsの場合はスレ一覧タブを開く
+        if (params.get('tab') === 'threads' || params.has('search')) {
             var btns = document.querySelectorAll('.menu-btn');
             for (var k = 0; k < btns.length; k++) {
                 if (btns[k].textContent.trim() === 'スレ一覧') {
@@ -433,7 +404,7 @@
             }
         }
 
-        // Enterキーで移動
+        // Enterキーでスレッド番号へ移動
         const jumpInput = document.getElementById('jumpThreadIdInput');
         if (jumpInput) {
             jumpInput.addEventListener('keypress', (e) => {
@@ -445,6 +416,5 @@
         }
     });
     </script>
-
 </body>
 </html>
