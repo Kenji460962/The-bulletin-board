@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response, session
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import html
 import os
@@ -7,6 +7,7 @@ import hashlib
 import uuid
 import time
 import re
+import random
 
 # Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
@@ -180,9 +181,6 @@ def filter_ng_words(text):
             text = text.replace(ng_word, replaced_word)
     return text
 
-import random
-from datetime import timedelta
-
 def update_and_get_user_counts(current_token, location):
     """
     アクセス中人数の集計。以前はプロセス内のdict(ACTIVE_USERS)で管理していたが、
@@ -236,12 +234,17 @@ def index():
         return make_response('', 200)
 
     page = request.args.get('page', default=1, type=int)
+    search_query = request.args.get('search', '').strip()
     per_page = 20
     start_index = (page - 1) * per_page
     end_index = start_index + per_page - 1
 
     try:
-        threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
+        query = supabase.table('threads').select('*')
+        if search_query:
+            query = query.ilike('title', f'%{search_query}%')
+
+        threads_response = query.order('id', desc=True).range(start_index, end_index).execute()
         threads = threads_response.data
         has_next = len(threads) == per_page
 
@@ -321,7 +324,8 @@ def index():
         is_admin_user=is_admin_user, 
         active_count=active_count,
         current_page=page,      
-        has_next=has_next       
+        has_next=has_next,
+        search_query=search_query
     ))
     
     if is_new_user:
@@ -488,7 +492,6 @@ def thread_view(thread_id):
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                from datetime import timedelta
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
             
@@ -606,7 +609,6 @@ def thread_updates(thread_id):
         for r in new_replies:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
-                from datetime import timedelta
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
 
