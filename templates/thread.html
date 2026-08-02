@@ -394,4 +394,71 @@
                 newDiv.setAttribute('data-reply-id', reply.id);
                 newDiv.innerHTML = `
                     <div class="post-meta">
-                        <span class="post-num" onclick="
+                        <span class="post-num" onclick="quoteReply(${currentPostCount})">#${currentPostCount}</span>
+                        <span class="${roleClass}">${reply.author}${adminStar}</span>
+                        <span>${formattedDate}</span>
+                        <span style="color: var(--text-muted);">ID:${reply.user_id}</span>
+                        ${adminButtonsHtml}
+                    </div>
+                    <div class="post-content">${formattedContentText}</div>
+                    ${imageHtml}
+                `;
+
+                container.appendChild(newDiv);
+                
+                container.scrollTo({
+                    top: container.scrollHeight,
+                    behavior: 'smooth'
+                });
+            })
+            .subscribe();
+
+        const bbsForm = document.getElementById('bbsForm');
+        if (bbsForm) {
+            bbsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const authorInput = bbsForm.querySelector('input[name="author"]');
+                if (authorInput) {
+                    setCookie('bbs_saved_author', authorInput.value, 365);
+                }
+
+                const formData = new FormData(bbsForm);
+                const submitBtn = document.getElementById('submit-btn');
+                
+                if (submitBtn) {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.6';
+                }
+
+                try {
+                    const response = await fetch(bbsForm.action, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const result = await response.json();
+
+                    if (response.ok && result.success) {
+                        const contentArea = bbsForm.querySelector('textarea[name="content"]');
+                        if (contentArea) contentArea.value = '';
+                        
+                        const imageInput = bbsForm.querySelector('input[name="image"]');
+                        if (imageInput) imageInput.value = '';
+                    } else {
+                        alert(result.error || '書き込みに失敗しました。');
+                    }
+                } catch (error) {
+                    console.error('送信エラー:', error);
+                    alert('通信エラーが発生しました。');
+                } finally {
+                    if (submitBtn) {
+                        submitBtn.disabled = false;
+                        submitBtn.style.opacity = '1';
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
