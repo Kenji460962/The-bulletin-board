@@ -180,19 +180,42 @@ def filter_ng_words(text):
             text = text.replace(ng_word, replaced_word)
     return text
 
-ACTIVE_USERS = {}
+import random
+from datetime import timedelta
 
 def update_and_get_user_counts(current_token, location):
-    now = time.time()
+    """
+    アクセス中人数の集計。以前はプロセス内のdict(ACTIVE_USERS)で管理していたが、
+    本番は複数ワーカープロセスで動いており、プロセスごとにメモリが分かれてしまうため
+    (ワーカーAが記録した在室情報をワーカーBが見られない)、Supabaseの共有テーブルに変更。
+    """
+    now = datetime.utcnow()
+    cutoff = (now - timedelta(minutes=5)).isoformat()
+
     if current_token:
-        ACTIVE_USERS[current_token] = {
-            "location": location,
-            "last_time": now
-        }
-    expired_tokens = [token for token, info in ACTIVE_USERS.items() if now - info["last_time"] > 300]
-    for token in expired_tokens:
-        del ACTIVE_USERS[token]
-    count = sum(1 for info in ACTIVE_USERS.values() if info["location"] == location)
+        try:
+            supabase.table('active_users').upsert({
+                'token': current_token,
+                'location': location,
+                'last_seen': now.isoformat()
+            }).execute()
+        except Exception as e:
+            print(f"アクティブユーザー更新エラー: {e}")
+
+    count = 0
+    try:
+        res = supabase.table('active_users').select('token', count='exact').eq('location', location).gte('last_seen', cutoff).execute()
+        count = res.count if res.count is not None else len(res.data)
+    except Exception as e:
+        print(f"アクティブユーザー数取得エラー: {e}")
+
+    # 期限切れレコードの掃除は毎回やるとDB負荷が増えるので、確率的に(だいたい20回に1回)実行する
+    if random.random() < 0.05:
+        try:
+            supabase.table('active_users').delete().lt('last_seen', cutoff).execute()
+        except Exception as e:
+            print(f"アクティブユーザー掃除エラー: {e}")
+
     return count
 
 @app.route('/privacy')
@@ -256,6 +279,20 @@ def index():
                 t['replies_count'] = len(replies_res.data) if replies_res.data else 0
             except Exception as re:
                 t['replies_count'] = 0
+
+        try:
+            active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+            active_res = supabase.table('active_users').select('location').gte('last_seen', active_cutoff).execute()
+            thread_active_counts = {}
+            for row in (active_res.data or []):
+                loc = row.get('location', '')
+                thread_active_counts[loc] = thread_active_counts.get(loc, 0) + 1
+        except Exception as ace:
+            print(f"スレ別アクセス数取得エラー: {ace}")
+            thread_active_counts = {}
+
+        for t in threads:
+            t['thread_active_count'] = thread_active_counts.get(f"thread_{t['id']}", 0)
 
         try:
             admin_res = supabase.table('admin_messages').select('message').eq('id', 1).execute()
