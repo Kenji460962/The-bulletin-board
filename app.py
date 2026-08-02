@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import json
 import html
 import os
-import hashlib
+import hashlibdef 
 import uuid
 import time
 import re
@@ -51,14 +51,19 @@ def get_daily_user_id(ip_address):
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
 
+
+
 def get_client_ip():
-    if request.headers.get('X-Forwarded-For'):
-        ip = request.headers.get('X-Forwarded-For').split(',')[0].strip()
-    elif request.headers.get('CF-Connecting-IP'):
-        ip = request.headers.get('CF-Connecting-IP').strip()
-    else:
-        ip = request.remote_addr or ""
-    return ip
+    # Cloudflareやリバースプロキシを使っている場合に対応
+    if request.headers.get('CF-Connecting-IP'):
+        return request.headers.get('CF-Connecting-IP')
+    
+    x_forwarded_for = request.headers.get('X-Forwarded-For')
+    if x_forwarded_for:
+        # 複数ある場合は一番最初のものが元のユーザーIP
+        return x_forwarded_for.split(',')[0].strip()
+        
+    return request.remote_addr
 
 def is_banned_ip(ip):
     if not ip:
