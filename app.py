@@ -478,7 +478,7 @@ def thread_view(thread_id):
 
         if content.strip() or image_url:
             try:
-                supabase.table('replies').insert({
+                insert_res = supabase.table('replies').insert({
                     'thread_id': thread_id,
                     'author': author_input,
                     'content': content,
@@ -488,8 +488,26 @@ def thread_view(thread_id):
                     'image_url': image_url,
                     'ip_address': client_ip
                 }).execute()
-                
-                return {"success": True}
+
+                new_reply = insert_res.data[0] if insert_res.data else None
+                if new_reply:
+                    if new_reply.get('date'):
+                        dt_utc = datetime.fromisoformat(new_reply['date'].replace('Z', '+00:00'))
+                        from datetime import timedelta
+                        dt_jst = dt_utc + timedelta(hours=9)
+                        new_reply['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                    if new_reply.get('content'):
+                        new_reply['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', new_reply['content'])
+
+                    try:
+                        thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
+                        op_ip = thread_res.data[0]['ip_address'] if thread_res.data else None
+                        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+                        new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
+                    except Exception as ope:
+                        new_reply['is_op'] = False
+
+                return {"success": True, "reply": new_reply}
             except Exception as e:
                 print(f"レス保存エラー: {e}")
                 return {"success": False, "error": "データベースエラーが発生しました。"}, 500
