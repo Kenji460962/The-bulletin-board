@@ -35,9 +35,9 @@ s3_client = boto3.client(
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
 
-SUPABASE_URL = os.environ.get('https://mpzjidhuovorzvjhukmy.supabase.co')
+SUPABASE_URL = os.environ.get('SUPABASE_URL')
 
-SUPABASE_SERVICE_KEY = os.environ.get('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
+SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY')
 
 if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
     raise RuntimeError("SUPABASE_URL / SUPABASE_SERVICE_KEY が設定されていません。Railwayの環境変数を確認してください。")
