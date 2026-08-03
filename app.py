@@ -244,34 +244,40 @@ def index():
     start_index = (page - 1) * per_page
     end_index = start_index + per_page - 1
 
+    search_query = request.args.get('q', default='', type=str).strip()
+
     try:
-        threads_response = supabase.table('threads').select('*').order('id', desc=True).range(start_index, end_index).execute()
+        threads_query = supabase.table('threads').select('*').order('id', desc=True)
+        if search_query:
+            threads_query = threads_query.ilike('title', f'%{search_query}%')
+        threads_response = threads_query.range(start_index, end_index).execute()
         threads = threads_response.data
         has_next = len(threads) == per_page
 
         pinned_ids = [3, 2, 1]
         pinned_threads = []
 
-        for pid in pinned_ids:
-            for i, t in enumerate(threads):
-                if int(t['id']) == pid:
-                    pinned_threads.append(threads.pop(i))
-                    break
+        if not search_query:
+            for pid in pinned_ids:
+                for i, t in enumerate(threads):
+                    if int(t['id']) == pid:
+                        pinned_threads.append(threads.pop(i))
+                        break
 
-        for pid in pinned_ids:
-            if any(int(pt['id']) == pid for pt in pinned_threads):
-                continue
-            try:
-                pinned_res = supabase.table('threads').select('*').eq('id', pid).execute()
-                if pinned_res.data:
-                    pinned_threads.append(pinned_res.data[0])
-            except Exception as pe:
-                print(f"固定スレッド取得エラー: {pe}")
+            for pid in pinned_ids:
+                if any(int(pt['id']) == pid for pt in pinned_threads):
+                    continue
+                try:
+                    pinned_res = supabase.table('threads').select('*').eq('id', pid).execute()
+                    if pinned_res.data:
+                        pinned_threads.append(pinned_res.data[0])
+                except Exception as pe:
+                    print(f"固定スレッド取得エラー: {pe}")
 
-        for pt in pinned_threads:
-            pt['is_pinned'] = True  
-            pt['replies_count'] = None  
-            threads.insert(0, pt)
+            for pt in pinned_threads:
+                pt['is_pinned'] = True  
+                pt['replies_count'] = None  
+                threads.insert(0, pt)
 
         for t in threads:
             if t.get('is_pinned') or int(t['id']) in [1, 2, 3]:
@@ -325,7 +331,8 @@ def index():
         is_admin_user=is_admin_user, 
         active_count=active_count,
         current_page=page,      
-        has_next=has_next       
+        has_next=has_next,
+        search_query=search_query
     ))
     
     if is_new_user:
