@@ -344,6 +344,16 @@
             return formatted;
         }
 
+        // サーバー側から届くデータ(ポーリングAPI・投稿直後のレスポンス)は、URLリンク化は既にサーバー側で済んでいるため
+        // ここでURLをもう一度変換すると二重にリンク化されて壊れる。>>アンカーの変換だけ行う。
+        function formatAnchorsOnly(text) {
+            if (!text) return '';
+            return text.replace(/&gt;&gt;(\d+)|>>(\d+)/g, (match, p1, p2) => {
+                const num = p1 || p2;
+                return `<a href="#post-${num}" class="post-anchor">&gt;&gt;${num}</a>`;
+            });
+        }
+
         function setCookie(name, value, days) {
             let expires = "";
             if (days) {
@@ -401,7 +411,7 @@
             let formattedDate = reply.date || '';
 
             let contentText = reply.content || '';
-            let formattedContentText = formatContent(contentText);
+            let formattedContentText = formatAnchorsOnly(contentText);
 
             let adminStar = '';
             let roleClass = 'post-name';
