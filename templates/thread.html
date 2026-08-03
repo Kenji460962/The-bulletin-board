@@ -9,7 +9,6 @@
     
     <title>{{ thread.title }}</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
@@ -388,93 +387,103 @@
             setTimeout(forceScrollBottom, 600);
         });
 
-        const supabaseUrl = 'https://mpzjidhuovorzvjhukmy.supabase.co';
-        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo';
-        const client = supabase.createClient(supabaseUrl, supabaseKey);
+        let lastReplyId = 0;
+        document.querySelectorAll('.post-item[data-reply-id]').forEach(el => {
+            const rid = parseInt(el.getAttribute('data-reply-id'), 10);
+            if (rid > lastReplyId) lastReplyId = rid;
+        });
 
-        client.channel('public:replies_' + threadId)
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'replies', filter: `thread_id=eq.${threadId}` }, payload => {
-                const reply = payload.new;
-                
-                if (document.querySelector(`.post-item[data-reply-id="${reply.id}"]`)) {
-                    return;
-                }
+        function appendReply(reply) {
+            if (document.querySelector(`.post-item[data-reply-id="${reply.id}"]`)) {
+                return;
+            }
 
-                let formattedDate = reply.date || '';
-                if (formattedDate) {
-                    let dt = new Date(formattedDate);
-                    if (!isNaN(dt)) {
-                        dt.setHours(dt.getHours() + 9);
-                        formattedDate = dt.toISOString().replace('T', ' ').substring(0, 19);
-                    }
-                }
+            let formattedDate = reply.date || '';
 
-                let contentText = reply.content || '';
-                let formattedContentText = formatContent(contentText);
+            let contentText = reply.content || '';
+            let formattedContentText = formatContent(contentText);
 
-                let adminStar = '';
-                let roleClass = 'post-name';
-                
-                if (reply.role === 'admin' || reply.is_admin) {
-                    roleClass = 'role-admin';
-                    adminStar = '★';
-                } else if (reply.role === 'sub_admin') {
-                    roleClass = 'role-sub-admin';
-                    adminStar = '★';
-                } else if (reply.role === 'moderator') {
-                    roleClass = 'role-moderator';
-                    adminStar = '★';
-                } else if (reply.role === 'pr') {
-                    roleClass = 'role-pr';
-                } else if (reply.role === 'proposal') {
-                    roleClass = 'role-proposal';
-                } else if (reply.role === 'log') {
-                    roleClass = 'role-log';
-                }
+            let adminStar = '';
+            let roleClass = 'post-name';
 
-                let imageHtml = '';
-                if (reply.image_url) {
-                    imageHtml = `<a href="${reply.image_url}" target="_blank"><img src="${reply.image_url}" class="post-image" loading="lazy"></a>`;
-                }
+            if (reply.role === 'admin' || reply.is_admin) {
+                roleClass = 'role-admin';
+                adminStar = '★';
+            } else if (reply.role === 'sub_admin') {
+                roleClass = 'role-sub-admin';
+                adminStar = '★';
+            } else if (reply.role === 'moderator') {
+                roleClass = 'role-moderator';
+                adminStar = '★';
+            } else if (reply.role === 'pr') {
+                roleClass = 'role-pr';
+            } else if (reply.role === 'proposal') {
+                roleClass = 'role-proposal';
+            } else if (reply.role === 'log') {
+                roleClass = 'role-log';
+            }
 
-                const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
-                let adminButtonsHtml = '';
-                if (isAdminUser) {
-                    adminButtonsHtml = `
-                        <div style="margin-left: auto; display: flex; gap: 4px;">
-                            <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');">
-                                <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
-                            </form>
-                            <form action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
-                                <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
-                            </form>
-                        </div>
-                    `;
-                }
+            let imageHtml = '';
+            if (reply.image_url) {
+                imageHtml = `<a href="${reply.image_url}" target="_blank"><img src="${reply.image_url}" class="post-image" loading="lazy"></a>`;
+            }
 
-                const currentPostCount = container.querySelectorAll('.post-item').length + 1;
-
-                const newDiv = document.createElement('div');
-                newDiv.className = 'post-item';
-                newDiv.id = `post-${currentPostCount}`;
-                newDiv.setAttribute('data-reply-id', reply.id);
-                newDiv.innerHTML = `
-                    <div class="post-meta">
-                        <span class="post-num" onclick="quoteReply(${currentPostCount})">#${currentPostCount}</span>
-                        <span class="${roleClass}">${reply.author}${adminStar}</span>
-                        ${reply.is_op ? '<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>' : ''}
-                        <span>${formattedDate}</span>
-                        <span style="color: var(--text-muted);">ID:${reply.user_id}</span>
-                        ${adminButtonsHtml}
+            const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
+            let adminButtonsHtml = '';
+            if (isAdminUser) {
+                adminButtonsHtml = `
+                    <div style="margin-left: auto; display: flex; gap: 4px;">
+                        <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');">
+                            <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                        </form>
+                        <form action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                            <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                        </form>
                     </div>
-                    <div class="post-content">${formattedContentText}</div>
-                    ${imageHtml}
                 `;
+            }
 
-                container.appendChild(newDiv);
-                forceScrollBottom();
-            })
-            .subscribe();
+            const currentPostCount = container.querySelectorAll('.post-item').length + 1;
+
+            const newDiv = document.createElement('div');
+            newDiv.className = 'post-item';
+            newDiv.id = `post-${currentPostCount}`;
+            newDiv.setAttribute('data-reply-id', reply.id);
+            newDiv.innerHTML = `
+                <div class="post-meta">
+                    <span class="post-num" onclick="quoteReply(${currentPostCount})">#${currentPostCount}</span>
+                    <span class="${roleClass}">${reply.author}${adminStar}</span>
+                    ${reply.is_op ? '<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>' : ''}
+                    <span>${formattedDate}</span>
+                    <span style="color: var(--text-muted);">ID:${reply.user_id}</span>
+                    ${adminButtonsHtml}
+                </div>
+                <div class="post-content">${formattedContentText}</div>
+                ${imageHtml}
+            `;
+
+            container.appendChild(newDiv);
+            if (reply.id > lastReplyId) lastReplyId = reply.id;
+        }
+
+        async function pollThreadUpdates() {
+            try {
+                const res = await fetch(`/api/thread/${threadId}/updates?last_id=${lastReplyId}`);
+                const data = await res.json();
+                if (data.replies && data.replies.length > 0) {
+                    data.replies.forEach(appendReply);
+                    forceScrollBottom();
+                }
+                const activeEl = document.getElementById('active-count');
+                if (activeEl && typeof data.active_count !== 'undefined') {
+                    activeEl.textContent = data.active_count;
+                }
+            } catch (err) {
+                console.error('更新の取得に失敗しました:', err);
+            }
+        }
+
+        setInterval(pollThreadUpdates, 8000);
 
         const bbsForm = document.getElementById('bbsForm');
         if (bbsForm) {
