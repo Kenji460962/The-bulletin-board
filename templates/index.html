@@ -243,11 +243,11 @@
                 {% for thread in threads %}
                 <li style="display: flex; align-items: center; justify-content: space-between; max-width: 600px; margin-bottom: 12px;">
                     <div>
-                        <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}" {% if thread.id|int == 1 or thread.id | int == 2 or thread.id | int == 3 %}style="color: #ff3344 !important; font-weight: bold;"{% endif %}>
+                        <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}" {% if thread.id|int == 1 or thread.id | int == 2 or thread.id | int == 3 or thread.id | int == 4 %}style="color: #ff3344 !important; font-weight: bold;"{% endif %}>
                             【{{ thread.id }}】 {{ thread.title }}
                         </a> 
                         
-                        {% if thread.id|int != 1 and thread.id | int != 2 and thread.id | int != 3%}
+                        {% if thread.id|int != 1 and thread.id | int != 2 and thread.id | int != 3 and thread.id | int != 4 %}
                         <span class="res-count">({{ thread.replies_count }}レス)</span>
                         {% endif %}
                         {% if thread.thread_active_count and thread.thread_active_count > 0 %}
