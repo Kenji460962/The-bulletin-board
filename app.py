@@ -279,16 +279,23 @@ def index():
                 pt['replies_count'] = None  
                 threads.insert(0, pt)
 
+        non_pinned_ids = [int(t['id']) for t in threads if not (t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4])]
+        reply_counts = {}
+        if non_pinned_ids:
+            try:
+                counts_res = supabase.table('replies').select('thread_id').in_('thread_id', non_pinned_ids).execute()
+                for row in (counts_res.data or []):
+                    tid = row['thread_id']
+                    reply_counts[tid] = reply_counts.get(tid, 0) + 1
+            except Exception as re:
+                print(f"レス数取得エラー: {re}")
+
         for t in threads:
             if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
                 t['replies_count'] = None
                 t['is_pinned'] = True
                 continue
-            try:
-                replies_res = supabase.table('replies').select('id').eq('thread_id', int(t['id'])).execute()
-                t['replies_count'] = len(replies_res.data) if replies_res.data else 0
-            except Exception as re:
-                t['replies_count'] = 0
+            t['replies_count'] = reply_counts.get(int(t['id']), 0)
 
         try:
             active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
