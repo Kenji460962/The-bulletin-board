@@ -16,6 +16,8 @@ import httpx  # supabaseの依存として既にインストールされてい�
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+# static配下(CSS・画像・favicon等)のキャッシュ期間を7日に設定。ファイル名を変えない限りブラウザに残るので再訪問時が速くなる
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
 
 # スリープ防止
@@ -455,8 +457,8 @@ def thread_view(thread_id):
 
         now = time.time()
         if not staff_role:
-            # VPN/プロキシ経由の場合は連投間隔を長めにする(通常3秒 → 8秒)
-            reply_cooldown = 8 if is_proxy_or_vpn(client_ip) else 3
+            # レス投稿は頻度が高いため、プロキシ判定API(外部への問い合わせが発生しうる)は呼ばず固定クールダウンにする
+            reply_cooldown = 3
             if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < reply_cooldown:
                 return {"success": False, "error": f"連続投稿はできません。{reply_cooldown}秒お待ちください。"}, 429
             LAST_REPLY_TIMES[client_ip] = now
