@@ -254,7 +254,7 @@ def index():
         threads = threads_response.data
         has_next = len(threads) == per_page
 
-        pinned_ids = [3, 2, 1]
+        pinned_ids = [4, 3, 2, 1]
         pinned_threads = []
 
         if not search_query:
@@ -280,7 +280,7 @@ def index():
                 threads.insert(0, pt)
 
         for t in threads:
-            if t.get('is_pinned') or int(t['id']) in [1, 2, 3]:
+            if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
                 t['replies_count'] = None
                 t['is_pinned'] = True
                 continue
