@@ -215,11 +215,12 @@
 
                 <!-- スレ検索 -->
                 <form id="search-thread-form" action="{{ url_for('index') }}" method="GET" style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                    <input type="hidden" name="tab" value="threads">
                     <label style="font-size: 13px; white-space: nowrap;">スレ検索:</label>
                     <input type="text" name="q" value="{{ search_query }}" placeholder="タイトルで検索" style="width: 160px;">
                     <button type="submit">検索</button>
                     {% if search_query %}
-                    <a href="{{ url_for('index') }}" style="font-size: 12px; margin-left: 4px;">クリア</a>
+                    <a href="{{ url_for('index') }}?tab=threads" style="font-size: 12px; margin-left: 4px;">クリア</a>
                     {% endif %}
                 </form>
             </div>
