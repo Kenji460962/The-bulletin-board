@@ -500,10 +500,8 @@ def thread_view(thread_id):
 
         # スレ主(OP)判定: スレ立て時のIPと同じ日次IDを持つレスに目印を付ける
         op_user_id = get_daily_user_id(thread.get('ip_address', '')) if thread.get('ip_address') else None
-        print(f"[DEBUG] thread.ip_address: {thread.get('ip_address')!r} / op_user_id: {op_user_id!r}")
         for r in thread['replies']:
             r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
-            print(f"[DEBUG] reply id={r.get('id')} user_id={r.get('user_id')!r} is_op={r['is_op']}")
 
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
@@ -525,7 +523,8 @@ def thread_view(thread_id):
         thread=thread, 
         is_admin_user=is_admin_user, 
         active_count=active_count, 
-        back_to_board="/?tab=threads"
+        back_to_board="/?tab=threads",
+        op_user_id=op_user_id
     ))
     
     if is_new_user:
