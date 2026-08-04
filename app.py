@@ -281,11 +281,11 @@ def index():
                 pt['replies_count'] = None  
                 threads.insert(0, pt)
 
-        non_pinned_ids = [int(t['id']) for t in threads if not (t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4])]
+        all_thread_ids = [int(t['id']) for t in threads]
         reply_counts = {}
-        if non_pinned_ids:
+        if all_thread_ids:
             try:
-                counts_res = supabase.table('replies').select('thread_id').in_('thread_id', non_pinned_ids).execute()
+                counts_res = supabase.table('replies').select('thread_id').in_('thread_id', all_thread_ids).execute()
                 for row in (counts_res.data or []):
                     tid = row['thread_id']
                     reply_counts[tid] = reply_counts.get(tid, 0) + 1
@@ -294,9 +294,7 @@ def index():
 
         for t in threads:
             if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
-                t['replies_count'] = None
                 t['is_pinned'] = True
-                continue
             t['replies_count'] = reply_counts.get(int(t['id']), 0)
 
         try:
