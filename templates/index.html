@@ -173,7 +173,6 @@
         <div style="display: flex; gap: 12px; align-items: center;">
             <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</button>
             <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
-            <button class="menu-btn" onclick="switchTab('admin-tab', this)">管理者の一言</button>
             <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
         </div>
 
@@ -193,6 +192,21 @@
                 上の「スレ一覧」から自由にトピックを作って会話を始めましょう！
             </p>
         </div>
+        <div class="glass-panel">
+            <h2>管理者の一言</h2>
+            <div class="admin-box">{{ admin_message }}</div>
+        </div>
+        {% if is_admin_user %}
+        <div class="glass-panel">
+            <h3>【管理者専用】一言を更新する</h3>
+            <form action="{{ url_for('update_admin_message') }}" method="POST">
+                パスワード：<input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
+                新しいメッセージ：<br>
+                <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required>{{ admin_message }}</textarea><br><br>
+                <button type="submit">一言を更新する</button>
+            </form>
+        </div>
+        {% endif %}
     </div>
 
     <!-- 2. スレ一覧タブ（フォームも板一覧もすべてこの部屋に入れます） -->
@@ -305,23 +319,6 @@
     </div>
 
 
-    <!-- 3. 管理者の一言タブ -->
-    <div id="admin-tab" class="content-section">
-        <div class="glass-panel">
-            <h2> 管理者の一言</h2>
-            <div class="admin-box">{{ admin_message }}</div>
-        </div>
-        
-        <div class="glass-panel">
-            <h3>【管理者専用】一言を更新する</h3>
-            <form action="{{ url_for('update_admin_message') }}" method="POST">
-                パスワード：<input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
-                新しいメッセージ：<br>
-                <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required></textarea><br><br>
-                <button type="submit">一言を更新する</button>
-            </form>
-        </div>
-    </div>
 
         <script>
 
