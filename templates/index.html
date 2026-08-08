@@ -179,7 +179,7 @@
 
         <!-- 右側：バーの右端に固定されたオンライン人数 -->
         <div style="color: #4dabff; font-weight: bold; font-size: 14px; padding-right: 15px; text-shadow: 0 0 5px rgba(77, 171, 255, 0.4); white-space: nowrap;">
-            🟢 オンライン: {{ active_count }}人
+            🟢 オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
         </div>
     </div>
 
@@ -324,6 +324,20 @@
     </div>
 
         <script>
+
+    async function pollLobbyActiveCount() {
+        try {
+            const res = await fetch('/api/lobby/active_count');
+            const data = await res.json();
+            const el = document.getElementById('lobby-active-count');
+            if (el && typeof data.active_count !== 'undefined') {
+                el.textContent = data.active_count;
+            }
+        } catch (err) {
+            console.error('オンライン人数の取得に失敗しました:', err);
+        }
+    }
+    setInterval(pollLobbyActiveCount, 20000);
 
     document.getElementById('jump-thread-form').addEventListener('submit', (e) => {
         e.preventDefault();
