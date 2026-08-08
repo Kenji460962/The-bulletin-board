@@ -26,6 +26,14 @@ def response_to_uptimerobot():
     if request.method == 'HEAD':
         return make_response('', 200)
 
+@app.before_request
+def enforce_cloudflare_only():
+    # UptimeRobotなどのヘルスチェックはHEADリクエストなので上のresponse_to_uptimerobotで先に処理される
+    if request.method == 'HEAD':
+        return
+    if CF_SHARED_SECRET and request.headers.get('X-Origin-Verify') != CF_SHARED_SECRET:
+        return "Access denied", 403
+
 # Cloudflare R2 (S3互換) の設定
 s3_client = boto3.client(
     's3',
@@ -196,7 +204,7 @@ def update_and_get_user_counts(current_token, location):
     (ワーカーAが記録した在室情報をワーカーBが見られない)、Supabaseの共有テーブルに変更。
     """
     now = datetime.utcnow()
-    cutoff = (now - timedelta(minutes=5)).isoformat()
+    cutoff = (now - timedelta(minutes=2)).isoformat()
 
     if current_token:
         try:
@@ -281,15 +289,20 @@ def index():
                 pt['replies_count'] = None  
                 threads.insert(0, pt)
 
+        all_thread_ids = [int(t['id']) for t in threads]
+        reply_counts = {}
+        if all_thread_ids:
+            try:
+                counts_res = supabase.rpc('get_reply_counts', {'thread_ids': all_thread_ids}).execute()
+                for row in (counts_res.data or []):
+                    reply_counts[row['thread_id']] = row['reply_count']
+            except Exception as re:
+                print(f"レス数取得エラー: {re}")
+
         for t in threads:
             if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
                 t['is_pinned'] = True
-            try:
-                count_res = supabase.table('replies').select('id', count='exact').eq('thread_id', int(t['id'])).execute()
-                t['replies_count'] = count_res.count if count_res.count is not None else 0
-            except Exception as ce:
-                print(f"レス数取得エラー(thread_id={t['id']}): {ce}")
-                t['replies_count'] = 0
+            t['replies_count'] = reply_counts.get(int(t['id']), 0)
 
         try:
             active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
@@ -628,6 +641,12 @@ def ban_thread_owner(thread_id):
     except Exception as e:
         return f"【スレ主BAN失敗】エラーの原因: {e}", 500
     return redirect(url_for('index'))
+
+@app.route('/api/lobby/active_count')
+def lobby_active_count():
+    user_token = request.cookies.get('user_bbs_token')
+    active_count = update_and_get_user_counts(user_token, "lobby")
+    return {"active_count": active_count}
 
 @app.route('/api/thread/<int:thread_id>/updates')
 def thread_updates(thread_id):
