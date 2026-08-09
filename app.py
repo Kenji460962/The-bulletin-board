@@ -7,6 +7,7 @@ import hashlib
 import uuid
 import time
 import re
+import string
 
 # Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
@@ -683,6 +684,273 @@ def thread_updates(thread_id):
         "replies": new_replies, 
         "is_admin_user": is_admin_user, 
         "active_count": active_count
+    }
+
+# ==================== オンラインオセロ ====================
+
+OTHELLO_DIRS = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+
+def othello_new_board():
+    b = ['.'] * 64
+    b[27] = 'W'
+    b[28] = 'B'
+    b[35] = 'B'
+    b[36] = 'W'
+    return ''.join(b)
+
+def othello_idx(r, c):
+    return r * 8 + c
+
+def othello_in_bounds(r, c):
+    return 0 <= r < 8 and 0 <= c < 8
+
+def othello_opponent(p):
+    return 'W' if p == 'B' else 'B'
+
+def othello_flips_for_move(board, player, r, c):
+    if not othello_in_bounds(r, c) or board[othello_idx(r, c)] != '.':
+        return []
+    opp = othello_opponent(player)
+    all_flips = []
+    for dr, dc in OTHELLO_DIRS:
+        line = []
+        rr, cc = r + dr, c + dc
+        while othello_in_bounds(rr, cc) and board[othello_idx(rr, cc)] == opp:
+            line.append((rr, cc))
+            rr += dr
+            cc += dc
+        if line and othello_in_bounds(rr, cc) and board[othello_idx(rr, cc)] == player:
+            all_flips.extend(line)
+    return all_flips
+
+def othello_valid_moves(board, player):
+    return [(r, c) for r in range(8) for c in range(8) if othello_flips_for_move(board, player, r, c)]
+
+def othello_apply_move(board, player, r, c):
+    flips = othello_flips_for_move(board, player, r, c)
+    board_list = list(board)
+    board_list[othello_idx(r, c)] = player
+    for (fr, fc) in flips:
+        board_list[othello_idx(fr, fc)] = player
+    return ''.join(board_list)
+
+def othello_count(board):
+    return board.count('B'), board.count('W')
+
+def othello_generate_room_code():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+def get_or_create_user_token():
+    user_token = request.cookies.get('user_bbs_token')
+    is_new_user = False
+    if not user_token:
+        user_token = str(uuid.uuid4())
+        is_new_user = True
+    return user_token, is_new_user
+
+@app.route('/game')
+def game_lobby():
+    user_token, is_new_user = get_or_create_user_token()
+    response = make_response(render_template('game.html', room=None, my_color=None))
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/game/create', methods=['POST'])
+def game_create():
+    user_token, is_new_user = get_or_create_user_token()
+
+    room_code = othello_generate_room_code()
+    for _ in range(5):
+        existing = supabase.table('othello_games').select('room_code').eq('room_code', room_code).execute()
+        if not existing.data:
+            break
+        room_code = othello_generate_room_code()
+
+    try:
+        supabase.table('othello_games').insert({
+            'room_code': room_code,
+            'board': othello_new_board(),
+            'turn': 'B',
+            'player_black_token': user_token,
+            'status': 'waiting'
+        }).execute()
+    except Exception as e:
+        print(f"オセロ部屋作成エラー: {e}")
+        return "部屋の作成に失敗しました", 500
+
+    response = make_response(redirect(url_for('game_room', room_code=room_code)))
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/game/<room_code>')
+def game_room(room_code):
+    user_token, is_new_user = get_or_create_user_token()
+    room_code = room_code.upper()
+
+    try:
+        res = supabase.table('othello_games').select('*').eq('room_code', room_code).execute()
+    except Exception as e:
+        print(f"オセロ部屋取得エラー: {e}")
+        return "エラーが発生しました", 500
+
+    if not res.data:
+        return "部屋が見つかりません", 404
+
+    game = res.data[0]
+    my_color = None
+    if game.get('player_black_token') == user_token:
+        my_color = 'B'
+    elif game.get('player_white_token') == user_token:
+        my_color = 'W'
+
+    response = make_response(render_template('game.html', room=game, my_color=my_color))
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/game/<room_code>/join', methods=['POST'])
+def game_join(room_code):
+    user_token, is_new_user = get_or_create_user_token()
+    room_code = room_code.upper()
+
+    try:
+        res = supabase.table('othello_games').select('*').eq('room_code', room_code).execute()
+    except Exception as e:
+        return {"success": False, "error": "取得エラーが発生しました"}, 500
+
+    if not res.data:
+        return {"success": False, "error": "部屋が見つかりません"}, 404
+
+    game = res.data[0]
+
+    if game.get('player_black_token') == user_token or game.get('player_white_token') == user_token:
+        return {"success": True}
+
+    if game.get('player_white_token'):
+        return {"success": False, "error": "この部屋は満員です"}, 400
+
+    try:
+        supabase.table('othello_games').update({
+            'player_white_token': user_token,
+            'status': 'playing',
+            'updated_at': datetime.utcnow().isoformat()
+        }).eq('room_code', room_code).execute()
+    except Exception as e:
+        return {"success": False, "error": "参加処理でエラーが発生しました"}, 500
+
+    response = make_response({"success": True})
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/game/<room_code>/move', methods=['POST'])
+def game_move(room_code):
+    user_token = request.cookies.get('user_bbs_token')
+    room_code = room_code.upper()
+    data = request.get_json(silent=True) or {}
+    r = data.get('row')
+    c = data.get('col')
+
+    if not isinstance(r, int) or not isinstance(c, int) or not (0 <= r < 8) or not (0 <= c < 8):
+        return {"success": False, "error": "不正な座標です"}, 400
+
+    try:
+        res = supabase.table('othello_games').select('*').eq('room_code', room_code).execute()
+    except Exception as e:
+        return {"success": False, "error": "取得エラーが発生しました"}, 500
+
+    if not res.data:
+        return {"success": False, "error": "部屋が見つかりません"}, 404
+
+    game = res.data[0]
+
+    if game['status'] != 'playing':
+        return {"success": False, "error": "対局中ではありません"}, 400
+
+    my_color = None
+    if game.get('player_black_token') == user_token:
+        my_color = 'B'
+    elif game.get('player_white_token') == user_token:
+        my_color = 'W'
+
+    if not my_color:
+        return {"success": False, "error": "この部屋の参加者ではありません"}, 403
+
+    if game['turn'] != my_color:
+        return {"success": False, "error": "相手のターンです"}, 400
+
+    board = game['board']
+    if not othello_flips_for_move(board, my_color, r, c):
+        return {"success": False, "error": "そこには置けません"}, 400
+
+    new_board = othello_apply_move(board, my_color, r, c)
+    opp = othello_opponent(my_color)
+    new_turn = opp
+    new_status = 'playing'
+    winner = None
+
+    if not othello_valid_moves(new_board, opp):
+        if not othello_valid_moves(new_board, my_color):
+            new_status = 'finished'
+            b_count, w_count = othello_count(new_board)
+            if b_count > w_count:
+                winner = 'B'
+            elif w_count > b_count:
+                winner = 'W'
+            else:
+                winner = 'draw'
+        else:
+            new_turn = my_color
+
+    update_data = {
+        'board': new_board,
+        'turn': new_turn,
+        'status': new_status,
+        'updated_at': datetime.utcnow().isoformat()
+    }
+    if winner:
+        update_data['winner'] = winner
+
+    try:
+        supabase.table('othello_games').update(update_data).eq('room_code', room_code).execute()
+    except Exception as e:
+        print(f"オセロ着手エラー: {e}")
+        return {"success": False, "error": "更新処理でエラーが発生しました"}, 500
+
+    return {"success": True}
+
+@app.route('/api/game/<room_code>/state')
+def game_state(room_code):
+    room_code = room_code.upper()
+    try:
+        res = supabase.table('othello_games').select('*').eq('room_code', room_code).execute()
+    except Exception as e:
+        return {"error": "取得エラーが発生しました"}, 500
+
+    if not res.data:
+        return {"error": "部屋が見つかりません"}, 404
+
+    game = res.data[0]
+    user_token = request.cookies.get('user_bbs_token')
+    my_color = None
+    if game.get('player_black_token') == user_token:
+        my_color = 'B'
+    elif game.get('player_white_token') == user_token:
+        my_color = 'W'
+
+    b_count, w_count = othello_count(game['board'])
+
+    return {
+        "board": game['board'],
+        "turn": game['turn'],
+        "status": game['status'],
+        "winner": game.get('winner'),
+        "has_white": bool(game.get('player_white_token')),
+        "my_color": my_color,
+        "black_count": b_count,
+        "white_count": w_count
     }
 
 if __name__ == '__main__':
