@@ -30,233 +30,247 @@
         }
         a { color: var(--accent-color); text-decoration: none; }
         a:hover { text-decoration: underline; }
-        .container {
+        .top-nav { width: 100%; max-width: 480px; margin-bottom: 12px; font-size: 13px; }
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
             width: 100%;
             max-width: 480px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
+            margin-bottom: 16px;
         }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: var(--panel-bg);
-            padding: 12px 16px;
-            border-radius: 8px;
+        h1 { font-size: 20px; margin: 0 0 4px 0; }
+        h2 { font-size: 16px; margin: 0 0 12px 0; color: var(--text-muted); font-weight: 600; }
+        input[type="text"] {
+            background: var(--bg-color);
             border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 14px;
         }
+        button {
+            background: var(--accent-color);
+            color: #06202e;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: var(--accent-hover); }
+        button:disabled { background: #475569; color: var(--text-muted); cursor: not-allowed; }
+        .lobby-actions { display: flex; flex-direction: column; gap: 16px; }
+        .lobby-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .status-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: var(--panel-bg);
-            padding: 12px 16px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
+            margin-bottom: 12px;
+            font-size: 14px;
         }
-        .turn-indicator {
-            font-weight: 600;
-            font-size: 15px;
-        }
-        .piece-count {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            font-size: 12px;
-        }
-        .piece-count span {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            display: inline-block;
-        }
-        .board-wrapper {
-            background: #166534;
-            padding: 10px;
-            border-radius: 12px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-            display: flex;
-            justify-content: center;
-        }
+        .turn-indicator { font-weight: 700; }
+        .piece-count { display: flex; gap: 12px; font-size: 13px; color: var(--text-muted); }
+        .piece-count span.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
         .board {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
             gap: 2px;
             background: #14532d;
+            border: 3px solid #14532d;
+            border-radius: 4px;
+            aspect-ratio: 1 / 1;
             width: 100%;
-            aspect-ratio: 1;
+            max-width: 440px;
         }
         .cell {
-            background: #15803d;
+            background: #166534;
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
+            aspect-ratio: 1 / 1;
             cursor: pointer;
             position: relative;
         }
-        .cell:hover { background: #16a34a; }
+        .cell:hover { background: #15803d; }
+        .cell.disabled { cursor: default; }
         .piece {
-            width: 80%;
-            height: 80%;
+            width: 82%;
+            height: 82%;
             border-radius: 50%;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-            transition: transform 0.2s ease;
+            box-shadow: 1px 2px 3px rgba(0,0,0,0.4);
         }
-        .piece.black { background: var(--black-piece); }
-        .piece.white { background: var(--white-piece); }
-        .valid-move::after {
-            content: '';
-            width: 30%;
-            height: 30%;
-            background: rgba(250, 204, 21, 0.6);
+        .piece.B { background: var(--black-piece); }
+        .piece.W { background: var(--white-piece); }
+        .hint-dot {
+            width: 22%;
+            height: 22%;
             border-radius: 50%;
-            position: absolute;
+            background: rgba(255,255,255,0.35);
         }
-        .action-panel {
-            background: var(--panel-bg);
-            padding: 16px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            text-align: center;
-        }
-        .btn {
-            background: var(--accent-color);
-            color: #0f172a;
-            border: none;
-            padding: 10px 20px;
-            font-weight: 600;
+        .room-code-box {
+            background: var(--bg-color);
+            border: 1px dashed var(--border-color);
             border-radius: 6px;
-            cursor: pointer;
+            padding: 10px 14px;
             font-size: 14px;
-            width: 100%;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
         }
-        .btn:hover { background: var(--accent-hover); }
-        .btn-secondary {
-            background: #334155;
-            color: var(--text-main);
-            margin-top: 8px;
+        .room-code-box strong { font-size: 18px; letter-spacing: 2px; color: var(--accent-color); }
+        .msg { font-size: 13px; color: var(--text-muted); margin-top: 8px; min-height: 18px; }
+        .msg.error { color: #f87171; }
+        .result-banner {
+            text-align: center;
+            font-size: 18px;
+            font-weight: 700;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            background: rgba(56, 189, 248, 0.15);
         }
-        .btn-secondary:hover { background: #475569; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <div class="header">
-            <a href="{{ url_for('index') }}">← 掲示板に戻る</a>
-            <span style="font-size: 13px; color: var(--text-muted);">部屋ID: <strong>{{ room_code }}</strong></span>
+    <div class="top-nav">
+        <a href="/">← talk-chに戻る</a>
+    </div>
+
+    {% if not room %}
+    <!-- ロビー：部屋を作る/参加する -->
+    <div class="panel">
+        <h1>オンラインオセロ</h1>
+        <h2>友達と対戦しよう（登録不要・匿名）</h2>
+        <div class="lobby-actions">
+            <div>
+                <button id="create-room-btn">新しい部屋を作る</button>
+            </div>
+            <div>
+                <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">部屋コードを持っている場合</div>
+                <div class="lobby-row">
+                    <input type="text" id="join-code-input" placeholder="例: AB12CD" maxlength="6" style="text-transform: uppercase;">
+                    <button id="join-room-btn">参加する</button>
+                </div>
+            </div>
         </div>
+        <div class="msg" id="lobby-msg"></div>
+    </div>
+
+    <script>
+        document.getElementById('create-room-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('create-room-btn');
+            btn.disabled = true;
+            try {
+                const res = await fetch('/game/create', { method: 'POST' });
+                if (res.redirected) {
+                    window.location.href = res.url;
+                } else {
+                    document.getElementById('lobby-msg').textContent = '部屋の作成に失敗しました';
+                    document.getElementById('lobby-msg').classList.add('error');
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                document.getElementById('lobby-msg').textContent = '通信エラーが発生しました';
+                document.getElementById('lobby-msg').classList.add('error');
+                btn.disabled = false;
+            }
+        });
+
+        document.getElementById('join-room-btn').addEventListener('click', async () => {
+            const input = document.getElementById('join-code-input');
+            const code = input.value.trim().toUpperCase();
+            const msgEl = document.getElementById('lobby-msg');
+            msgEl.classList.remove('error');
+            if (!code) {
+                msgEl.textContent = '部屋コードを入力してください';
+                msgEl.classList.add('error');
+                return;
+            }
+            try {
+                const res = await fetch(`/game/${code}/join`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = `/game/${code}`;
+                } else {
+                    msgEl.textContent = data.error || '参加に失敗しました';
+                    msgEl.classList.add('error');
+                }
+            } catch (e) {
+                msgEl.textContent = '通信エラーが発生しました';
+                msgEl.classList.add('error');
+            }
+        });
+
+        document.getElementById('join-code-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') document.getElementById('join-room-btn').click();
+        });
+    </script>
+
+    {% else %}
+    <!-- 対局画面 -->
+    <div class="panel">
+        <div class="room-code-box">
+            <span>部屋コード: <strong>{{ room.room_code }}</strong></span>
+            <button id="copy-link-btn" style="font-size: 12px; padding: 5px 10px;">リンクをコピー</button>
+        </div>
+
+        <div id="result-banner-area"></div>
 
         <div class="status-bar">
             <div class="turn-indicator" id="turn-indicator">読み込み中...</div>
             <div class="piece-count">
-                <span><span class="dot" style="background: var(--black-piece);"></span><span id="black-name-display" style="font-weight:bold;">黒プレイヤー</span>: <strong id="black-count">2</strong></span>
-                <span><span class="dot" style="background: var(--white-piece); border: 1px solid #666;"></span><span id="white-name-display" style="font-weight:bold;">白プレイヤー</span>: <strong id="white-count">2</strong></span>
+                <span><span class="dot" style="background: var(--black-piece);"></span>黒: <strong id="black-count">2</strong></span>
+                <span><span class="dot" style="background: var(--white-piece); border: 1px solid #666; border-radius: 50%;"></span>白: <strong id="white-count">2</strong></span>
             </div>
         </div>
 
-        <div class="board-wrapper">
-            <div class="board" id="othello-board"></div>
-        </div>
-
-        <div class="action-panel" id="action-panel" style="display: none;">
-            <p id="action-message" style="margin-top: 0; margin-bottom: 12px; font-size: 14px;"></p>
-            <button class="btn" id="join-room-btn" style="display: none;">この対局に参加する</button>
-            <button class="btn btn-secondary" id="copy-link-btn" style="margin-top: 8px;">招待リンクをコピー</button>
-        </div>
+        <div class="board" id="board"></div>
+        <div class="msg" id="game-msg"></div>
     </div>
 
     <script>
-        const roomCode = "{{ room_code }}";
-        let currentBoard = "";
-        let currentTurn = "";
-        let currentStatus = "";
-        let myColor = null;
+        const roomCode = {{ room.room_code | tojson }};
+        let myColor = {{ my_color | tojson }};
+        let currentBoard = null;
+        let currentTurn = null;
+        let currentStatus = null;
 
-        // 掲示板の保存名を取得
-        function getSavedName() {
-            let nameEQ = "bbs_saved_author=";
-            let ca = document.cookie.split(';');
-            for(let i=0; i < ca.length; i++) {
-                let c = ca[i];
-                while (c.charAt(0)==' ') c = c.substring(1,c.length);
-                if (c.indexOf(nameEQ) == 0) return decodeURIComponent(c.substring(nameEQ.length,c.length));
-            }
-            return '名無しさん';
-        }
-
-        const DIRECTIONS = [
-            [-1, -1], [-1, 0], [-1, 1],
-            [0, -1],           [0, 1],
-            [1, -1],  [1, 0],  [1, 1]
-        ];
-
-        function getBoard2D(boardStr) {
-            let board = [];
-            for(let i=0; i<8; i++) {
-                board.push(boardStr.slice(i*8, (i+1)*8).split(''));
-            }
-            return board;
-        }
-
-        function isValidMove(board, color, r, c) {
-            if (board[r][c] !== ' ') return false;
-            const opponent = color === 'B' ? 'W' : 'B';
-            
-            for (let [dr, dc] of DIRECTIONS) {
-                let nr = r + dr, nc = c + dc;
-                let flipped = false;
-                while (nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc] === opponent) {
-                    nr += dr;
-                    nc += dc;
-                    flipped = true;
-                }
-                if (flipped && nr >= 0 && nr < 8 && nc >= 0 && nc < 8 && board[nr][nc] === color) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        function computeValidMoves(boardStr, color) {
-            let board = getBoard2D(boardStr);
-            let moves = [];
-            for (let r=0; r<8; r++) {
-                for (let c=0; c<8; c++) {
-                    if (isValidMove(board, color, r, c)) {
-                        moves.push({r, c});
-                    }
-                }
-            }
-            return moves;
+        function pieceLabel(color) {
+            return color === 'B' ? '黒' : '白';
         }
 
         function renderBoard(boardStr, validMoves) {
-            const boardEl = document.getElementById('othello-board');
+            const boardEl = document.getElementById('board');
             boardEl.innerHTML = '';
-            let board = getBoard2D(boardStr);
-
-            for (let r=0; r<8; r++) {
-                for (let c=0; c<8; c++) {
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const idx = r * 8 + c;
+                    const val = boardStr[idx];
                     const cell = document.createElement('div');
                     cell.className = 'cell';
-                    
-                    const cellVal = board[r][c];
-                    if (cellVal === 'B' || cellVal === 'W') {
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+
+                    if (val === 'B' || val === 'W') {
                         const piece = document.createElement('div');
-                        piece.className = `piece ${cellVal === 'B' ? 'black' : 'white'}`;
+                        piece.className = 'piece ' + val;
                         cell.appendChild(piece);
+                        cell.classList.add('disabled');
                     } else {
-                        const isValid = validMoves.some(m => m.r === r && m.c === c);
-                        if (isValid) {
-                            cell.classList.add('valid-move');
+                        const isHint = validMoves.some(([mr, mc]) => mr === r && mc === c);
+                        if (isHint) {
+                            const dot = document.createElement('div');
+                            dot.className = 'hint-dot';
+                            cell.appendChild(dot);
                             cell.addEventListener('click', () => makeMove(r, c));
+                        } else {
+                            cell.classList.add('disabled');
                         }
                     }
                     boardEl.appendChild(cell);
@@ -264,91 +278,93 @@
             }
         }
 
+        function computeValidMoves(boardStr, player) {
+            const dirs = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+            const opp = player === 'B' ? 'W' : 'B';
+            const moves = [];
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    if (boardStr[r*8+c] !== '.') continue;
+                    let found = false;
+                    for (const [dr, dc] of dirs) {
+                        let rr = r + dr, cc = c + dc;
+                        let line = [];
+                        while (rr >= 0 && rr < 8 && cc >= 0 && cc < 8 && boardStr[rr*8+cc] === opp) {
+                            line.push([rr, cc]);
+                            rr += dr; cc += dc;
+                        }
+                        if (line.length > 0 && rr >= 0 && rr < 8 && cc >= 0 && cc < 8 && boardStr[rr*8+cc] === player) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found) moves.push([r, c]);
+                }
+            }
+            return moves;
+        }
+
         async function makeMove(r, c) {
             try {
-                const res = await fetch(`/api/game/${roomCode}/move`, {
+                const res = await fetch(`/game/${roomCode}/move`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ row: r, col: c })
                 });
                 const data = await res.json();
-                if (!data.success) {
-                    alert(data.error || '置くことができません');
-                } else {
+                const msgEl = document.getElementById('game-msg');
+                if (data.success) {
+                    msgEl.textContent = '';
+                    msgEl.classList.remove('error');
                     fetchState();
+                } else {
+                    msgEl.textContent = data.error || '着手に失敗しました';
+                    msgEl.classList.add('error');
                 }
             } catch (e) {
-                console.error('着手エラー:', e);
+                console.error(e);
             }
         }
 
         function updateStatusBar(data) {
             document.getElementById('black-count').textContent = data.black_count;
             document.getElementById('white-count').textContent = data.white_count;
-            
-            document.getElementById('black-name-display').textContent = data.player_black_name;
-            document.getElementById('white-name-display').textContent = data.player_white_name;
 
             const indicator = document.getElementById('turn-indicator');
-            const actionPanel = document.getElementById('action-panel');
-            const actionMsg = document.getElementById('action-message');
-            const joinBtn = document.getElementById('join-room-btn');
+            const bannerArea = document.getElementById('result-banner-area');
+            bannerArea.innerHTML = '';
 
             if (data.status === 'waiting') {
-                indicator.textContent = '対戦相手を待っています...';
-                indicator.style.color = 'var(--accent-color)';
-                actionPanel.style.display = 'block';
-                if (!data.my_color) {
-                    actionMsg.textContent = '対戦相手がまだいません。参加ボタンを押してください！';
-                    joinBtn.style.display = 'block';
-                } else {
-                    actionMsg.textContent = '相手の参加を待っています。URLを共有してください。';
-                    joinBtn.style.display = 'none';
-                }
+                indicator.textContent = '対戦相手を待っています…';
+                indicator.style.color = 'var(--text-muted)';
             } else if (data.status === 'finished') {
-                actionPanel.style.display = 'block';
-                joinBtn.style.display = 'none';
-                if (data.winner === 'Draw') {
-                    indicator.textContent = 'ゲーム終了: 引き分け';
-                    actionMsg.textContent = 'ゲームが終了しました（引き分け）';
+                indicator.textContent = '対局終了';
+                indicator.style.color = 'var(--text-muted)';
+                const banner = document.createElement('div');
+                banner.className = 'result-banner';
+                if (data.winner === 'draw') {
+                    banner.textContent = '引き分けでした';
+                } else if (data.winner === myColor) {
+                    banner.textContent = 'あなたの勝ちです！🎉';
+                } else if (myColor) {
+                    banner.textContent = 'あなたの負けです';
                 } else {
-                    const winnerName = data.winner === 'B' ? data.player_black_name : data.player_white_name;
-                    indicator.textContent = `勝者: ${winnerName}`;
-                    actionMsg.textContent = `ゲーム終了！勝者: ${winnerName}`;
+                    banner.textContent = `${pieceLabel(data.winner)}の勝ちです`;
                 }
+                bannerArea.appendChild(banner);
             } else {
-                actionPanel.style.display = 'none';
-                if (data.my_color === data.turn) {
+                if (!myColor) {
+                    indicator.textContent = `観戦中（現在: ${pieceLabel(data.turn)}のターン）`;
+                    indicator.style.color = 'var(--text-muted)';
+                } else if (data.turn === myColor) {
                     indicator.textContent = 'あなたのターンです';
-                    indicator.style.color = '#4ade80';
+                    indicator.style.color = 'var(--accent-color)';
                 } else {
                     indicator.textContent = '相手のターンです';
                     indicator.style.color = 'var(--text-muted)';
                 }
             }
         }
-
-        document.getElementById('join-room-btn').addEventListener('click', async () => {
-            const btn = document.getElementById('join-room-btn');
-            btn.disabled = true;
-            try {
-                const res = await fetch(`/game/${roomCode}/join`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ player_name: getSavedName() })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    fetchState();
-                } else {
-                    alert(data.error || '参加に失敗しました');
-                    btn.disabled = false;
-                }
-            } catch (e) {
-                console.error('参加エラー:', e);
-                btn.disabled = false;
-            }
-        });
 
         async function fetchState() {
             try {
@@ -384,5 +400,7 @@
         fetchState();
         setInterval(fetchState, 2000);
     </script>
+    {% endif %}
+
 </body>
 </html>
