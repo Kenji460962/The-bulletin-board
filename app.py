@@ -47,7 +47,6 @@ R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvtvpwyp.supabase.co')
-# ※ここでSupabaseダッシュボードからコピーした正しいanonキーを設定してください
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo') 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -104,8 +103,13 @@ def index():
         threads_res = supabase.table('threads').select('*').order('id', desc=False).execute()
         threads = threads_res.data or []
 
-        pinned_res = supabase.table('pinned_threads').select('*').execute()
-        pinned_threads = pinned_res.data or []
+        # pinned_threads テーブルがない場合を考慮して安全に取得
+        pinned_threads = []
+        try:
+            pinned_res = supabase.table('pinned_threads').select('*').execute()
+            pinned_threads = pinned_res.data or []
+        except Exception:
+            pass
 
         for pt in pinned_threads:
             pt['is_pinned'] = True  
@@ -134,7 +138,6 @@ def index():
             if t.get('is_pinned') or t_id in [1, 2, 3, 4]:
                 t['is_pinned'] = True
             
-            # レス数をセット（取得できなければ0）
             t['replies_count'] = reply_counts.get(t_id, 0)
 
             location_key = f"thread_{t_id}"
@@ -148,7 +151,17 @@ def index():
         threads = []
         othello_games = []
 
-    response = make_response(render_template('index.html', threads=threads, othello_games=othello_games))
+    # テンプレート側が求めているページネーション変数を追加（未定義エラー対策）
+    current_page = request.args.get('page', 1, type=int)
+    total_pages = 1
+
+    response = make_response(render_template(
+        'index.html', 
+        threads=threads, 
+        othello_games=othello_games,
+        current_page=current_page,
+        total_pages=total_pages
+    ))
     if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
@@ -214,12 +227,6 @@ def othello_new_board():
     board[4][4] = 'W'
     board_flat = [cell for row in board for cell in row]
     return "".join(board_flat)
-
-def othello_board_to_2d(board_str):
-    return [list(board_str[i*8:(i+1)*8]) for i in range(8)]
-
-def othello_board_to_str(board_2d):
-    return "".join(["".join(row) for row in board_2d])
 
 def othello_count(board_str):
     b = board_str.count('B')
