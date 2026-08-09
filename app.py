@@ -47,7 +47,8 @@ R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://mpzjidhuovorzvtvpwyp.supabase.co')
-SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wemppZGh1b3Zvcnp2amh1a215Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMDYzMjIsImV4cCI6MjA5NzU4MjMyMn0.Q11dCsMYX0LakWydaVD6EIKKJD2Wbv7qHV0GuAyxEeo')
+# ※ここでSupabaseダッシュボードからコピーした正しいanonキーを設定してください
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...') 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ユーザー識別用トークン発行
@@ -152,6 +153,58 @@ def index():
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
     return response
 
+# ==================== スレッド作成・詳細・返信関連 ====================
+@app.route('/create_thread', methods=['POST'])
+def create_thread():
+    user_token, is_new_user = get_or_create_user_token()
+    client_ip = get_client_ip()
+    author_id = get_daily_user_id(client_ip)
+
+    title = request.form.get('title', '').strip()
+    author = request.form.get('author', '').strip() or '名無しさん'
+    content = request.form.get('content', '').strip()
+
+    if not title or not content:
+        return "タイトルと内容は必須です", 400
+
+    author_with_id = f"{author} (ID:{author_id})"
+
+    try:
+        supabase.table('threads').insert({
+            'title': title,
+            'author': author_with_id,
+            'content': content,
+            'created_at': datetime.utcnow().isoformat()
+        }).execute()
+    except Exception as e:
+        print(f"スレッド作成エラー: {e}")
+        return f"スレッド作成に失敗しました: {e}", 500
+
+    response = make_response(redirect(url_for('index')))
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/thread/<int:thread_id>')
+def thread_detail(thread_id):
+    user_token, is_new_user = get_or_create_user_token()
+    try:
+        t_res = supabase.table('threads').select('*').eq('id', thread_id).execute()
+        if not t_res.data:
+            return "スレッドが見つかりません", 404
+        thread = t_res.data[0]
+
+        r_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
+        replies = r_res.data or []
+    except Exception as e:
+        print(f"スレッド詳細読込エラー: {e}")
+        return "読み込みエラーが発生しました", 500
+
+    response = make_response(render_template('thread.html', thread=thread, replies=replies))
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
 # ==================== オセロ機能関連 ====================
 def othello_new_board():
     board = [[' ' for _ in range(8)] for _ in range(8)]
@@ -167,10 +220,6 @@ def othello_board_to_2d(board_str):
 
 def othello_board_to_str(board_2d):
     return "".join(["".join(row) for row in board_2d])
-
-def othello_generate_room_code():
-    chars = string.ascii_uppercase + string.digits
-    return "".join(os.urandom(4)) # 簡易的なランダムコード生成
 
 def othello_count(board_str):
     b = board_str.count('B')
