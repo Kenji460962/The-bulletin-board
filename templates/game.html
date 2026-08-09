@@ -140,6 +140,8 @@
 
     <div class="top-nav">
         <a href="/">← talk-chに戻る</a>
+        <span style="color: var(--text-muted); margin: 0 6px;">|</span>
+        <a href="{{ url_for('game_lobby') }}">🎮 ゲームロビーへ</a>
     </div>
 
     {% if not room %}
@@ -148,6 +150,10 @@
         <h1>オンラインオセロ</h1>
         <h2>友達と対戦しよう（登録不要・匿名）</h2>
         <div class="lobby-actions">
+            <div>
+                <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 6px;">表示する名前（省略可）</div>
+                <input type="text" id="player-name-input" placeholder="名無しさん" maxlength="20" style="width: 100%;">
+            </div>
             <div>
                 <button id="create-room-btn">新しい部屋を作る</button>
             </div>
@@ -163,11 +169,26 @@
     </div>
 
     <script>
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
+            return '';
+        }
+
+        const savedAuthor = getCookie('bbs_saved_author');
+        if (savedAuthor) {
+            document.getElementById('player-name-input').value = savedAuthor;
+        }
+
         document.getElementById('create-room-btn').addEventListener('click', async () => {
             const btn = document.getElementById('create-room-btn');
+            const name = document.getElementById('player-name-input').value.trim();
             btn.disabled = true;
             try {
-                const res = await fetch('/game/create', { method: 'POST' });
+                const formData = new URLSearchParams();
+                formData.append('name', name);
+                const res = await fetch('/game/create', { method: 'POST', body: formData });
                 if (res.redirected) {
                     window.location.href = res.url;
                 } else {
@@ -185,6 +206,7 @@
         document.getElementById('join-room-btn').addEventListener('click', async () => {
             const input = document.getElementById('join-code-input');
             const code = input.value.trim().toUpperCase();
+            const name = document.getElementById('player-name-input').value.trim();
             const msgEl = document.getElementById('lobby-msg');
             msgEl.classList.remove('error');
             if (!code) {
@@ -193,7 +215,11 @@
                 return;
             }
             try {
-                const res = await fetch(`/game/${code}/join`, { method: 'POST' });
+                const res = await fetch(`/game/${code}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
                 const data = await res.json();
                 if (data.success) {
                     window.location.href = `/game/${code}`;
@@ -222,6 +248,10 @@
 
         <div id="result-banner-area"></div>
 
+        <div class="players-box" id="players-box" style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px;">
+            <div>読み込み中...</div>
+        </div>
+
         <div class="status-bar">
             <div class="turn-indicator" id="turn-indicator">読み込み中...</div>
             <div class="piece-count">
@@ -240,6 +270,13 @@
         let currentBoard = null;
         let currentTurn = null;
         let currentStatus = null;
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
 
         function pieceLabel(color) {
             return color === 'B' ? '黒' : '白';
@@ -330,6 +367,17 @@
             document.getElementById('black-count').textContent = data.black_count;
             document.getElementById('white-count').textContent = data.white_count;
 
+            const playersBox = document.getElementById('players-box');
+            const blackYou = myColor === 'B' ? '（あなた）' : '';
+            const whiteYou = myColor === 'W' ? '（あなた）' : '';
+            let playersHtml = `<div>⚫ ${escapeHtml(data.black_name)} <span style="opacity:0.7;">(ID:${data.black_id || '----'})</span>${blackYou}</div>`;
+            if (data.has_white) {
+                playersHtml += `<div>⚪ ${escapeHtml(data.white_name)} <span style="opacity:0.7;">(ID:${data.white_id || '----'})</span>${whiteYou}</div>`;
+            } else {
+                playersHtml += `<div style="opacity:0.7;">⚪ 対戦相手を待っています…</div>`;
+            }
+            playersBox.innerHTML = playersHtml;
+
             const indicator = document.getElementById('turn-indicator');
             const bannerArea = document.getElementById('result-banner-area');
             bannerArea.innerHTML = '';
@@ -352,6 +400,15 @@
                     banner.textContent = `${pieceLabel(data.winner)}の勝ちです`;
                 }
                 bannerArea.appendChild(banner);
+
+                const backToLobbyBtn = document.createElement('button');
+                backToLobbyBtn.textContent = '🎮 ゲームロビーに戻る';
+                backToLobbyBtn.style.width = '100%';
+                backToLobbyBtn.style.marginBottom = '12px';
+                backToLobbyBtn.addEventListener('click', () => {
+                    window.location.href = "{{ url_for('game_lobby') }}";
+                });
+                bannerArea.appendChild(backToLobbyBtn);
             } else {
                 if (!myColor) {
                     indicator.textContent = `観戦中（現在: ${pieceLabel(data.turn)}のターン）`;
