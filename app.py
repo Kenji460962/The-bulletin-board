@@ -14,11 +14,15 @@ from supabase import create_client, Client
 
 import boto3  
 import httpx  # supabaseの依存として既にインストールされているのでそのまま使う
+import psutil  # 実際のCPU・メモリ使用率を取得するため
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 # static配下(CSS・画像・favicon等)のキャッシュ期間を7日に設定。ファイル名を変えない限りブラウザに残るので再訪問時が速くなる
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
+
+# psutilのCPU使用率計測を起動時に一度呼んで初期化。以降 psutil.cpu_percent() は待ち時間なしで前回呼び出しからの差分を返す
+psutil.cpu_percent(interval=None)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
 
 # スリープ防止
@@ -642,6 +646,22 @@ def ban_thread_owner(thread_id):
     except Exception as e:
         return f"【スレ主BAN失敗】エラーの原因: {e}", 500
     return redirect(url_for('index'))
+
+@app.route('/api/server_stats')
+def server_stats():
+    try:
+        cpu_percent = psutil.cpu_percent(interval=None)
+        mem = psutil.virtual_memory()
+        return {
+            "cpu_percent": round(cpu_percent, 1),
+            "memory_percent": round(mem.percent, 1),
+            "memory_used_mb": round(mem.used / (1024 * 1024)),
+            "memory_total_mb": round(mem.total / (1024 * 1024)),
+            "timestamp": time.time()
+        }
+    except Exception as e:
+        print(f"サーバー負荷取得エラー: {e}")
+        return {"error": "取得に失敗しました"}, 500
 
 @app.route('/api/lobby/active_count')
 def lobby_active_count():
