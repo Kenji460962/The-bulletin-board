@@ -1022,6 +1022,16 @@ def archive_old_threads():
             supabase.table('replies').delete().eq('thread_id', tid).execute()
             supabase.table('threads').delete().eq('id', tid).execute()
 
+            try:
+                supabase.table('archived_threads_index').upsert({
+                    'thread_id': tid,
+                    'title': t.get('title', '(無題)'),
+                    'reply_count': len(all_replies_res.data or []),
+                    'archived_at': datetime.utcnow().isoformat()
+                }).execute()
+            except Exception as ie:
+                print(f"アーカイブ索引登録エラー(thread_id={tid}): {ie}")
+
             archived.append(tid)
         except Exception as e:
             errors.append({"thread_id": tid, "error": str(e)})
@@ -1032,6 +1042,50 @@ def archive_old_threads():
         "archived_thread_ids": archived,
         "errors": errors
     }
+
+@app.route('/archive')
+def archive_list():
+    page = request.args.get('page', default=1, type=int)
+    per_page = 20
+    start_index = (page - 1) * per_page
+    end_index = start_index + per_page - 1
+
+    archived_threads = []
+    has_next = False
+    try:
+        res = supabase.table('archived_threads_index').select('*').order('archived_at', desc=True).range(start_index, end_index).execute()
+        archived_threads = res.data or []
+        has_next = len(archived_threads) == per_page
+    except Exception as e:
+        print(f"過去ログ一覧取得エラー: {e}")
+
+    return render_template('archive_list.html', archived_threads=archived_threads, current_page=page, has_next=has_next)
+
+@app.route('/archive/<int:thread_id>')
+def archive_view(thread_id):
+    archive_key = f"archive/thread_{thread_id}.json"
+    try:
+        obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=archive_key)
+        payload = json.loads(obj['Body'].read().decode('utf-8'))
+    except Exception as e:
+        print(f"過去ログ取得エラー(thread_id={thread_id}): {e}")
+        return "この過去ログは見つかりませんでした", 404
+
+    thread = payload.get('thread', {})
+    replies = payload.get('replies', [])
+
+    for r in replies:
+        if r.get('date'):
+            try:
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                pass
+        if r.get('content'):
+            r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+
+    return render_template('archive_view.html', thread=thread, replies=replies, archived_at=payload.get('archived_at'))
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
