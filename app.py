@@ -88,6 +88,44 @@ def read_cgroup_cpu_percent():
         return percent
     except Exception:
         return None
+
+_last_net_rx_bytes = None
+_last_net_tx_bytes = None
+_last_net_check_time = None
+
+def read_network_speed():
+    """直近の呼び出しからの差分でイン・アウトの速度(バイト/秒)を計算する"""
+    global _last_net_rx_bytes, _last_net_tx_bytes, _last_net_check_time
+    try:
+        rx_total = 0
+        tx_total = 0
+        with open('/proc/net/dev') as f:
+            lines = f.readlines()[2:]  # 先頭2行はヘッダーなのでスキップ
+        for line in lines:
+            if ':' not in line:
+                continue
+            iface, rest = line.split(':', 1)
+            iface = iface.strip()
+            if iface == 'lo':  # ループバックはコンテナ外との通信ではないので除外
+                continue
+            fields = rest.split()
+            rx_total += int(fields[0])   # 受信バイト数(累計)
+            tx_total += int(fields[8])   # 送信バイト数(累計)
+
+        now = time.time()
+        rx_speed = tx_speed = None
+        if _last_net_rx_bytes is not None and _last_net_check_time is not None:
+            time_delta = now - _last_net_check_time
+            if time_delta > 0:
+                rx_speed = max(0, (rx_total - _last_net_rx_bytes) / time_delta)
+                tx_speed = max(0, (tx_total - _last_net_tx_bytes) / time_delta)
+
+        _last_net_rx_bytes = rx_total
+        _last_net_tx_bytes = tx_total
+        _last_net_check_time = now
+        return rx_speed, tx_speed
+    except Exception:
+        return None, None
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
 
 # スリープ防止
@@ -728,11 +766,15 @@ def server_stats():
 
         memory_percent = round((mem_used / mem_limit) * 100, 1) if mem_limit else 0
 
+        rx_speed, tx_speed = read_network_speed()
+
         return {
             "cpu_percent": round(cpu_percent, 1),
             "memory_percent": memory_percent,
             "memory_used_mb": round(mem_used / (1024 * 1024)),
             "memory_total_mb": round(mem_limit / (1024 * 1024)) if mem_limit else 0,
+            "net_rx_kbps": round(rx_speed / 1024, 1) if rx_speed is not None else None,
+            "net_tx_kbps": round(tx_speed / 1024, 1) if tx_speed is not None else None,
             "timestamp": time.time()
         }
     except Exception as e:
