@@ -21,8 +21,73 @@ app = Flask(__name__)
 # static配下(CSS・画像・favicon等)のキャッシュ期間を7日に設定。ファイル名を変えない限りブラウザに残るので再訪問時が速くなる
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
 
-# psutilのCPU使用率計測を起動時に一度呼んで初期化。以降 psutil.cpu_percent() は待ち時間なしで前回呼び出しからの差分を返す
+# psutilのCPU使用率計測を起動時に一度呼んで初期化(cgroup読み取りに失敗した場合のフォールバック用)
 psutil.cpu_percent(interval=None)
+
+# ---- cgroup(コンテナに実際に割り当てられた上限・使用量)を直接読む ----
+# psutilはホスト全体の数値を返すことがあり、Railway側の表示(コンテナへの割当量基準)とズレるため、
+# こちらの方がRailwayのMetrics画面の数値に近くなる
+_last_cpu_usage_usec = None
+_last_cpu_check_time = None
+
+def read_cgroup_memory():
+    try:
+        with open('/sys/fs/cgroup/memory.current') as f:
+            used = int(f.read().strip())
+        with open('/sys/fs/cgroup/memory.max') as f:
+            limit_raw = f.read().strip()
+            limit = None if limit_raw == 'max' else int(limit_raw)
+        return used, limit
+    except Exception:
+        pass
+    try:
+        with open('/sys/fs/cgroup/memory/memory.usage_in_bytes') as f:
+            used = int(f.read().strip())
+        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes') as f:
+            limit = int(f.read().strip())
+            if limit > 10**15:  # 事実上無制限を意味する巨大値
+                limit = None
+        return used, limit
+    except Exception:
+        return None, None
+
+def read_cgroup_cpu_percent():
+    global _last_cpu_usage_usec, _last_cpu_check_time
+    try:
+        usage_usec = None
+        with open('/sys/fs/cgroup/cpu.stat') as f:
+            for line in f:
+                k, v = line.strip().split()
+                if k == 'usage_usec':
+                    usage_usec = int(v)
+                    break
+        if usage_usec is None:
+            return None
+
+        quota_cores = None
+        try:
+            with open('/sys/fs/cgroup/cpu.max') as f:
+                parts = f.read().strip().split()
+                if parts[0] != 'max':
+                    quota_cores = int(parts[0]) / int(parts[1])
+        except Exception:
+            pass
+
+        now = time.time()
+        percent = None
+        if _last_cpu_usage_usec is not None and _last_cpu_check_time is not None:
+            usec_delta = usage_usec - _last_cpu_usage_usec
+            time_delta = now - _last_cpu_check_time
+            if time_delta > 0 and usec_delta >= 0:
+                cores_used = (usec_delta / 1_000_000) / time_delta
+                denom = quota_cores or (os.cpu_count() or 1)
+                percent = round((cores_used / denom) * 100, 1)
+
+        _last_cpu_usage_usec = usage_usec
+        _last_cpu_check_time = now
+        return percent
+    except Exception:
+        return None
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345') # 必須: セッション暗号化用キー
 
 # スリープ防止
@@ -650,13 +715,24 @@ def ban_thread_owner(thread_id):
 @app.route('/api/server_stats')
 def server_stats():
     try:
-        cpu_percent = psutil.cpu_percent(interval=None)
-        mem = psutil.virtual_memory()
+        mem_used, mem_limit = read_cgroup_memory()
+        cpu_percent = read_cgroup_cpu_percent()
+
+        # cgroup読み取りに失敗した場合はpsutilにフォールバック(値の基準は多少ズレる可能性あり)
+        if mem_used is None or mem_limit is None:
+            mem = psutil.virtual_memory()
+            mem_used = mem.used
+            mem_limit = mem.total
+        if cpu_percent is None:
+            cpu_percent = psutil.cpu_percent(interval=None)
+
+        memory_percent = round((mem_used / mem_limit) * 100, 1) if mem_limit else 0
+
         return {
             "cpu_percent": round(cpu_percent, 1),
-            "memory_percent": round(mem.percent, 1),
-            "memory_used_mb": round(mem.used / (1024 * 1024)),
-            "memory_total_mb": round(mem.total / (1024 * 1024)),
+            "memory_percent": memory_percent,
+            "memory_used_mb": round(mem_used / (1024 * 1024)),
+            "memory_total_mb": round(mem_limit / (1024 * 1024)) if mem_limit else 0,
             "timestamp": time.time()
         }
     except Exception as e:
