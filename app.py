@@ -759,6 +759,7 @@ def game_lobby():
 @app.route('/game/create', methods=['POST'])
 def game_create():
     user_token, is_new_user = get_or_create_user_token()
+    player_name = (request.form.get('name') or '').strip()[:20] or '名無しさん'
 
     room_code = othello_generate_room_code()
     for _ in range(5):
@@ -773,6 +774,7 @@ def game_create():
             'board': othello_new_board(),
             'turn': 'B',
             'player_black_token': user_token,
+            'player_black_name': player_name,
             'status': 'waiting'
         }).execute()
     except Exception as e:
@@ -814,6 +816,8 @@ def game_room(room_code):
 def game_join(room_code):
     user_token, is_new_user = get_or_create_user_token()
     room_code = room_code.upper()
+    body = request.get_json(silent=True) or {}
+    player_name = (body.get('name') or '').strip()[:20] or '名無しさん'
 
     try:
         res = supabase.table('othello_games').select('*').eq('room_code', room_code).execute()
@@ -834,6 +838,7 @@ def game_join(room_code):
     try:
         supabase.table('othello_games').update({
             'player_white_token': user_token,
+            'player_white_name': player_name,
             'status': 'playing',
             'updated_at': datetime.utcnow().isoformat()
         }).eq('room_code', room_code).execute()
@@ -942,15 +947,90 @@ def game_state(room_code):
 
     b_count, w_count = othello_count(game['board'])
 
+    black_token = game.get('player_black_token')
+    white_token = game.get('player_white_token')
+
     return {
         "board": game['board'],
         "turn": game['turn'],
         "status": game['status'],
         "winner": game.get('winner'),
-        "has_white": bool(game.get('player_white_token')),
+        "has_white": bool(white_token),
         "my_color": my_color,
         "black_count": b_count,
-        "white_count": w_count
+        "white_count": w_count,
+        "black_name": game.get('player_black_name') or '名無しさん',
+        "white_name": game.get('player_white_name') or '名無しさん',
+        "black_id": get_daily_user_id(black_token) if black_token else None,
+        "white_id": get_daily_user_id(white_token) if white_token else None
+    }
+
+# ==================== 過去ログアーカイブ(Supabase容量対策) ====================
+
+ARCHIVE_SECRET = os.environ.get('ARCHIVE_SECRET')
+ARCHIVE_PINNED_IDS = [1, 2, 3, 4]  # 固定スレは対象外
+ARCHIVE_AFTER_DAYS = int(os.environ.get('ARCHIVE_AFTER_DAYS', 30))  # 最終レスからこの日数動きが無いスレを対象にする
+
+@app.route('/internal/archive-old-threads', methods=['POST'])
+def archive_old_threads():
+    # 誰でも叩けると全スレ削除される危険なエンドポイントなので、合言葉必須。定期実行サービス(Railway Cronなど)専用
+    if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
+        return {"error": "unauthorized"}, 403
+
+    cutoff = (datetime.utcnow() - timedelta(days=ARCHIVE_AFTER_DAYS)).isoformat()
+    archived = []
+    errors = []
+
+    try:
+        threads_res = supabase.table('threads').select('*').execute()
+        all_threads = threads_res.data or []
+    except Exception as e:
+        return {"error": f"スレッド一覧の取得に失敗しました: {e}"}, 500
+
+    for t in all_threads:
+        tid = int(t['id'])
+        if tid in ARCHIVE_PINNED_IDS:
+            continue
+
+        try:
+            replies_res = supabase.table('replies').select('*').eq('thread_id', tid).order('id', desc=True).limit(1).execute()
+            last_reply = replies_res.data[0] if replies_res.data else None
+
+            # 最後の動きの日時(最終レス、無ければスレ作成日時)が基準より新しければスキップ
+            last_activity = last_reply['date'] if last_reply else t.get('created_at')
+            if last_activity and last_activity > cutoff:
+                continue
+            if not last_activity:
+                continue
+
+            all_replies_res = supabase.table('replies').select('*').eq('thread_id', tid).order('id', desc=False).execute()
+
+            archive_payload = {
+                "thread": t,
+                "replies": all_replies_res.data or [],
+                "archived_at": datetime.utcnow().isoformat()
+            }
+
+            archive_key = f"archive/thread_{tid}.json"
+            s3_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=archive_key,
+                Body=json.dumps(archive_payload, ensure_ascii=False, indent=2).encode('utf-8'),
+                ContentType='application/json'
+            )
+
+            supabase.table('replies').delete().eq('thread_id', tid).execute()
+            supabase.table('threads').delete().eq('id', tid).execute()
+
+            archived.append(tid)
+        except Exception as e:
+            errors.append({"thread_id": tid, "error": str(e)})
+            print(f"アーカイブエラー(thread_id={tid}): {e}")
+
+    return {
+        "archived_count": len(archived),
+        "archived_thread_ids": archived,
+        "errors": errors
     }
 
 if __name__ == '__main__':
