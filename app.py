@@ -969,7 +969,11 @@ def game_state(room_code):
 
 ARCHIVE_SECRET = os.environ.get('ARCHIVE_SECRET')
 ARCHIVE_PINNED_IDS = [1, 2, 3, 4]  # 固定スレは対象外
-ARCHIVE_AFTER_DAYS = int(os.environ.get('ARCHIVE_AFTER_DAYS', 30))  # 最終レスからこの日数動きが無いスレを対象にする
+try:
+    ARCHIVE_AFTER_DAYS = int(os.environ.get('ARCHIVE_AFTER_DAYS', '30').strip())
+except (ValueError, AttributeError):
+    print("警告: ARCHIVE_AFTER_DAYSの値が不正なため、デフォルトの30日を使用します")
+    ARCHIVE_AFTER_DAYS = 30
 
 @app.route('/internal/archive-old-threads', methods=['POST'])
 def archive_old_threads():
