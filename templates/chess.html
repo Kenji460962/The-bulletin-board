@@ -87,15 +87,28 @@
         }
         .cell.light { background: #ebd7b0; }
         .cell.dark { background: #b58863; }
-        .piece-glyph { display: block; line-height: 1; pointer-events: none; }
-        .piece-white {
-            color: #f8fafc;
-            -webkit-text-stroke: 1.5px #1a1a1a;
-            text-stroke: 1.5px #1a1a1a;
+        .piece-glyph {
+            width: 78%;
+            height: 78%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
         }
-        .piece-black {
-            color: #1a1a1a;
-            -webkit-text-stroke: 1px rgba(255,255,255,0.15);
+        .piece-svg { width: 100%; height: 100%; overflow: visible; }
+        .piece-svg.piece-white {
+            fill: #f8fafc;
+            stroke: #1a1a1a;
+            stroke-width: 1.2;
+            stroke-linejoin: round;
+            filter: drop-shadow(0 1px 1px rgba(0,0,0,0.4));
+        }
+        .piece-svg.piece-black {
+            fill: #262626;
+            stroke: #0a0a0a;
+            stroke-width: 1.2;
+            stroke-linejoin: round;
+            filter: drop-shadow(0 1px 1px rgba(0,0,0,0.3));
         }
         .cell.selected { outline: 3px solid var(--accent-color); outline-offset: -3px; }
         .cell.hint::after {
@@ -263,10 +276,57 @@
         let selected = null; // [r, c]
         let legalTargetsForSelected = [];
 
-        // 白黒どちらも同じデザイン(塗りつぶし記号)を使い、色の違いはCSSで表現する
-        const PIECE_GLYPHS = {
-            'K':'♚','Q':'♛','R':'♜','B':'♝','N':'♞','P':'♟'
+        // 白黒どちらも同じ形(SVG)を使い、色の違いはCSSで表現する
+        const PIECE_SVG_SHAPES = {
+            'K': `
+                <rect x="21" y="2" width="3" height="8" rx="1"/>
+                <rect x="17.5" y="5" width="10" height="3" rx="1"/>
+                <circle cx="22.5" cy="15" r="5.5"/>
+                <path d="M17 20 L28 20 L33 34 L12 34 Z"/>
+                <rect x="9" y="34" width="27" height="5" rx="2"/>
+            `,
+            'Q': `
+                <circle cx="10" cy="10" r="3"/>
+                <circle cx="17" cy="7" r="3"/>
+                <circle cx="22.5" cy="6" r="3"/>
+                <circle cx="28" cy="7" r="3"/>
+                <circle cx="35" cy="10" r="3"/>
+                <path d="M14 15 L31 15 L34 34 L11 34 Z"/>
+                <rect x="8" y="34" width="29" height="5" rx="2"/>
+            `,
+            'R': `
+                <rect x="10" y="6" width="6" height="7"/>
+                <rect x="19.5" y="6" width="6" height="7"/>
+                <rect x="29" y="6" width="6" height="7"/>
+                <rect x="10" y="12" width="25" height="4"/>
+                <path d="M13 16 L32 16 L32 34 L13 34 Z"/>
+                <rect x="9" y="34" width="27" height="5" rx="2"/>
+            `,
+            'B': `
+                <circle cx="22.5" cy="6" r="3"/>
+                <path d="M22.5 10 L30 22 Q31 28 26 32 L19 32 Q14 28 15 22 Z"/>
+                <rect x="16" y="19" width="13" height="2.5" fill="#0000" stroke-width="1.5"/>
+                <rect x="11" y="34" width="23" height="5" rx="2"/>
+            `,
+            'N': `
+                <path d="M12 34 L12 27 Q9 24 10 19 Q11 13 17 10 Q20 6 26 7 Q31 8 31 13
+                         Q27 12 26 15 Q30 16 32 20 Q33 24 31 27 L31 34 Z"/>
+                <circle cx="26.5" cy="12.5" r="1.3" fill="#0000" />
+                <rect x="9" y="34" width="27" height="5" rx="2"/>
+            `,
+            'P': `
+                <circle cx="22.5" cy="13" r="6"/>
+                <path d="M17 19 L28 19 L31 32 L14 32 Z"/>
+                <rect x="11" y="32" width="23" height="5" rx="2"/>
+            `
         };
+
+        function pieceSvgMarkup(pieceType, colorClass) {
+            const eyeColor = colorClass === 'piece-white' ? '#1a1a1a' : '#f8fafc';
+            let shape = PIECE_SVG_SHAPES[pieceType] || '';
+            shape = shape.replaceAll('fill="#0000"', `fill="${eyeColor}"`);
+            return `<svg class="piece-svg ${colorClass}" viewBox="0 0 45 45" width="100%" height="100%">${shape}</svg>`;
+        }
 
         function escapeHtml(str) {
             const div = document.createElement('div');
@@ -356,10 +416,10 @@
                     if (piece) {
                         const pieceColor = piece[0]; // 'w' or 'b'
                         const pieceType = piece[1];
-                        const span = document.createElement('span');
-                        span.className = 'piece-glyph ' + (pieceColor === 'w' ? 'piece-white' : 'piece-black');
-                        span.textContent = PIECE_GLYPHS[pieceType] || '';
-                        cell.appendChild(span);
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'piece-glyph';
+                        wrapper.innerHTML = pieceSvgMarkup(pieceType, pieceColor === 'w' ? 'piece-white' : 'piece-black');
+                        cell.appendChild(wrapper);
                     }
 
                     if (statusData.in_check && piece === (statusData.in_check + 'K')) {
