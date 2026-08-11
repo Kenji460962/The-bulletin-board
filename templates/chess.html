@@ -485,9 +485,9 @@
                 if (data.winner === 'draw') {
                     banner.textContent = 'ステイルメイトで引き分けです';
                 } else if (data.winner === myColor) {
-                    banner.textContent = 'あなたの勝ちです！🎉（チェックメイト）';
+                    banner.textContent = 'You win!!!!🎉（チェックメイト）';
                 } else if (myColor) {
-                    banner.textContent = 'あなたの負けです（チェックメイト）';
+                    banner.textContent = 'You lose.......（チェックメイトされました）';
                 } else {
                     banner.textContent = `${pieceLabel(data.winner)}の勝ちです（チェックメイト）`;
                 }
@@ -501,7 +501,7 @@
                 });
                 bannerArea.appendChild(backBtn);
             } else {
-                let checkNote = data.in_check ? `（${pieceLabel(data.in_check)}に王手！）` : '';
+                let checkNote = data.in_check ? `（${pieceLabel(data.in_check)}がチェックされました！）` : '';
                 if (!myColor) {
                     indicator.textContent = `観戦中（現在: ${pieceLabel(data.turn)}のターン）${checkNote}`;
                     indicator.style.color = 'var(--text-muted)';
