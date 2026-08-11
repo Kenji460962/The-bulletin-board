@@ -886,6 +886,10 @@ def get_or_create_user_token():
         is_new_user = True
     return user_token, is_new_user
 
+@app.route('/games')
+def games_hub():
+    return render_template('games_hub.html')
+
 @app.route('/game')
 def game_lobby():
     user_token, is_new_user = get_or_create_user_token()
