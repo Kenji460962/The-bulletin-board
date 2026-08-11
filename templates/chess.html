@@ -87,6 +87,16 @@
         }
         .cell.light { background: #ebd7b0; }
         .cell.dark { background: #b58863; }
+        .piece-glyph { display: block; line-height: 1; pointer-events: none; }
+        .piece-white {
+            color: #f8fafc;
+            -webkit-text-stroke: 1.5px #1a1a1a;
+            text-stroke: 1.5px #1a1a1a;
+        }
+        .piece-black {
+            color: #1a1a1a;
+            -webkit-text-stroke: 1px rgba(255,255,255,0.15);
+        }
         .cell.selected { outline: 3px solid var(--accent-color); outline-offset: -3px; }
         .cell.hint::after {
             content: '';
@@ -253,9 +263,9 @@
         let selected = null; // [r, c]
         let legalTargetsForSelected = [];
 
+        // 白黒どちらも同じデザイン(塗りつぶし記号)を使い、色の違いはCSSで表現する
         const PIECE_GLYPHS = {
-            'wK':'♔','wQ':'♕','wR':'♖','wB':'♗','wN':'♘','wP':'♙',
-            'bK':'♚','bQ':'♛','bR':'♜','bB':'♝','bN':'♞','bP':'♟'
+            'K':'♚','Q':'♛','R':'♜','B':'♝','N':'♞','P':'♟'
         };
 
         function escapeHtml(str) {
@@ -344,7 +354,12 @@
                     cell.dataset.col = c;
 
                     if (piece) {
-                        cell.textContent = PIECE_GLYPHS[piece] || '';
+                        const pieceColor = piece[0]; // 'w' or 'b'
+                        const pieceType = piece[1];
+                        const span = document.createElement('span');
+                        span.className = 'piece-glyph ' + (pieceColor === 'w' ? 'piece-white' : 'piece-black');
+                        span.textContent = PIECE_GLYPHS[pieceType] || '';
+                        cell.appendChild(span);
                     }
 
                     if (statusData.in_check && piece === (statusData.in_check + 'K')) {
