@@ -1229,6 +1229,397 @@ def archive_view(thread_id):
 
     return render_template('archive_view.html', thread=thread, replies=replies, archived_at=payload.get('archived_at'))
 
+# ==================== オンラインチェス ====================
+
+CHESS_DIRS_ROOK = [(-1,0),(1,0),(0,-1),(0,1)]
+CHESS_DIRS_BISHOP = [(-1,-1),(-1,1),(1,-1),(1,1)]
+CHESS_DIRS_KING = CHESS_DIRS_ROOK + CHESS_DIRS_BISHOP
+CHESS_KNIGHT_MOVES = [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]
+
+def chess_new_board():
+    board = [''] * 64
+    back_black = ['bR','bN','bB','bQ','bK','bB','bN','bR']
+    back_white = ['wR','wN','wB','wQ','wK','wB','wN','wR']
+    for c in range(8):
+        board[0*8+c] = back_black[c]
+        board[1*8+c] = 'bP'
+        board[6*8+c] = 'wP'
+        board[7*8+c] = back_white[c]
+    return board
+
+def chess_in_bounds(r, c):
+    return 0 <= r < 8 and 0 <= c < 8
+
+def chess_find_king(board, color):
+    target = color + 'K'
+    for i, p in enumerate(board):
+        if p == target:
+            return i // 8, i % 8
+    return None
+
+def chess_square_attacked(board, r, c, by_color):
+    for dc in (-1, 1):
+        pr, pc = r + 1, c + dc
+        if by_color == 'w' and chess_in_bounds(pr, pc) and board[pr*8+pc] == 'wP':
+            return True
+        pr2, pc2 = r - 1, c + dc
+        if by_color == 'b' and chess_in_bounds(pr2, pc2) and board[pr2*8+pc2] == 'bP':
+            return True
+    for dr, dc in CHESS_KNIGHT_MOVES:
+        rr, cc = r + dr, c + dc
+        if chess_in_bounds(rr, cc) and board[rr*8+cc] == by_color + 'N':
+            return True
+    for dr, dc in CHESS_DIRS_KING:
+        rr, cc = r + dr, c + dc
+        if chess_in_bounds(rr, cc) and board[rr*8+cc] == by_color + 'K':
+            return True
+    for dr, dc in CHESS_DIRS_ROOK:
+        rr, cc = r + dr, c + dc
+        while chess_in_bounds(rr, cc):
+            p = board[rr*8+cc]
+            if p:
+                if p == by_color+'R' or p == by_color+'Q':
+                    return True
+                break
+            rr += dr; cc += dc
+    for dr, dc in CHESS_DIRS_BISHOP:
+        rr, cc = r + dr, c + dc
+        while chess_in_bounds(rr, cc):
+            p = board[rr*8+cc]
+            if p:
+                if p == by_color+'B' or p == by_color+'Q':
+                    return True
+                break
+            rr += dr; cc += dc
+    return False
+
+def chess_in_check(board, color):
+    pos = chess_find_king(board, color)
+    if not pos:
+        return False
+    r, c = pos
+    opp = 'b' if color == 'w' else 'w'
+    return chess_square_attacked(board, r, c, opp)
+
+def chess_pseudo_moves(board, r, c, castling, en_passant):
+    piece = board[r*8+c]
+    if not piece:
+        return []
+    color, ptype = piece[0], piece[1]
+    moves = []
+
+    if ptype == 'P':
+        direction = -1 if color == 'w' else 1
+        start_row = 6 if color == 'w' else 1
+        promo_row = 0 if color == 'w' else 7
+        one_r = r + direction
+        if chess_in_bounds(one_r, c) and not board[one_r*8+c]:
+            moves.append((one_r, c, 'promo' if one_r == promo_row else None))
+            two_r = r + 2*direction
+            if r == start_row and not board[two_r*8+c]:
+                moves.append((two_r, c, 'double'))
+        for dc in (-1, 1):
+            tr, tc = r + direction, c + dc
+            if chess_in_bounds(tr, tc):
+                target = board[tr*8+tc]
+                if target and target[0] != color:
+                    moves.append((tr, tc, 'promo' if tr == promo_row else None))
+                elif en_passant and en_passant == (tr, tc):
+                    moves.append((tr, tc, 'enpassant'))
+    elif ptype == 'N':
+        for dr, dc in CHESS_KNIGHT_MOVES:
+            tr, tc = r+dr, c+dc
+            if chess_in_bounds(tr, tc):
+                target = board[tr*8+tc]
+                if not target or target[0] != color:
+                    moves.append((tr, tc, None))
+    elif ptype in ('B', 'R', 'Q'):
+        dirs = []
+        if ptype in ('B', 'Q'): dirs += CHESS_DIRS_BISHOP
+        if ptype in ('R', 'Q'): dirs += CHESS_DIRS_ROOK
+        for dr, dc in dirs:
+            tr, tc = r+dr, c+dc
+            while chess_in_bounds(tr, tc):
+                target = board[tr*8+tc]
+                if not target:
+                    moves.append((tr, tc, None))
+                else:
+                    if target[0] != color:
+                        moves.append((tr, tc, None))
+                    break
+                tr += dr; tc += dc
+    elif ptype == 'K':
+        for dr, dc in CHESS_DIRS_KING:
+            tr, tc = r+dr, c+dc
+            if chess_in_bounds(tr, tc):
+                target = board[tr*8+tc]
+                if not target or target[0] != color:
+                    moves.append((tr, tc, None))
+        row = 7 if color == 'w' else 0
+        if r == row and c == 4:
+            k_flag = 'K' if color == 'w' else 'k'
+            q_flag = 'Q' if color == 'w' else 'q'
+            opp = 'b' if color == 'w' else 'w'
+            if (k_flag in castling and not board[row*8+5] and not board[row*8+6]
+                    and board[row*8+7] == color+'R'
+                    and not chess_square_attacked(board, row, 4, opp)
+                    and not chess_square_attacked(board, row, 5, opp)
+                    and not chess_square_attacked(board, row, 6, opp)):
+                moves.append((row, 6, 'castle_k'))
+            if (q_flag in castling and not board[row*8+3] and not board[row*8+2] and not board[row*8+1]
+                    and board[row*8+0] == color+'R'
+                    and not chess_square_attacked(board, row, 4, opp)
+                    and not chess_square_attacked(board, row, 3, opp)
+                    and not chess_square_attacked(board, row, 2, opp)):
+                moves.append((row, 2, 'castle_q'))
+    return moves
+
+def chess_apply_move(board, castling, r, c, tr, tc, extra):
+    new_board = board[:]
+    piece = new_board[r*8+c]
+    color = piece[0]
+    new_board[r*8+c] = ''
+    new_en_passant = None
+
+    if extra == 'enpassant':
+        new_board[r*8+tc] = ''
+        new_board[tr*8+tc] = piece
+    elif extra == 'double':
+        new_board[tr*8+tc] = piece
+        new_en_passant = ((r+tr)//2, c)
+    elif extra == 'promo':
+        new_board[tr*8+tc] = color + 'Q'
+    elif extra == 'castle_k':
+        new_board[tr*8+tc] = piece
+        new_board[r*8+7] = ''
+        new_board[r*8+5] = color + 'R'
+    elif extra == 'castle_q':
+        new_board[tr*8+tc] = piece
+        new_board[r*8+0] = ''
+        new_board[r*8+3] = color + 'R'
+    else:
+        new_board[tr*8+tc] = piece
+
+    new_castling = castling
+    if piece[1] == 'K':
+        new_castling = new_castling.replace('K','').replace('Q','') if color=='w' else new_castling.replace('k','').replace('q','')
+    for (rr, cc), flag in [((7,0),'Q'), ((7,7),'K'), ((0,0),'q'), ((0,7),'k')]:
+        if (r, c) == (rr, cc) or (tr, tc) == (rr, cc):
+            new_castling = new_castling.replace(flag, '')
+
+    return new_board, new_castling, new_en_passant
+
+def chess_legal_moves_for(board, color, castling, en_passant):
+    all_moves = []
+    for i, p in enumerate(board):
+        if p and p[0] == color:
+            r, c = i // 8, i % 8
+            for tr, tc, extra in chess_pseudo_moves(board, r, c, castling, en_passant):
+                new_board, _, _ = chess_apply_move(board, castling, r, c, tr, tc, extra)
+                if not chess_in_check(new_board, color):
+                    all_moves.append((r, c, tr, tc, extra))
+    return all_moves
+
+def chess_game_status(board, color, castling, en_passant):
+    moves = chess_legal_moves_for(board, color, castling, en_passant)
+    if not moves:
+        return 'checkmate' if chess_in_check(board, color) else 'stalemate'
+    return 'ongoing'
+
+@app.route('/chess')
+def chess_lobby():
+    user_token, is_new_user = get_or_create_user_token()
+    response = make_response(render_template('chess.html', room=None, my_color=None))
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/chess/create', methods=['POST'])
+def chess_create():
+    user_token, is_new_user = get_or_create_user_token()
+    player_name = request.form.get('name', '').strip()[:20] or None
+
+    room_code = othello_generate_room_code()
+    try:
+        existing = supabase.table('chess_games').select('room_code').eq('room_code', room_code).execute()
+        while existing.data:
+            room_code = othello_generate_room_code()
+            existing = supabase.table('chess_games').select('room_code').eq('room_code', room_code).execute()
+
+        supabase.table('chess_games').insert({
+            'room_code': room_code,
+            'board': json.dumps(chess_new_board()),
+            'turn': 'w',
+            'castling': 'KQkq',
+            'en_passant': None,
+            'player_white_token': user_token,
+            'player_white_name': player_name,
+            'status': 'waiting'
+        }).execute()
+    except Exception as e:
+        print(f"チェス部屋作成エラー: {e}")
+        return "部屋の作成に失敗しました", 500
+
+    response = make_response(redirect(url_for('chess_room', room_code=room_code)))
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/chess/<room_code>')
+def chess_room(room_code):
+    user_token, is_new_user = get_or_create_user_token()
+    room_code = room_code.upper()
+    try:
+        res = supabase.table('chess_games').select('*').eq('room_code', room_code).execute()
+        if not res.data:
+            return "この部屋は見つかりませんでした", 404
+        game = res.data[0]
+    except Exception as e:
+        print(f"チェス部屋取得エラー: {e}")
+        return "データベースエラーが発生しました", 500
+
+    my_color = None
+    if game.get('player_white_token') == user_token:
+        my_color = 'w'
+    elif game.get('player_black_token') == user_token:
+        my_color = 'b'
+
+    response = make_response(render_template('chess.html', room=game, my_color=my_color))
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/chess/<room_code>/join', methods=['POST'])
+def chess_join(room_code):
+    user_token, is_new_user = get_or_create_user_token()
+    room_code = room_code.upper()
+    player_name = (request.get_json(silent=True) or {}).get('name', '').strip()[:20] or None
+
+    try:
+        res = supabase.table('chess_games').select('*').eq('room_code', room_code).execute()
+        if not res.data:
+            return {"success": False, "error": "部屋が見つかりません"}, 404
+        game = res.data[0]
+
+        if game.get('player_white_token') == user_token or game.get('player_black_token') == user_token:
+            return {"success": True}
+
+        if game.get('status') != 'waiting' or game.get('player_black_token'):
+            return {"success": False, "error": "この部屋にはもう参加できません"}, 400
+
+        supabase.table('chess_games').update({
+            'player_black_token': user_token,
+            'player_black_name': player_name,
+            'status': 'playing'
+        }).eq('room_code', room_code).execute()
+    except Exception as e:
+        print(f"チェス参加エラー: {e}")
+        return {"success": False, "error": "データベースエラーが発生しました"}, 500
+
+    response = make_response({"success": True})
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return response
+
+@app.route('/chess/<room_code>/move', methods=['POST'])
+def chess_move(room_code):
+    user_token, _ = get_or_create_user_token()
+    room_code = room_code.upper()
+    data = request.get_json(silent=True) or {}
+    fr, fc, tr, tc = data.get('from_row'), data.get('from_col'), data.get('to_row'), data.get('to_col')
+
+    if None in (fr, fc, tr, tc):
+        return {"success": False, "error": "不正なリクエストです"}, 400
+
+    try:
+        res = supabase.table('chess_games').select('*').eq('room_code', room_code).execute()
+        if not res.data:
+            return {"success": False, "error": "部屋が見つかりません"}, 404
+        game = res.data[0]
+
+        if game.get('status') != 'playing':
+            return {"success": False, "error": "対局中ではありません"}, 400
+
+        my_color = 'w' if game.get('player_white_token') == user_token else ('b' if game.get('player_black_token') == user_token else None)
+        if my_color != game.get('turn'):
+            return {"success": False, "error": "あなたの手番ではありません"}, 400
+
+        board = json.loads(game['board'])
+        castling = game.get('castling') or ''
+        en_passant_raw = game.get('en_passant')
+        en_passant = tuple(json.loads(en_passant_raw)) if en_passant_raw else None
+
+        legal = chess_legal_moves_for(board, my_color, castling, en_passant)
+        matched = next((m for m in legal if m[0]==fr and m[1]==fc and m[2]==tr and m[3]==tc), None)
+        if not matched:
+            return {"success": False, "error": "その手は指せません"}, 400
+
+        _, _, _, _, extra = matched
+        new_board, new_castling, new_en_passant = chess_apply_move(board, castling, fr, fc, tr, tc, extra)
+
+        next_turn = 'b' if my_color == 'w' else 'w'
+        status_check = chess_game_status(new_board, next_turn, new_castling, new_en_passant)
+
+        update_payload = {
+            'board': json.dumps(new_board),
+            'turn': next_turn,
+            'castling': new_castling,
+            'en_passant': json.dumps(new_en_passant) if new_en_passant else None,
+            'updated_at': datetime.utcnow().isoformat()
+        }
+        if status_check == 'checkmate':
+            update_payload['status'] = 'finished'
+            update_payload['winner'] = my_color
+        elif status_check == 'stalemate':
+            update_payload['status'] = 'finished'
+            update_payload['winner'] = 'draw'
+
+        supabase.table('chess_games').update(update_payload).eq('room_code', room_code).execute()
+    except Exception as e:
+        print(f"チェス着手エラー: {e}")
+        return {"success": False, "error": "データベースエラーが発生しました"}, 500
+
+    return {"success": True}
+
+@app.route('/api/chess/<room_code>/state')
+def chess_state(room_code):
+    user_token, _ = get_or_create_user_token()
+    room_code = room_code.upper()
+    try:
+        res = supabase.table('chess_games').select('*').eq('room_code', room_code).execute()
+        if not res.data:
+            return {"error": "not found"}, 404
+        game = res.data[0]
+    except Exception as e:
+        print(f"チェス状態取得エラー: {e}")
+        return {"error": "server error"}, 500
+
+    white_token = game.get('player_white_token')
+    black_token = game.get('player_black_token')
+    my_color = 'w' if white_token == user_token else ('b' if black_token == user_token else None)
+
+    board = json.loads(game['board'])
+    in_check_color = None
+    if game.get('status') == 'playing':
+        if chess_in_check(board, 'w'):
+            in_check_color = 'w'
+        elif chess_in_check(board, 'b'):
+            in_check_color = 'b'
+
+    return {
+        "board": board,
+        "turn": game['turn'],
+        "status": game['status'],
+        "winner": game.get('winner'),
+        "has_black": bool(black_token),
+        "my_color": my_color,
+        "in_check": in_check_color,
+        "white_name": game.get('player_white_name') or '名無しさん',
+        "black_name": game.get('player_black_name') or '名無しさん',
+        "white_id": get_daily_user_id(white_token) if white_token else None,
+        "black_id": get_daily_user_id(black_token) if black_token else None
+    }
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
