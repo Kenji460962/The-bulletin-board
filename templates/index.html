@@ -314,18 +314,19 @@
     <!-- 3. 「その他」タブ -->
     <div id="other-tab" class="content-section">
         <div class="glass-panel">
-            <h3 style="margin-top: 0;">その他メニュー</h3>
+            <h3 style="margin-top: 0;">ゲーム</h3>
             <ul>
                 <li>
-                    <a class="thread-link" href="{{ url_for('game_lobby') }}" style="font-size: 18px;">
-                        🎮 オンラインオセロで遊ぶ
+                    <a class="thread-link" href="{{ url_for('games_hub') }}" style="font-size: 18px;">
+                        🎮 ゲーム（オセロ・チェス）
                     </a>
                 </li>
-                <li>
-                    <a class="thread-link" href="{{ url_for('chess_lobby') }}" style="font-size: 18px;">
-                        ♟️ オンラインチェスで遊ぶ
-                    </a>
-                </li>
+            </ul>
+        </div>
+
+        <div class="glass-panel">
+            <h3 style="margin-top: 0;">その他メニュー</h3>
+            <ul>
                 <li>
                     <a class="thread-link" href="{{ url_for('archive_list') }}" style="font-size: 18px;">
                         📦 過去ログ一覧
