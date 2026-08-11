@@ -273,57 +273,26 @@
         let myColor = {{ my_color | tojson }};
         let selected = null; // [r, c]
         let legalTargetsForSelected = [];
-
-        // 白黒どちらも同じ形(SVG)を使い、色の違いはCSSで表現する
-        const PIECE_SVG_SHAPES = {
-            'K': `
-                <rect x="20.5" y="2" width="4" height="9" rx="1"/>
-                <rect x="17" y="5.5" width="11" height="4" rx="1"/>
-                <circle cx="22.5" cy="17" r="6.5"/>
-                <path d="M14 24 L31 24 L35 34 L10 34 Z"/>
-                <rect x="8" y="34" width="29" height="6" rx="2"/>
-                <rect x="11" y="40" width="23" height="3" rx="1"/>
-            `,
-            'Q': `
-                <path d="M10 16 L15 6 L19 14 L22.5 4 L26 14 L30 6 L35 16 L32 24 L13 24 Z"/>
-                <path d="M13 24 L32 24 L35 34 L10 34 Z"/>
-                <rect x="8" y="34" width="29" height="6" rx="2"/>
-                <rect x="11" y="40" width="23" height="3" rx="1"/>
-            `,
-            'R': `
-                <path d="M9 6 L15 6 L15 10 L19 10 L19 6 L26 6 L26 10 L30 10 L30 6 L36 6 L36 14 L32 17 L32 24 L13 24 L13 17 L9 14 Z"/>
-                <path d="M13 24 L32 24 L35 34 L10 34 Z"/>
-                <rect x="8" y="34" width="29" height="6" rx="2"/>
-                <rect x="11" y="40" width="23" height="3" rx="1"/>
-            `,
-            'B': `
-                <circle cx="22.5" cy="5" r="2.6"/>
-                <path d="M22.5 9 Q32 16 29 25 Q28 29 22.5 30 Q17 29 16 25 Q13 16 22.5 9 Z"/>
-                <rect x="16.5" y="18.5" width="12" height="3" rx="1.5" fill="#0000"/>
-                <path d="M15 30 L30 30 L34 34 L11 34 Z"/>
-                <rect x="8" y="34" width="29" height="6" rx="2"/>
-                <rect x="11" y="40" width="23" height="3" rx="1"/>
-            `,
-            'N': `
-                <path d="M 14 34 L 32 34 L 32 26 L 28 20 L 30 14 L 26 10 L 22 8 L 18 10 L 16 14 L 12 16 L 10 22 L 14 24 L 12 28 L 14 34 Z"/>
-                <rect x="8" y="34" width="27" height="6" rx="2"/>
-                <rect x="11" y="40" width="21" height="3" rx="1"/>
-            `,
-            
-            
-            'P': `
-                <circle cx="22.5" cy="13" r="7"/>
-                <path d="M16 21 L29 21 L32 32 L13 32 Z"/>
-                <rect x="10" y="32" width="25" height="5" rx="2"/>
-            `
+        // 白黒どちらも同じ形(文字)を使い、色の違いはCSSで表現する
+        const PIECE_SYMBOLS = {
+            'K': '♚',
+            'Q': '♛',
+            'R': '♜',
+            'B': '♝',
+            'N': '♞',
+            'P': '♟'
         };
 
-        function pieceSvgMarkup(pieceType, colorClass) {
-            const eyeColor = colorClass === 'piece-white' ? '#1a1a1a' : '#f8fafc';
-            let shape = PIECE_SVG_SHAPES[pieceType] || '';
-            shape = shape.replaceAll('fill="#0000"', `fill="${eyeColor}"`);
-            return `<svg class="piece-svg ${colorClass}" viewBox="0 0 45 45" width="100%" height="100%">${shape}</svg>`;
+        function pieceMarkup(pieceType, colorClass) {
+            const symbol = PIECE_SYMBOLS[pieceType] || '';
+            return `<div class="piece-symbol ${colorClass}">${symbol}</div>`;
         }
+        const wrapper = document.createElement('div');
+                        wrapper.className = 'piece-glyph';
+                        wrapper.innerHTML = pieceMarkup(pieceType, pieceColor === 'w' ? 'piece-white' : 'piece-black');
+                        cell.appendChild(wrapper);
+        
+
 
         function escapeHtml(str) {
             const div = document.createElement('div');
