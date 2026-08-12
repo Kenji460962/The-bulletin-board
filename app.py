@@ -833,11 +833,11 @@ def cleanup_expired_rooms():
 
         # オセロ部屋 (othello_games) のクリーンアップ
         supabase.table('othello_games').delete().lt('updated_at', five_minutes_ago).execute()
-        supabase.table('othello_games').delete().eq('status', 'finished').execute()
+        
 
         # チェス部屋 (chess_games) のクリーンアップ
         supabase.table('chess_games').delete().lt('updated_at', five_minutes_ago).execute()
-        supabase.table('chess_games').delete().eq('status', 'finished').execute()
+        
     except Exception as e:
         print(f"クリーンアップエラー: {e}")
 
