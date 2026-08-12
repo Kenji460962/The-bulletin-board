@@ -226,12 +226,10 @@
                 <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
-                <a href="{{ url_for('thread_view', thread_id=(thread.id|int) - 1) }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 3px 8px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">◀ 前のスレ</a>
-                <a href="{{ url_for('thread_view', thread_id=(thread.id|int) + 1) }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 3px 8px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">次のスレ ▶</a>
-                <form id="jump-thread-form-in-thread" style="display: flex; align-items: center; gap: 4px; margin: 0;">
-                    <input type="number" id="jump-thread-input-in-thread" min="1" placeholder="スレ番号" style="width: 70px; font-size: 11px; padding: 2px 4px;" required>
-                    <button type="submit" style="font-size: 11px; padding: 3px 8px;">移動</button>
-                </form>
+                <div id="mode-toggle" style="display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; font-size: 11px;">
+                    <button type="button" id="mode-btn-view" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">📖 スレ閲覧</button>
+                    <button type="button" id="mode-btn-realtime" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">⚡ リアルタイム</button>
+                </div>
             </div>
             {% if is_admin_user %}
             <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
@@ -299,8 +297,8 @@
 
     <button id="scroll-to-bottom-btn" style="
         position: fixed;
-        right: 16px;
-        bottom: 180px;
+        right: 20px;
+        bottom: 172px;
         z-index: 50;
         background: var(--accent-color);
         color: #0f172a;
@@ -369,22 +367,53 @@
             }
         }
 
-        // ---- 「一番下へ戻る」ボタン・新着件数バッジ ----
+        // ---- 「一番下へ戻る」ボタン・新着件数バッジ・モード切替 ----
         const scrollBtn = document.getElementById('scroll-to-bottom-btn');
         const scrollBadge = document.getElementById('scroll-to-bottom-badge');
+        const modeBtnView = document.getElementById('mode-btn-view');
+        const modeBtnRealtime = document.getElementById('mode-btn-realtime');
         let unreadCount = 0;
-        const BOTTOM_THRESHOLD = 60; // この距離以内なら「一番下にいる」とみなす
+        let currentMode = 'realtime'; // 'realtime' or 'view'
+        const BOTTOM_THRESHOLD = 60; // この距離以内なら「一番下にいる」とみなす(ボタンの表示/非表示の判定にのみ使用)
 
         function isNearBottom() {
             return container.scrollHeight - container.scrollTop - container.clientHeight < BOTTOM_THRESHOLD;
         }
 
-        function updateScrollButtonVisibility() {
-            if (isNearBottom()) {
-                scrollBtn.style.display = 'none';
+        function updateModeButtonStyles() {
+            if (currentMode === 'realtime') {
+                modeBtnRealtime.style.background = 'var(--accent-color)';
+                modeBtnRealtime.style.color = '#0f172a';
+                modeBtnView.style.background = 'transparent';
+                modeBtnView.style.color = 'var(--text-muted)';
+            } else {
+                modeBtnView.style.background = 'var(--accent-color)';
+                modeBtnView.style.color = '#0f172a';
+                modeBtnRealtime.style.background = 'transparent';
+                modeBtnRealtime.style.color = 'var(--text-muted)';
+            }
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            updateModeButtonStyles();
+            if (mode === 'realtime') {
+                // リアルタイムモードに切り替えたら、未読は無かったことにして一番下まで追いつく
                 unreadCount = 0;
                 scrollBadge.style.display = 'none';
                 scrollBadge.textContent = '0';
+                forceScrollBottom();
+            }
+            updateScrollButtonVisibility();
+        }
+
+        modeBtnView.addEventListener('click', () => setMode('view'));
+        modeBtnRealtime.addEventListener('click', () => setMode('realtime'));
+        updateModeButtonStyles();
+
+        function updateScrollButtonVisibility() {
+            if (isNearBottom()) {
+                scrollBtn.style.display = 'none';
             } else {
                 scrollBtn.style.display = 'flex';
             }
@@ -479,17 +508,6 @@
             });
 
             forceScrollBottom(true);
-
-            const jumpForm = document.getElementById('jump-thread-form-in-thread');
-            if (jumpForm) {
-                jumpForm.addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    const num = document.getElementById('jump-thread-input-in-thread').value.trim();
-                    if (num && parseInt(num, 10) > 0) {
-                        window.location.href = '/thread/' + parseInt(num, 10);
-                    }
-                });
-            }
         });
 
         window.addEventListener('load', () => {
@@ -580,12 +598,11 @@
 
         async function pollThreadUpdates() {
             try {
-                const wasAtBottom = isNearBottom();
                 const res = await fetch(`/api/thread/${threadId}/updates?last_id=${lastReplyId}`);
                 const data = await res.json();
                 if (data.replies && data.replies.length > 0) {
                     data.replies.forEach(appendReply);
-                    if (wasAtBottom) {
+                    if (currentMode === 'realtime') {
                         forceScrollBottom();
                     } else {
                         addUnread(data.replies.length);
