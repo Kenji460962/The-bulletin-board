@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>オンラインオセロ - talk-ch</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -147,7 +148,6 @@
     </div>
 
     {% if not room %}
-    <!-- ロビー：部屋を作る/参加する -->
     <div class="panel">
         <h1>オンラインオセロ</h1>
         <h2>友達と対戦しよう（登録不要・匿名）</h2>
@@ -241,7 +241,6 @@
     </script>
 
     {% else %}
-    <!-- 対局画面 -->
     <div class="panel">
         <div class="room-code-box">
             <span>部屋コード: <strong>{{ room.room_code }}</strong></span>
@@ -456,8 +455,32 @@
             });
         });
 
+        // 初回読み込み
         fetchState();
-        setInterval(fetchState, 2000);
+
+        // ----------------------------------------------------
+        // Supabase Realtime 設定（2秒毎のポーリングを排除）
+        // ----------------------------------------------------
+        const SUPABASE_URL = 'https://YOUR_SUPABASE_URL.supabase.co'; 
+        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'; 
+
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        supabaseClient
+            .channel('othello-room-' + roomCode)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'othello_rooms', // ※オセロの部屋が保存されているテーブル名に変更してください
+                    filter: `room_code=eq.${roomCode}`
+                },
+                (payload) => {
+                    fetchState(); // 相手が動いた時（UPDATE発生時）のみ盤面取得
+                }
+            )
+            .subscribe();
     </script>
     {% endif %}
 
