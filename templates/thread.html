@@ -5,7 +5,8 @@
     <link rel="icon" href="{{ url_for('static', filename='favicon.png') }}" type="image/png">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-   
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125" crossorigin="anonymous"></script>
+    
     <title>{{ thread.title }}</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -219,10 +220,18 @@
             <span style="font-size: 11px; font-weight: 400; color: var(--text-muted); opacity: 0.7;">スレ主 ID:{{ op_user_id }}</span>
             {% endif %}
         </div>
-        <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px;">
+        <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px; flex-wrap: wrap; gap: 6px;">
             <div>
                 <a href="{{ back_to_board }}">← 掲示板に戻る</a>
                 <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <a href="{{ url_for('thread_view', thread_id=(thread.id|int) - 1) }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 3px 8px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">◀ 前のスレ</a>
+                <a href="{{ url_for('thread_view', thread_id=(thread.id|int) + 1) }}" style="background: rgba(255,255,255,0.1); color: #fff; padding: 3px 8px; border-radius: 4px; text-decoration: none; border: 1px solid rgba(255,255,255,0.2);">次のスレ ▶</a>
+                <form id="jump-thread-form-in-thread" style="display: flex; align-items: center; gap: 4px; margin: 0;">
+                    <input type="number" id="jump-thread-input-in-thread" min="1" placeholder="スレ番号" style="width: 70px; font-size: 11px; padding: 2px 4px;" required>
+                    <button type="submit" style="font-size: 11px; padding: 3px 8px;">移動</button>
+                </form>
             </div>
             {% if is_admin_user %}
             <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
@@ -288,6 +297,44 @@
         {% endfor %}
     </div>
 
+    <button id="scroll-to-bottom-btn" style="
+        position: fixed;
+        right: 16px;
+        bottom: 180px;
+        z-index: 50;
+        background: var(--accent-color);
+        color: #0f172a;
+        border: none;
+        border-radius: 50%;
+        width: 46px;
+        height: 46px;
+        font-size: 18px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    ">
+        ↓
+        <span id="scroll-to-bottom-badge" style="
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: var(--danger-color);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            box-sizing: border-box;
+        ">0</span>
+    </button>
+
     <div class="footer-area">
         <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
@@ -311,9 +358,54 @@
         const threadId = {{ thread.id }};
         const container = document.getElementById('postsContainer');
 
-        function forceScrollBottom() {
-            container.scrollTop = container.scrollHeight;
+        function forceScrollBottom(instant) {
+            if (instant) {
+                const prevBehavior = container.style.scrollBehavior;
+                container.style.scrollBehavior = 'auto';
+                container.scrollTop = container.scrollHeight;
+                container.style.scrollBehavior = prevBehavior;
+            } else {
+                container.scrollTop = container.scrollHeight;
+            }
         }
+
+        // ---- 「一番下へ戻る」ボタン・新着件数バッジ ----
+        const scrollBtn = document.getElementById('scroll-to-bottom-btn');
+        const scrollBadge = document.getElementById('scroll-to-bottom-badge');
+        let unreadCount = 0;
+        const BOTTOM_THRESHOLD = 60; // この距離以内なら「一番下にいる」とみなす
+
+        function isNearBottom() {
+            return container.scrollHeight - container.scrollTop - container.clientHeight < BOTTOM_THRESHOLD;
+        }
+
+        function updateScrollButtonVisibility() {
+            if (isNearBottom()) {
+                scrollBtn.style.display = 'none';
+                unreadCount = 0;
+                scrollBadge.style.display = 'none';
+                scrollBadge.textContent = '0';
+            } else {
+                scrollBtn.style.display = 'flex';
+            }
+        }
+
+        function addUnread(count) {
+            if (count <= 0) return;
+            unreadCount += count;
+            scrollBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+            scrollBadge.style.display = 'flex';
+        }
+
+        scrollBtn.addEventListener('click', () => {
+            forceScrollBottom();
+            unreadCount = 0;
+            scrollBadge.style.display = 'none';
+            scrollBadge.textContent = '0';
+            scrollBtn.style.display = 'none';
+        });
+
+        container.addEventListener('scroll', updateScrollButtonVisibility);
 
         // #番号をクリックした時に呼ばれる関数（>>989\nを挿入）
         function quoteReply(num) {
@@ -386,14 +478,25 @@
                 el.innerHTML = formatContent(el.textContent);
             });
 
-            forceScrollBottom();
+            forceScrollBottom(true);
+
+            const jumpForm = document.getElementById('jump-thread-form-in-thread');
+            if (jumpForm) {
+                jumpForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const num = document.getElementById('jump-thread-input-in-thread').value.trim();
+                    if (num && parseInt(num, 10) > 0) {
+                        window.location.href = '/thread/' + parseInt(num, 10);
+                    }
+                });
+            }
         });
 
         window.addEventListener('load', () => {
-            forceScrollBottom();
-            setTimeout(forceScrollBottom, 100);
-            setTimeout(forceScrollBottom, 300);
-            setTimeout(forceScrollBottom, 600);
+            forceScrollBottom(true);
+            setTimeout(() => forceScrollBottom(true), 100);
+            setTimeout(() => forceScrollBottom(true), 300);
+            setTimeout(() => { forceScrollBottom(true); updateScrollButtonVisibility(); }, 600);
         });
 
         let lastReplyId = 0;
@@ -477,11 +580,16 @@
 
         async function pollThreadUpdates() {
             try {
+                const wasAtBottom = isNearBottom();
                 const res = await fetch(`/api/thread/${threadId}/updates?last_id=${lastReplyId}`);
                 const data = await res.json();
                 if (data.replies && data.replies.length > 0) {
                     data.replies.forEach(appendReply);
-                    forceScrollBottom();
+                    if (wasAtBottom) {
+                        forceScrollBottom();
+                    } else {
+                        addUnread(data.replies.length);
+                    }
                 }
                 const activeEl = document.getElementById('active-count');
                 if (activeEl && typeof data.active_count !== 'undefined') {
