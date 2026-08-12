@@ -824,6 +824,25 @@ def thread_updates(thread_id):
         "active_count": active_count
     }
 
+
+def cleanup_expired_rooms():
+    """5分以上更新がない部屋と、終了(finished)した部屋を削除する"""
+    try:
+        # 5分前の現在時刻 (UTC)
+        five_minutes_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+
+        # オセロ部屋 (othello_games) のクリーンアップ
+        supabase.table('othello_games').delete().lt('updated_at', five_minutes_ago).execute()
+        supabase.table('othello_games').delete().eq('status', 'finished').execute()
+
+        # チェス部屋 (chess_games) のクリーンアップ
+        supabase.table('chess_games').delete().lt('updated_at', five_minutes_ago).execute()
+        supabase.table('chess_games').delete().eq('status', 'finished').execute()
+    except Exception as e:
+        print(f"クリーンアップエラー: {e}")
+
+
+
 # ==================== オンラインオセロ ====================
 
 OTHELLO_DIRS = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
