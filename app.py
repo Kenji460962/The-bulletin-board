@@ -564,8 +564,8 @@ def index():
             t['thread_active_count'] = thread_active_counts.get(f"thread_{t['id']}", 0)
 
         try:
-            admin_res = supabase.table('admin_messages').select('message').eq('id', 1).execute()
-            admin_message = admin_res.data[0]['message'] if admin_res.data else "ここに管理者の一言が表示されます。"
+            admin_res = query_d1("SELECT message FROM admin_messages WHERE id = ?", [1])
+            admin_message = admin_res[0]['message'] if admin_res else "ここに管理者の一言が表示されます。"
         except Exception as ae:
             admin_message = "管理者の一言の取得に失敗しました。"
 
