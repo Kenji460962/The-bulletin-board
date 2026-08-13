@@ -765,8 +765,8 @@ def thread_view(thread_id):
                         new_reply['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', new_reply['content'])
 
                     try:
-                        thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
-                        op_ip = thread_res.data[0]['ip_address'] if thread_res.data else None
+                        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+                        op_ip = thread_res[0]['ip_address'] if thread_res else None
                         op_user_id = get_daily_user_id(op_ip) if op_ip else None
                         new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
                     except Exception as ope:
