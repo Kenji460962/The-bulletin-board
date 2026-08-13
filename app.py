@@ -297,4 +297,593 @@ def filter_ng_words(text):
             text = text.replace(ng_word, replaced_word)
     return text
 
-def update_and_get
+def update_and_get_user_counts(current_token, location):
+    now = datetime.utcnow()
+    cutoff = (now - timedelta(minutes=2)).isoformat()
+
+    if current_token:
+        sql_upsert = """
+        INSERT INTO active_users (token, location, last_seen) 
+        VALUES (?, ?, ?) 
+        ON CONFLICT(token) DO UPDATE SET location=excluded.location, last_seen=excluded.last_seen
+        """
+        query_d1(sql_upsert, [current_token, location, now.isoformat()])
+
+    sql_count = "SELECT COUNT(*) as cnt FROM active_users WHERE location = ? AND last_seen >= ?"
+    res = query_d1(sql_count, [location, cutoff])
+    count = res[0]['cnt'] if res and len(res) > 0 else 0
+
+    if random.random() < 0.05:
+        query_d1("DELETE FROM active_users WHERE last_seen < ?", [cutoff])
+
+    return count
+
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+    
+@app.route('/roles')
+def roles():
+    return render_template('roles.html')
+
+@app.route('/games')
+def games_hub():
+    return redirect(url_for('index'))
+
+@app.route('/archive')
+def archive_list():
+    return redirect(url_for('index'))
+
+@app.route('/', methods=['GET', 'HEAD'])
+def index():
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return "あなたはアクセス禁止（BAN）されています。", 403
+
+    if request.method == 'HEAD':
+        return make_response('', 200)
+
+    page = request.args.get('page', default=1, type=int)
+    per_page = 20
+    start_index = (page - 1) * per_page
+
+    search_query = request.args.get('q', default='', type=str).strip()
+
+    try:
+        if search_query:
+            threads = query_d1(
+                "SELECT * FROM threads WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                [f"%{search_query}%", per_page, start_index]
+            )
+        else:
+            threads = query_d1(
+                "SELECT * FROM threads ORDER BY id DESC LIMIT ? OFFSET ?",
+                [per_page, start_index]
+            )
+        
+        has_next = len(threads) == per_page
+
+        pinned_ids = [4, 3, 2, 1]
+        pinned_threads = []
+
+        if not search_query:
+            for pid in pinned_ids:
+                for i, t in enumerate(threads):
+                    if int(t['id']) == pid:
+                        pinned_threads.append(threads.pop(i))
+                        break
+
+            for pid in pinned_ids:
+                if any(int(pt['id']) == pid for pt in pinned_threads):
+                    continue
+                try:
+                    pinned_res = query_d1("SELECT * FROM threads WHERE id = ?", [pid])
+                    if pinned_res:
+                        pinned_threads.append(pinned_res[0])
+                except Exception as pe:
+                    print(f"固定スレッド取得エラー: {pe}")
+
+            for pt in pinned_threads:
+                pt['is_pinned'] = True  
+                pt['replies_count'] = None  
+                threads.insert(0, pt)
+
+        all_thread_ids = [int(t['id']) for t in threads]
+        reply_counts = {}
+        if all_thread_ids:
+            try:
+                placeholders = ','.join(['?'] * len(all_thread_ids))
+                counts_res = query_d1(
+                    f"SELECT thread_id, COUNT(*) as reply_count FROM replies WHERE thread_id IN ({placeholders}) GROUP BY thread_id",
+                    all_thread_ids
+                )
+                for row in (counts_res or []):
+                    reply_counts[row['thread_id']] = row['reply_count']
+            except Exception as re:
+                print(f"レス数取得エラー: {re}")
+
+        for t in threads:
+            if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
+                t['is_pinned'] = True
+            t['replies_count'] = reply_counts.get(int(t['id']), 0)
+
+        try:
+            active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+            active_res = query_d1("SELECT location FROM active_users WHERE last_seen >= ?", [active_cutoff])
+            thread_active_counts = {}
+            for row in (active_res or []):
+                loc = row.get('location', '')
+                thread_active_counts[loc] = thread_active_counts.get(loc, 0) + 1
+        except Exception as ace:
+            print(f"スレ別アクセス数取得エラー: {ace}")
+            thread_active_counts = {}
+
+        for t in threads:
+            t['thread_active_count'] = thread_active_counts.get(f"thread_{t['id']}", 0)
+
+        try:
+            admin_res = query_d1("SELECT message FROM admin_messages WHERE id = ?", [1])
+            admin_message = admin_res[0]['message'] if admin_res else "ここに管理者の一言が表示されます。"
+        except Exception as ae:
+            admin_message = "管理者の一言の取得に失敗しました。"
+
+    except Exception as e:
+        print(f"スレッド一覧取得エラー: {e}")
+        threads = []
+        has_next = False
+
+    user_token = request.cookies.get('user_bbs_token')
+    is_new_user = False
+    if not user_token:
+        user_token = str(uuid.uuid4())
+        is_new_user = True
+
+    active_count = update_and_get_user_counts(user_token, "lobby")
+    is_admin_user = can_manage_board()
+
+    response = make_response(render_template(
+        'index.html', 
+        threads=threads, 
+        admin_message=admin_message, 
+        is_admin_user=is_admin_user, 
+        active_count=active_count,
+        current_page=page,      
+        has_next=has_next,
+        search_query=search_query
+    ))
+    
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+        
+    return response
+
+@app.route('/update_admin_message', methods=['POST'])
+def update_admin_message():
+    if not can_manage_board():
+        return "権限がありません", 403
+    message = request.form.get('message')
+    if message:
+        try:
+            query_d1("UPDATE admin_messages SET message = ? WHERE id = ?", [message, 1])
+        except Exception as e:
+            print(f"メッセージ更新エラー: {e}")
+    return redirect(url_for('index'))
+
+@app.route('/create_thread', methods=['POST'])
+def create_thread():
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return {"error": "あなたはアクセス禁止（BAN）されています。"}, 403
+
+    title = request.form.get('title')
+    if not title:
+        return {"error": "タイトルが必要です"}, 400
+        
+    title = filter_ng_words(title)
+    title = html.escape(title)    
+    
+    if len(title) > 30:
+        return {"error": "スレッド名は30文字以内で入力してください"}, 400
+    
+    is_admin = can_manage_board()
+    now = time.time()
+
+    thread_cooldown = 180
+    if not is_admin and is_proxy_or_vpn(client_ip):
+        thread_cooldown = 600
+
+    if not is_admin:
+        if client_ip in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[client_ip] < thread_cooldown:
+            remaining_time = int(thread_cooldown - (now - LAST_THREAD_TIMES[client_ip]))
+            minutes = remaining_time // 60
+            seconds = remaining_time % 60
+            return {"error": f"スレッド作成は3分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
+            
+    LAST_THREAD_TIMES[client_ip] = now 
+    
+    try:
+        query_d1(
+            "INSERT INTO threads (title, ip_address) VALUES (?, ?)",
+            [title, client_ip]
+        )
+        res = query_d1("SELECT * FROM threads ORDER BY id DESC LIMIT 1")
+        new_thread = res[0] if res else None
+    except Exception as e:
+        print(f"スレッド作成エラー: {e}")
+        return {"error": "データベースエラーが発生しました"}, 500
+        
+    return {"success": True, "thread": new_thread}
+
+# --- リアルタイム自動更新用API ---
+@app.route('/thread/<int:thread_id>/get_new_replies')
+def get_new_replies(thread_id):
+    after_id = request.args.get('after_id', type=int, default=0)
+    try:
+        replies_res = query_d1(
+            "SELECT * FROM replies WHERE thread_id = ? AND id > ? ORDER BY id ASC",
+            [thread_id, after_id]
+        )
+        replies = replies_res if replies_res else []
+
+        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+        op_ip = thread_res[0]['ip_address'] if thread_res else None
+        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+
+        for r in replies:
+            if r.get('date'):
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            if r.get('content'):
+                r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+            r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
+
+        return {"success": True, "replies": replies}
+    except Exception as e:
+        print(f"新着レス取得エラー: {e}")
+        return {"success": False, "replies": []}, 500
+
+@app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
+def thread_view(thread_id):
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return "あなたはアクセス禁止（BAN）されています。", 403
+
+    if request.method == 'POST':
+        content = request.form.get('content') or ""
+        
+        if len(content) > 500:
+            return {"success": False, "error": "500文字以内で入力してください。"}, 400
+        
+        author_input = request.form.get('author') or "名無しさん"
+
+        if "#" in author_input:
+            parts = author_input.split("#", 1)
+            name_part = parts[0][:20]
+            pass_part = parts[1]
+            author_input = f"{name_part}#{pass_part}"
+        else:
+            author_input = author_input[:20]
+
+        if author_input.strip() == "あぼーん":
+            author_input = "名無しさん"
+
+        content = filter_ng_words(content)
+        author_input = filter_ng_words(author_input)
+        
+        staff_role = get_staff_role()
+        
+        if staff_role:
+            author_input = session.get('staff_name')
+            is_admin = can_manage_board()
+            user_id = "STAFF"
+            role_to_save = staff_role
+        else:
+            is_admin = False
+            role_to_save = None
+            if "#" in author_input:
+                name_part, _ = author_input.split("#", 1)
+                author_input = html.escape(name_part) or "名無しさん"
+            else:
+                author_input = html.escape(author_input)
+            user_id = get_daily_user_id(client_ip)
+
+        content = html.escape(content)
+        content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
+
+        now = time.time()
+        if not staff_role:
+            reply_cooldown = 3
+            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < reply_cooldown:
+                return {"success": False, "error": f"連続投稿はできません。{reply_cooldown}秒お待ちください。"}, 429
+            LAST_REPLY_TIMES[client_ip] = now
+
+        image_url = ""
+        if 'image' in request.files:
+            file = request.files['image']
+            if file and file.filename != '':
+                try:
+                    orig_filename = secure_filename(file.filename)
+                    ext = os.path.splitext(orig_filename)[1]
+                    unique_filename = f"{uuid.uuid4()}{ext}"
+                    s3_client.upload_fileobj(file, R2_BUCKET_NAME, unique_filename, ExtraArgs={'ContentType': file.content_type})
+                    image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
+                except Exception as e:
+                    print(f"R2 Upload Error: {e}")
+
+        if content.strip() or image_url:
+            try:
+                query_d1(
+                    """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip]
+                )
+                res = query_d1("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
+                new_reply = res[0] if res else None
+                if new_reply:
+                    if new_reply.get('date'):
+                        dt_utc = datetime.fromisoformat(new_reply['date'].replace('Z', '+00:00'))
+                        dt_jst = dt_utc + timedelta(hours=9)
+                        new_reply['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                    if new_reply.get('content'):
+                        new_reply['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', new_reply['content'])
+                    try:
+                        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+                        op_ip = thread_res[0]['ip_address'] if thread_res else None
+                        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+                        new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
+                    except Exception as ope:
+                        new_reply['is_op'] = False
+
+                    return {"success": True, "reply": new_reply}
+            except Exception as e:
+                print(f"レス保存エラー: {e}")
+                return {"success": False, "error": "データベースエラーが発生しました。"}, 500
+        return {"success": False, "error": "書き込み内容が空です。"}, 400
+
+    try:
+        thread_res = query_d1("SELECT * FROM threads WHERE id = ?", [thread_id])
+        if not thread_res:
+            return "スレッドが見つかりません", 404
+        thread = thread_res[0]
+
+        RECENT_REPLIES_LIMIT = 300
+        replies_res = query_d1(
+            "SELECT * FROM (SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC",
+            [thread_id, RECENT_REPLIES_LIMIT]
+        )
+        recent_replies = replies_res if replies_res else []
+        thread['replies'] = recent_replies
+        for r in thread['replies']:
+            if r.get('date'):
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            if r.get('content'):
+                r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+
+        op_user_id = get_daily_user_id(thread.get('ip_address', '')) if thread.get('ip_address') else None
+        for r in thread['replies']:
+            r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
+    except Exception as e:
+        print(f"スレッド読み込みエラー: {e}")
+        return "データベースエラーが発生しました", 500
+
+    is_admin_user = can_manage_board()
+    user_token = request.cookies.get('user_bbs_token')
+    is_new_user = False
+    if not user_token:
+        user_token = str(uuid.uuid4())
+        is_new_user = True
+
+    location_key = f"thread_{thread_id}"
+    active_count = update_and_get_user_counts(user_token, location_key)
+
+    response = make_response(render_template(
+        'thread.html', 
+        thread=thread, 
+        is_admin_user=is_admin_user, 
+        active_count=active_count,
+        back_to_board="/?tab=threads",
+        op_user_id=op_user_id
+    ))
+    
+    if is_new_user:
+        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+        
+    return response
+
+
+@app.route('/thread/<int:thread_id>/get_new_replies')
+def get_new_replies(thread_id):
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return {"success": False, "error": "Banned"}, 403
+
+    after_id = request.args.get('after_id', default=0, type=int)
+    try:
+        replies = query_d1(
+            "SELECT * FROM replies WHERE thread_id = ? AND id > ? ORDER BY id ASC",
+            [thread_id, after_id]
+        )
+        op_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+        op_ip = op_res[0]['ip_address'] if op_res else None
+        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+
+        for r in replies:
+            if r.get('date'):
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            if r.get('content'):
+                r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+            r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
+
+        return {"success": True, "replies": replies}
+    except Exception as e:
+        print(f"新着レス取得エラー: {e}")
+        return {"success": False, "error": "データベースエラー"}, 500
+
+
+@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
+def delete_thread(thread_id):
+    if not can_manage_board():
+        return "権限がありません", 403
+    try:
+        query_d1("DELETE FROM threads WHERE id = ?", [thread_id])
+    except Exception as e:
+        print(f"スレッド削除エラー: {e}")
+    return redirect(url_for('index'))
+
+@app.route('/thread/<int:thread_id>/delete/<int:reply_id>', methods=['POST'])
+def delete_reply(thread_id, reply_id):
+    if not can_manage_board():
+        return "権限がありません", 403
+    try:
+        query_d1("DELETE FROM replies WHERE id = ? AND thread_id = ?", [reply_id, thread_id])
+    except Exception as e:
+        print(f"レス削除エラー: {e}")
+    return redirect(url_for('thread_view', thread_id=thread_id))
+
+@app.route('/ban_user/<int:reply_id>', methods=['POST'])
+def ban_user(reply_id):
+    if not can_manage_board():
+        return "権限がありません", 403
+    try:
+        reply_res = query_d1("SELECT ip_address FROM replies WHERE id = ?", [reply_id])
+        if reply_res and reply_res[0].get('ip_address'):
+            b_ip = reply_res[0]['ip_address']
+            query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
+            query_d1(
+                """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
+                   WHERE id = ?""",
+                ['あぼーん', 'この書き込みは管理員によってBANされました。', '???', 0, '', reply_id]
+            )
+        return redirect(request.referrer or url_for('index'))
+    except Exception as e:
+        print(f"BANエラー: {e}")
+        return f"エラーが発生しました: {e}", 500
+
+@app.route('/ban_thread_owner/<int:thread_id>', methods=['POST'])
+def ban_thread_owner(thread_id):
+    if not can_manage_board():
+        return "権限がありません", 403
+    try:
+        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+        if thread_res and thread_res[0].get('ip_address'):
+            owner_ip = thread_res[0]['ip_address']
+            query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [owner_ip])
+            query_d1("UPDATE threads SET title = ? WHERE id = ?", ['【このスレッドは管理員によってBANされました】', thread_id])
+            query_d1("DELETE FROM replies WHERE thread_id = ?", [thread_id])
+            query_d1(
+                """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                [thread_id, 'あぼーん', 'このスレッドの作成者はBANされました。', '???', 0, None, '', owner_ip]
+            )
+        return redirect(url_for('index'))
+    except Exception as e:
+        print(f"スレッドオーナーBANエラー: {e}")
+        return f"エラーが発生しました: {e}", 500
+
+
+@app.route('/thread/<int:thread_id>/get_new_replies')
+def get_new_replies(thread_id):
+    try:
+        after_id = request.args.get('after_id', default=0, type=int)
+        
+        # 新着レスをデータベースから取得
+        replies = query_d1(
+            "SELECT * FROM replies WHERE thread_id = ? AND id > ? ORDER BY id ASC",
+            [thread_id, after_id]
+        )
+        if not replies:
+            replies = []
+
+        # スレ主の user_id を取得
+        op_user_id = None
+        try:
+            op_res = query_d1("SELECT user_id FROM threads WHERE id = ?", [thread_id])
+            if op_res and len(op_res) > 0:
+                op_user_id = op_res[0].get('user_id')
+        except Exception:
+            pass
+
+        formatted_replies = []
+        for r in replies:
+            reply_dict = dict(r)
+            
+            # 日時フォーマット (JST変換)
+            if reply_dict.get('date'):
+                try:
+                    raw_date = str(reply_dict['date']).replace('Z', '+00:00')
+                    dt_utc = datetime.fromisoformat(raw_date)
+                    dt_jst = dt_utc + timedelta(hours=9)
+                    reply_dict['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
+            
+            # URL自動リンク化
+            if reply_dict.get('content'):
+                try:
+                    reply_dict['content'] = re.sub(
+                        r'(https?://[^\s<>]+)',
+                        r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>',
+                        str(reply_dict['content'])
+                    )
+                except Exception:
+                    pass
+
+            # スレ主判定
+            reply_dict['is_op'] = bool(op_user_id and reply_dict.get('user_id') == op_user_id)
+
+            formatted_replies.append(reply_dict)
+
+        return {"success": True, "replies": formatted_replies}, 200
+
+    except Exception as e:
+        print(f"新着取得エラー: {e}")
+        return {"success": False, "error": "取得エラー", "replies": []}, 200
+
+
+
+@app.route('/server_metrics')
+def server_metrics():
+    if not can_manage_board():
+        return "Unauthorized", 403
+
+    mem_used, mem_limit = read_cgroup_memory()
+    if mem_used is not None:
+        if mem_limit and mem_limit > 0:
+            memory_percent = round((mem_used / mem_limit) * 100, 1)
+            memory_used_mb = round(mem_used / (1024 * 1024), 1)
+            memory_limit_mb = round(mem_limit / (1024 * 1024), 1)
+        else:
+            memory_percent = 0.0
+            memory_used_mb = round(mem_used / (1024 * 1024), 1)
+            memory_limit_mb = "Unlimited"
+    else:
+        vm = psutil.virtual_memory()
+        memory_percent = vm.percent
+        memory_used_mb = round(vm.used / (1024 * 1024), 1)
+        memory_limit_mb = round(vm.total / (1024 * 1024), 1)
+
+    cpu_percent = read_cgroup_cpu_percent()
+    if cpu_percent is None:
+        cpu_percent = psutil.cpu_percent(interval=None)
+
+    rx_speed, tx_speed = read_network_speed()
+    rx_kbps = round(rx_speed / 1024, 1) if rx_speed is not None else 0.0
+    tx_kbps = round(tx_speed / 1024, 1) if tx_speed is not None else 0.0
+
+    return {
+        "cpu_percent": cpu_percent,
+        "memory_percent": memory_percent,
+        "memory_used_mb": memory_used_mb,
+        "memory_limit_mb": memory_limit_mb,
+        "rx_kbps": rx_kbps,
+        "tx_kbps": tx_kbps
+    }
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
