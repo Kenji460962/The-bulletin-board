@@ -684,6 +684,7 @@ def thread_view(thread_id):
         
         author_input = request.form.get('author') or "名無しさん"
 
+        # 🛠️ 安全にトリップ（#）を分割する処理に修正
         if "#" in author_input:
             parts = author_input.split("#", 1)
             name_part = parts[0][:20]
@@ -720,6 +721,7 @@ def thread_view(thread_id):
 
         now = time.time()
         if not staff_role:
+            # レス投稿は頻度が高いため、プロキシ判定API(外部への問い合わせが発生しうる)は呼ばず固定クールダウンにする
             reply_cooldown = 3
             if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < reply_cooldown:
                 return {"success": False, "error": f"連続投稿はできません。{reply_cooldown}秒お待ちください。"}, 429
@@ -740,17 +742,23 @@ def thread_view(thread_id):
 
         if content.strip() or image_url:
             try:
+
                 query_d1(
                     """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address) 
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip]
                 )
+                # 追加された最新のレスを取得
                 res = query_d1("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
                 new_reply = res[0] if res else None
 
+
+
+                
                 if new_reply:
                     if new_reply.get('date'):
                         dt_utc = datetime.fromisoformat(new_reply['date'].replace('Z', '+00:00'))
+                        from datetime import timedelta
                         dt_jst = dt_utc + timedelta(hours=9)
                         new_reply['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
                     if new_reply.get('content'):
@@ -771,29 +779,38 @@ def thread_view(thread_id):
 
         return {"success": False, "error": "書き込み内容が空です。"}, 400
 
-    # GETリクエスト時の処理
     try:
         thread_res = query_d1("SELECT * FROM threads WHERE id = ?", [thread_id])
         if not thread_res:
             return "スレッドが見つかりません", 404
         thread = thread_res[0]
+        
+        
+        
 
+        # Egress対策: 全レスではなく直近300件だけ取得(古いIDから昇順で表示するため一度desc取得してreverse)
         RECENT_REPLIES_LIMIT = 300
+
+        # SQLiteは昇順でLIMIT取得してから反転させるか、サブクエリを使います
         replies_res = query_d1(
             "SELECT * FROM (SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC",
             [thread_id, RECENT_REPLIES_LIMIT]
         )
         recent_replies = replies_res if replies_res else []
-        thread['replies'] = recent_replies
 
+
+        thread['replies'] = recent_replies
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                from datetime import timedelta
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            
             if r.get('content'):
                 r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
 
+        # スレ主(OP)判定: スレ立て時のIPと同じ日次IDを持つレスに目印を付ける
         op_user_id = get_daily_user_id(thread.get('ip_address', '')) if thread.get('ip_address') else None
         for r in thread['replies']:
             r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
@@ -803,6 +820,7 @@ def thread_view(thread_id):
         return "データベースエラーが発生しました", 500
 
     is_admin_user = can_manage_board()
+    
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
     if not user_token:
@@ -816,14 +834,13 @@ def thread_view(thread_id):
         'thread.html', 
         thread=thread, 
         is_admin_user=is_admin_user, 
-        active_count=active_count,
+        active_count=active_count, 
         back_to_board="/?tab=threads",
         op_user_id=op_user_id
     ))
     
     if is_new_user:
         response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
-        
     return response
 
 @app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
@@ -860,7 +877,7 @@ def ban_user(thread_id, reply_id):
         reply_res = query_d1("SELECT ip_address FROM replies WHERE id = ?", [reply_id])
         if reply_res and reply_res[0].get('ip_address'):
             b_ip = reply_res[0]['ip_address']
-             query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
+            query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
             query_d1(
                 """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
                    WHERE id = ?""",
