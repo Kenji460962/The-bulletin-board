@@ -335,6 +335,11 @@ def privacy():
 def roles():
     return render_template('roles.html')
 
+# エラー解消のために追加した games_hub ルート
+@app.route('/games')
+def games_hub():
+    return redirect(url_for('index'))
+
 @app.route('/', methods=['GET', 'HEAD'])
 def index():
     client_ip = get_client_ip()
