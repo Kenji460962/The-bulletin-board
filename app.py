@@ -340,6 +340,11 @@ def roles():
 def games_hub():
     return redirect(url_for('index'))
 
+# エラー解消のために追加した archive_list ルート
+@app.route('/archive')
+def archive_list():
+    return redirect(url_for('index'))
+
 @app.route('/', methods=['GET', 'HEAD'])
 def index():
     client_ip = get_client_ip()
