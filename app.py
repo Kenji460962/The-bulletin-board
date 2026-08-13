@@ -9,6 +9,49 @@ import time
 import re
 import string
 
+
+
+
+
+
+
+
+import httpx
+
+# --- Cloudflare D1 接続設定 ---
+CF_D1_ACCOUNT_ID = os.environ.get('CF_D1_ACCOUNT_ID')
+CF_D1_DATABASE_ID = os.environ.get('CF_D1_DATABASE_ID')
+CF_D1_API_TOKEN = os.environ.get('CF_D1_API_TOKEN')
+
+def query_d1(sql, params=None):
+    """Cloudflare D1 REST APIを使ってSQLを実行する共通関数"""
+    if not CF_D1_ACCOUNT_ID or not CF_D1_DATABASE_ID or not CF_D1_API_TOKEN:
+        return []
+        
+    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_D1_ACCOUNT_ID}/d1/database/{CF_D1_DATABASE_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {CF_D1_API_TOKEN}",
+        "Content-Type": "application/json"
+    }
+    try:
+        resp = httpx.post(url, json={"sql": sql, "params": params or []}, headers=headers, timeout=10.0)
+        data = resp.json()
+        if data.get('success'):
+            res = data.get('result', [])
+            if res and 'results' in res[0]:
+                return res[0]['results']
+        else:
+            print(f"D1 Query Error: {data.get('errors')}")
+    except Exception as e:
+        print(f"D1 API通信エラー: {e}")
+    return []
+
+
+
+
+
+
+
 # Supabaseを使うためのライブラリを読み込み
 from supabase import create_client, Client
 
@@ -305,40 +348,41 @@ def filter_ng_words(text):
 import random
 from datetime import timedelta
 
+
+
+
+
+
+
 def update_and_get_user_counts(current_token, location):
-    """
-    アクセス中人数の集計。以前はプロセス内のdict(ACTIVE_USERS)で管理していたが、
-    本番は複数ワーカープロセスで動いており、プロセスごとにメモリが分かれてしまうため
-    (ワーカーAが記録した在室情報をワーカーBが見られない)、Supabaseの共有テーブルに変更。
-    """
+    """D1を使ってアクティブユーザーを記録・集計する"""
     now = datetime.utcnow()
     cutoff = (now - timedelta(minutes=2)).isoformat()
 
+    # 1. ユーザーの現在位置をD1に記録（UPSERT）
     if current_token:
-        try:
-            supabase.table('active_users').upsert({
-                'token': current_token,
-                'location': location,
-                'last_seen': now.isoformat()
-            }).execute()
-        except Exception as e:
-            print(f"アクティブユーザー更新エラー: {e}")
+        sql_upsert = """
+        INSERT INTO active_users (token, location, last_seen) 
+        VALUES (?, ?, ?) 
+        ON CONFLICT(token) DO UPDATE SET location=excluded.location, last_seen=excluded.last_seen
+        """
+        query_d1(sql_upsert, [current_token, location, now.isoformat()])
 
-    count = 0
-    try:
-        res = supabase.table('active_users').select('token', count='exact').eq('location', location).gte('last_seen', cutoff).execute()
-        count = res.count if res.count is not None else len(res.data)
-    except Exception as e:
-        print(f"アクティブユーザー数取得エラー: {e}")
+    # 2. 現在その場所にいる人数をD1からカウント
+    sql_count = "SELECT COUNT(*) as cnt FROM active_users WHERE location = ? AND last_seen >= ?"
+    res = query_d1(sql_count, [location, cutoff])
+    count = res[0]['cnt'] if res and len(res) > 0 else 0
 
-    # 期限切れレコードの掃除は毎回やるとDB負荷が増えるので、確率的に(だいたい20回に1回)実行する
+    # 3. 確率で古いデータをD1から削除（掃除）
     if random.random() < 0.05:
-        try:
-            supabase.table('active_users').delete().lt('last_seen', cutoff).execute()
-        except Exception as e:
-            print(f"アクティブユーザー掃除エラー: {e}")
+        query_d1("DELETE FROM active_users WHERE last_seen < ?", [cutoff])
 
     return count
+
+
+
+
+
 
 @app.route('/privacy')
 def privacy():
