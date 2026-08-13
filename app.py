@@ -12,10 +12,6 @@ import string
 
 
 
-
-
-
-
 import httpx
 
 # --- Cloudflare D1 接続設定 ---
@@ -273,8 +269,8 @@ def is_banned_ip(ip):
     if not ip:
         return False
     try:
-        res = supabase.table('banned_ips').select('*').eq('ip_address', ip).execute()
-        return len(res.data) > 0
+        res = query_d1("SELECT * FROM banned_ips WHERE ip_address = ?", [ip])
+        return len(res) > 0
     except Exception as e:
         print(f"BANチェックエラー: {e}")
         return False
