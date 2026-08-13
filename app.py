@@ -545,15 +545,27 @@ def get_new_replies(thread_id):
                     reply_dict['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
                 except Exception:
                     pass
+
+
             if reply_dict.get('content'):
                 try:
-                    reply_dict['content'] = re.sub(
+                    content_str = str(reply_dict['content'])
+                    # 1. URLのリンク化
+                    content_str = re.sub(
                         r'(https?://[^\s<>]+)',
                         r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>',
-                        str(reply_dict['content'])
+                        content_str
                     )
+                    # 2. >>数字 のアンカーリンク化を追加
+                    content_str = re.sub(
+                        r'&gt;&gt;(\d+)|>>(\d+)',
+                        r'<a href="#post-\1\2" class="post-anchor" onclick="scrollToPost(\1\2); return false;">&gt;&gt;\1\2</a>',
+                        content_str
+                    )
+                    reply_dict['content'] = content_str
                 except Exception:
                     pass
+            
             reply_dict['is_op'] = bool(op_user_id) and reply_dict.get('user_id') == op_user_id
             formatted_replies.append(reply_dict)
 
@@ -644,8 +656,14 @@ def thread_view(thread_id):
                         dt_utc = datetime.fromisoformat(new_reply['date'].replace('Z', '+00:00'))
                         dt_jst = dt_utc + timedelta(hours=9)
                         new_reply['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+
+
                     if new_reply.get('content'):
-                        new_reply['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', new_reply['content'])
+                        content_str = str(new_reply['content'])
+                        content_str = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', content_str)
+                        content_str = re.sub(r'&gt;&gt;(\d+)|>>(\d+)', r'<a href="#post-\1\2" class="post-anchor" onclick="scrollToPost(\1\2); return false;">&gt;&gt;\1\2</a>', content_str)
+                        new_reply['content'] = content_str
+                    
                     try:
                         thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
                         op_ip = thread_res[0]['ip_address'] if thread_res else None
@@ -673,13 +691,21 @@ def thread_view(thread_id):
         )
         recent_replies = replies_res if replies_res else []
         thread['replies'] = recent_replies
+        
+
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
                 dt_jst = dt_utc + timedelta(hours=9)
                 r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
             if r.get('content'):
-                r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+                content_str = str(r['content'])
+                content_str = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', content_str)
+                content_str = re.sub(r'&gt;&gt;(\d+)|>>(\d+)', r'<a href="#post-\1\2" class="post-anchor" onclick="scrollToPost(\1\2); return false;">&gt;&gt;\1\2</a>', content_str)
+                r['content'] = content_str
+
+
+        
 
         op_user_id = get_daily_user_id(thread.get('ip_address', '')) if thread.get('ip_address') else None
         for r in thread['replies']:
