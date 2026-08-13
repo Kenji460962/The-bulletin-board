@@ -736,18 +736,19 @@ def thread_view(thread_id):
 
         if content.strip() or image_url:
             try:
-                insert_res = supabase.table('replies').insert({
-                    'thread_id': thread_id,
-                    'author': author_input,
-                    'content': content,
-                    'user_id': user_id,
-                    'is_admin': is_admin,
-                    'role': role_to_save,
-                    'image_url': image_url,
-                    'ip_address': client_ip
-                }).execute()
 
-                new_reply = insert_res.data[0] if insert_res.data else None
+                query_d1(
+                    """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip]
+                )
+                # 追加された最新のレスを取得
+                res = query_d1("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
+                new_reply = res[0] if res else None
+
+
+
+                
                 if new_reply:
                     if new_reply.get('date'):
                         dt_utc = datetime.fromisoformat(new_reply['date'].replace('Z', '+00:00'))
