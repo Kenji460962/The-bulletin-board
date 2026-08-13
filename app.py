@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response, session
-from flask_socketio import SocketIO, join_room, leave_room
 from datetime import datetime, timedelta
 import json
 import html
@@ -17,9 +16,6 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
-
-# SocketIO の初期化
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 psutil.cpu_percent(interval=None)
 
@@ -240,21 +236,6 @@ def get_staff_role():
 
 def can_manage_board():
     return session.get('staff_role') in ['admin', 'sub_admin']
-
-
-# ==================== WebSocket イベント ====================
-@socketio.on('join_thread')
-def handle_join_thread(data):
-    thread_id = data.get('thread_id')
-    if thread_id:
-        join_room(f"thread_{thread_id}")
-
-@socketio.on('leave_thread')
-def handle_leave_thread(data):
-    thread_id = data.get('thread_id')
-    if thread_id:
-        leave_room(f"thread_{thread_id}")
-
 
 @app.route('/login_secret_8823', methods=['GET', 'POST'])
 def staff_login():
@@ -533,6 +514,35 @@ def create_thread():
         
     return {"success": True, "thread": new_thread}
 
+# --- リアルタイム自動更新用API ---
+@app.route('/thread/<int:thread_id>/get_new_replies')
+def get_new_replies(thread_id):
+    after_id = request.args.get('after_id', type=int, default=0)
+    try:
+        replies_res = query_d1(
+            "SELECT * FROM replies WHERE thread_id = ? AND id > ? ORDER BY id ASC",
+            [thread_id, after_id]
+        )
+        replies = replies_res if replies_res else []
+
+        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+        op_ip = thread_res[0]['ip_address'] if thread_res else None
+        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+
+        for r in replies:
+            if r.get('date'):
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            if r.get('content'):
+                r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+            r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
+
+        return {"success": True, "replies": replies}
+    except Exception as e:
+        print(f"新着レス取得エラー: {e}")
+        return {"success": False, "replies": []}, 500
+
 @app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
 def thread_view(thread_id):
     client_ip = get_client_ip()
@@ -624,9 +634,6 @@ def thread_view(thread_id):
                         new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
                     except Exception as ope:
                         new_reply['is_op'] = False
-
-                    # WebSocketで部屋内の全員に一斉配信
-                    socketio.emit('new_reply', new_reply, room=f"thread_{thread_id}")
 
                     return {"success": True, "reply": new_reply}
             except Exception as e:
@@ -786,4 +793,4 @@ def server_metrics():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    socketio.run(app, host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port)
