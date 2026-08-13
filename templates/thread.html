@@ -324,7 +324,7 @@
                     <div class="reply-card" data-reply-id="{{ reply.id }}">
                         <div class="reply-header">
                             <span class="reply-num">{{ loop.index }}</span>
-                            <span class="reply-author">{{ reply.author }}</span>
+                            <span class="reply-author" style="{% if reply.role == 'admin' %}color: #f43f5e; font-weight: bold;{% elif reply.role == 'sub_admin' %}color: #a855f7; font-weight: bold;{% elif reply.is_op %}color: #10b981; font-weight: bold;{% endif %}">{{ reply.author }}</span>
                             
                             {% if reply.is_op %}
                                 <span class="badge-op">主</span>
@@ -379,8 +379,6 @@
         </footer>
     </div>
 
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-
     <script>
         const scrollArea = document.getElementById('repliesContainer');
         const imageInput = document.getElementById('imageInput');
@@ -414,7 +412,6 @@
                 noReplies.remove();
             }
 
-            // 重複描画防止の確認
             if (document.querySelector(`[data-reply-id="${reply.id}"]`)) {
                 return;
             }
@@ -426,10 +423,19 @@
             card.className = 'reply-card';
             card.setAttribute('data-reply-id', reply.id);
 
+            let authorStyle = '';
+            if (reply.role === 'admin') {
+                authorStyle = 'color: #f43f5e; font-weight: bold;';
+            } else if (reply.role === 'sub_admin') {
+                authorStyle = 'color: #a855f7; font-weight: bold;';
+            } else if (reply.is_op) {
+                authorStyle = 'color: #10b981; font-weight: bold;';
+            }
+
             let headerHTML = `
                 <div class="reply-header">
                     <span class="reply-num">${replyNum}</span>
-                    <span class="reply-author">${escapeHtml(reply.author || '名無しさん')}</span>
+                    <span class="reply-author" style="${authorStyle}">${escapeHtml(reply.author || '名無しさん')}</span>
             `;
 
             if (reply.is_op) {
@@ -471,19 +477,31 @@
                 .replace(/'/g, '&#039;');
         }
 
-        // ==================== WebSocket リアルタイム処理 ====================
-        const socket = io();
+        // ==================== リアルタイム自動追加ロジック ====================
+        let lastReplyId = 0;
+        const initialCards = document.querySelectorAll('.reply-card');
+        if (initialCards.length > 0) {
+            lastReplyId = parseInt(initialCards[initialCards.length - 1].getAttribute('data-reply-id')) || 0;
+        }
 
-        socket.on('connect', () => {
-            socket.emit('join_thread', { thread_id: threadId });
-        });
-
-        socket.on('new_reply', (reply) => {
-            if (reply) {
-                appendReply(reply);
-                forceScrollBottom();
+        setInterval(async () => {
+            try {
+                const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${lastReplyId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.success && data.replies && data.replies.length > 0) {
+                    data.replies.forEach(reply => {
+                        if (reply.id > lastReplyId) {
+                            lastReplyId = reply.id;
+                        }
+                        appendReply(reply);
+                    });
+                    forceScrollBottom();
+                }
+            } catch (e) {
+                console.error('新着取得エラー:', e);
             }
-        });
+        }, 2000);
 
         // ==================== フォーム送信 (AJAX) ====================
         if (bbsForm) {
@@ -510,10 +528,14 @@
                         const contentArea = bbsForm.querySelector('textarea[name="content"]');
                         if (contentArea) contentArea.value = '';
                         
+                        const imageInput = bbsForm.querySelector('input[name="image"]');
                         if (imageInput) imageInput.value = '';
                         if (fileNameSpan) fileNameSpan.textContent = '画像を選択';
 
                         if (result.reply) {
+                            if (result.reply.id > lastReplyId) {
+                                lastReplyId = result.reply.id;
+                            }
                             appendReply(result.reply);
                             forceScrollBottom();
                         }
