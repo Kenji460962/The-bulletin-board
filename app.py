@@ -874,18 +874,15 @@ def ban_user(thread_id, reply_id):
     if not can_manage_board():
         return "権限がありません", 403
     try:
-        reply_res = supabase.table('replies').select('ip_address').eq('id', reply_id).execute()
-        if reply_res.data and reply_res.data[0].get('ip_address'):
-            b_ip = reply_res.data[0]['ip_address']
-            supabase.table('banned_ips').insert({'ip_address': b_ip}).execute()
-            
-        supabase.table('replies').update({
-            'author': 'あぼーん',
-            'content': 'この書き込みは管理員によってBANされました。',
-            'user_id': '???',
-            'is_admin': False,
-            'image_url': ''
-        }).eq('id', reply_id).execute()
+        reply_res = query_d1("SELECT ip_address FROM replies WHERE id = ?", [reply_id])
+        if reply_res and reply_res[0].get('ip_address'):
+            b_ip = reply_res[0]['ip_address']
+             query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
+            query_d1(
+                """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
+                   WHERE id = ?""",
+                ['あぼーん', 'この書き込みは管理員によってBANされました。', '???', 0, '', reply_id]
+            )
     except Exception as e:
         return f"【BAN失敗】エラーの原因: {e}", 500
     return redirect(url_for('thread_view', thread_id=thread_id))
