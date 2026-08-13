@@ -358,214 +358,241 @@
     </div>
 
     <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const threadId = {{ thread.id }};
-        const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
+        document.addEventListener('DOMContentLoaded', () => {
+            const threadId = {{ thread.id }};
+            const container = document.getElementById('posts-container') || document.getElementById('postsContainer');
+            const bottomBtn = document.getElementById('scroll-to-bottom-btn');
+            const badge = document.getElementById('scroll-to-bottom-badge');
+            const btnView = document.getElementById('mode-btn-view');
+            const btnRealtime = document.getElementById('mode-btn-realtime');
 
-        let currentMode = 'realtime'; // 初期モード: リアルタイム
-        let pollingTimer = null;
+            let currentMode = 'realtime'; // 初期モードはリアルタイム
+            let unreadCount = 0;
+            let pollingTimer = null;
 
-        const btnView = document.getElementById('mode-btn-view');
-        const btnRealtime = document.getElementById('mode-btn-realtime');
+            // テキスト内の >>数字 をクリック可能なアンカーリンクに置換する関数
+            function formatAnchors(text) {
+                if (!text) return '';
+                return text.replace(
+                    /(&gt;&gt;|>>)(\d+)/g,
+                    (match, prefix, num) => `<a href="#post-${num}" class="post-anchor" onclick="scrollToPost(${num}); return false;">&gt;&gt;${num}</a>`
+                );
+            }
 
-        // モード切り替えとボタンデザインの更新
-        function setMode(mode) {
-            currentMode = mode;
-            if (mode === 'realtime') {
-                if (btnRealtime) {
-                    btnRealtime.style.background = '#0284c7';
-                    btnRealtime.style.color = '#ffffff';
-                    btnRealtime.style.fontWeight = 'bold';
+            // ページロード時：URLにハッシュ(#post-1など)がある場合は一番下にスクロールさせない
+            if (window.location.hash) {
+                const target = document.querySelector(window.location.hash);
+                if (target) {
+                    setTimeout(() => {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 100);
                 }
-                if (btnView) {
-                    btnView.style.background = 'transparent';
-                    btnView.style.color = 'var(--text-main)';
-                    btnView.style.fontWeight = 'normal';
-                }
-                startPolling();
             } else {
-                if (btnView) {
-                    btnView.style.background = '#0284c7';
-                    btnView.style.color = '#ffffff';
-                    btnView.style.fontWeight = 'bold';
+                scrollToBottom();
+            }
+
+            // モード切り替え処理
+            function setMode(mode) {
+                currentMode = mode;
+                if (mode === 'realtime') {
+                    if (btnRealtime) { btnRealtime.style.background = '#0284c7'; btnRealtime.style.color = '#ffffff'; btnRealtime.style.fontWeight = 'bold'; }
+                    if (btnView) { btnView.style.background = 'transparent'; btnView.style.color = 'var(--text-main)'; btnView.style.fontWeight = 'normal'; }
+                    unreadCount = 0;
+                    updateBadge();
+                    scrollToBottom();
+                    startPolling();
+                } else {
+                    if (btnView) { btnView.style.background = '#0284c7'; btnView.style.color = '#ffffff'; btnView.style.fontWeight = 'bold'; }
+                    if (btnRealtime) { btnRealtime.style.background = 'transparent'; btnRealtime.style.color = 'var(--text-main)'; btnRealtime.style.fontWeight = 'normal'; }
+                    stopPolling();
                 }
-                if (btnRealtime) {
-                    btnRealtime.style.background = 'transparent';
-                    btnRealtime.style.color = 'var(--text-main)';
-                    btnRealtime.style.fontWeight = 'normal';
+            }
+
+            if (btnView) btnView.addEventListener('click', () => setMode('view'));
+            if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
+
+            setMode('realtime');
+
+            function startPolling() {
+                if (pollingTimer) clearInterval(pollingTimer);
+                pollingTimer = setInterval(fetchNewReplies, 2000);
+            }
+
+            function stopPolling() {
+                if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+            }
+
+            function isAtBottom() {
+                if (!container) return true;
+                return (container.scrollHeight - container.scrollTop - container.clientHeight) < 100;
+            }
+
+            function scrollToBottom() {
+                if (container) {
+                    container.scrollTop = container.scrollHeight;
                 }
-                stopPolling();
             }
-        }
 
-        if (btnView) btnView.addEventListener('click', () => setMode('view'));
-        if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
-
-        // 初期表示設定
-        setMode('realtime');
-
-        // 2秒ごとの定期取得（ページリロードなし）
-        function startPolling() {
-            if (pollingTimer) clearInterval(pollingTimer);
-            pollingTimer = setInterval(fetchNewReplies, 2000);
-        }
-
-        function stopPolling() {
-            if (pollingTimer) {
-                clearInterval(pollingTimer);
-                pollingTimer = null;
-            }
-        }
-
-        // バックグラウンドで新着レスを取得して画面に追加
-        async function fetchNewReplies() {
-            if (currentMode !== 'realtime') return;
-
-            let maxId = 0;
-            document.querySelectorAll('.post-item').forEach(el => {
-                const id = parseInt(el.getAttribute('data-reply-id')) || 0;
-                if (id > maxId) maxId = id;
-            });
-
-            try {
-                const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${maxId}`);
-                if (!res.ok) return;
-                const data = await res.json();
-
-                if (data.success && data.replies && data.replies.length > 0) {
-                    let added = false;
-                    data.replies.forEach(reply => {
-                        if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
-                            appendReply(reply);
-                            added = true;
-                        }
-                    });
-                    if (added && currentMode === 'realtime') {
-                        scrollToBottom();
-                    }
+            function updateBadge() {
+                if (!badge) return;
+                if (unreadCount > 0) {
+                    badge.style.display = 'inline-block';
+                    badge.textContent = unreadCount;
+                } else {
+                    badge.style.display = 'none';
                 }
-            } catch (e) {
-                console.error('新着レス取得エラー:', e);
-            }
-        }
-
-        // JSで動的に追加される要素も元のCSSデザイン（.post-item / .post-meta / .post-content）と完全に同じHTML構造で生成
-        function appendReply(reply) {
-            const container = document.getElementById('postsContainer');
-            if (!container) return;
-
-            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
-
-            const replyCount = container.querySelectorAll('.post-item').length + 1;
-
-            const replyDiv = document.createElement('div');
-            replyDiv.className = 'post-item';
-            replyDiv.id = `post-${replyCount}`;
-            replyDiv.setAttribute('data-reply-id', reply.id);
-
-            let roleCls = 'post-name';
-            if (reply.role === 'admin' || reply.is_admin) {
-                roleCls = 'role-admin';
-            } else if (reply.role === 'sub_admin') {
-                roleCls = 'role-sub-admin';
-            } else if (reply.role === 'moderator') {
-                roleCls = 'role-moderator';
-            } else if (reply.role === 'pr') {
-                roleCls = 'role-pr';
-            } else if (reply.role === 'proposal') {
-                roleCls = 'role-proposal';
-            } else if (reply.role === 'log') {
-                roleCls = 'role-log';
             }
 
-            const starHtml = (reply.is_admin || ['admin', 'sub_admin', 'moderator'].includes(reply.role)) ? '★' : '';
-            const opHtml = reply.is_op ? `<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>` : '';
-
-            let imgHtml = '';
-            if (reply.image_url) {
-                imgHtml = `
-                    <a href="${reply.image_url}" target="_blank">
-                        <img src="${reply.image_url}" class="post-image" loading="lazy">
-                    </a>
-                `;
+            if (bottomBtn) {
+                bottomBtn.addEventListener('click', () => {
+                    scrollToBottom();
+                    unreadCount = 0;
+                    updateBadge();
+                });
             }
 
-            let adminBtns = '';
-            if (isAdminUser) {
-                adminBtns = `
-                    <div style="margin-left: auto; display: flex; gap: 4px;">
-                        <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');" style="margin:0;">
-                            <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
-                        </form>
-                        <form action="/ban_user/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
-                            <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
-                        </form>
-                    </div>
-                `;
-            }
+            async function fetchNewReplies() {
+                let maxId = 0;
+                document.querySelectorAll('.post-item').forEach(el => {
+                    const id = parseInt(el.getAttribute('data-reply-id')) || 0;
+                    if (id > maxId) maxId = id;
+                });
 
-            replyDiv.innerHTML = `
-                <div class="post-meta">
-                    <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
-                    <span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>
-                    ${opHtml}
-                    <span>${reply.date || ''}</span>
-                    <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
-                    ${adminBtns}
-                </div>
-                <div class="post-content">${reply.content}</div>
-                ${imgHtml}
-            `;
-
-            container.appendChild(replyDiv);
-        }
-
-        function scrollToBottom() {
-            const container = document.getElementById('postsContainer');
-            if (container) {
-                container.scrollTop = container.scrollHeight;
-            }
-        }
-
-        // フォーム送信（非同期投稿）
-        const bbsForm = document.getElementById('bbsForm');
-        if (bbsForm) {
-            bbsForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                const submitBtn = document.getElementById('submit-btn');
-                if (submitBtn) submitBtn.disabled = true;
-
-                const formData = new FormData(bbsForm);
                 try {
-                    const res = await fetch(bbsForm.action, {
-                        method: 'POST',
-                        body: formData
-                    });
+                    const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${maxId}`);
+                    if (!res.ok) return;
                     const data = await res.json();
 
-                    if (data.success && data.reply) {
-                        appendReply(data.reply);
+                    if (data.success && data.replies && data.replies.length > 0) {
+                        let addedCount = 0;
+                        data.replies.forEach(reply => {
+                            if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
+                                appendReply(reply);
+                                addedCount++;
+                            }
+                        });
 
-                        const contentInput = bbsForm.querySelector('textarea[name="content"]');
-                        if (contentInput) contentInput.value = '';
-
-                        const fileInput = bbsForm.querySelector('input[type="file"]');
-                        if (fileInput) fileInput.value = '';
-
-                        scrollToBottom();
-                    } else {
-                        alert(data.error || '投稿に失敗しました。');
+                        if (addedCount > 0) {
+                            if (currentMode === 'realtime') {
+                                if (isAtBottom()) {
+                                    scrollToBottom();
+                                } else {
+                                    unreadCount += addedCount;
+                                    updateBadge();
+                                }
+                            } else {
+                                unreadCount += addedCount;
+                                updateBadge();
+                            }
+                        }
                     }
-                } catch (err) {
-                    console.error('投稿エラー:', err);
-                    alert('投稿中にエラーが発生しました。');
-                } finally {
-                    if (submitBtn) submitBtn.disabled = false;
+                } catch (e) {
+                    console.error('新着取得エラー:', e);
                 }
-            });
+            }
+
+            function appendReply(reply) {
+                if (!container) return;
+                if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
+
+                const replyCount = container.querySelectorAll('.post-item').length + 1;
+                const replyDiv = document.createElement('div');
+                replyDiv.className = 'post-item';
+                replyDiv.id = `post-${replyCount}`;
+                replyDiv.setAttribute('data-reply-id', reply.id);
+
+                let roleClass = 'post-name';
+                if (reply.role === 'admin' || reply.is_admin) roleClass = 'role-admin';
+                else if (reply.role === 'sub_admin') roleClass = 'role-sub-admin';
+                else if (reply.role === 'moderator') roleClass = 'role-moderator';
+
+                let imageHtml = '';
+                if (reply.image_url) {
+                    imageHtml = `
+                        <a href="${reply.image_url}" target="_blank">
+                            <img src="${reply.image_url}" class="post-image" loading="lazy">
+                        </a>
+                    `;
+                }
+
+                // 本文のアンカーリンク化
+                const formattedContent = formatAnchors(reply.content || '');
+
+                replyDiv.innerHTML = `
+                    <div class="post-meta">
+                        <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
+                        <span class="${roleClass}">${reply.author || '名無しさん'}${reply.is_admin ? '★' : ''}</span>
+                        ${reply.is_op ? '<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>' : ''}
+                        <span>${reply.date || ''}</span>
+                        <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
+                    </div>
+                    <div class="post-content">${formattedContent}</div>
+                    ${imageHtml}
+                `;
+
+                container.appendChild(replyDiv);
+            }
+
+            // フォーム送信（非同期リプライ投稿）
+            const bbsForm = document.getElementById('bbsForm');
+            if (bbsForm) {
+                bbsForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+
+                    const submitBtn = document.getElementById('submit-btn');
+                    if (submitBtn) submitBtn.disabled = true;
+
+                    const formData = new FormData(bbsForm);
+                    try {
+                        const res = await fetch(bbsForm.action, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await res.json();
+
+                        if (data.success && data.reply) {
+                            appendReply(data.reply);
+
+                            const contentInput = bbsForm.querySelector('textarea[name="content"]');
+                            if (contentInput) contentInput.value = '';
+
+                            const fileInput = bbsForm.querySelector('input[type="file"]');
+                            if (fileInput) fileInput.value = '';
+
+                            // 自分が書き込んだときは一番下に移動
+                            scrollToBottom();
+                            unreadCount = 0;
+                            updateBadge();
+                        } else {
+                            alert(data.error || '投稿に失敗しました。');
+                        }
+                    } catch (err) {
+                        console.error('投稿エラー:', err);
+                        alert('投稿中にエラーが発生しました。');
+                    } finally {
+                        if (submitBtn) submitBtn.disabled = false;
+                    }
+                });
+            }
+        });
+
+        // グローバル関数（アンカークリック時ジャンプ・引用）
+        function scrollToPost(num) {
+            const target = document.getElementById(`post-${num}`);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.style.background = 'rgba(56, 189, 248, 0.2)';
+                setTimeout(() => { target.style.background = ''; }, 1500);
+            }
         }
-    });
+
+        function quoteReply(num) {
+            const textarea = document.querySelector('textarea[name="content"]');
+            if (textarea) {
+                textarea.value += `>>${num}\n`;
+                textarea.focus();
+            }
+        }
     </script>
 </body>
 </html>
