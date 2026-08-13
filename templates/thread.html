@@ -29,11 +29,11 @@
             padding: 0 !important; 
             overflow: hidden !important; 
             background-color: var(--bg-color); 
-            color: var(--text-main);
+            color: var(--text-main); 
             font-family: 'Inter', sans-serif; 
-
-
         }
+
+        /* ヘッダーエリア */
         .header-area { 
             position: absolute !important;
             top: 0 !important;
@@ -42,7 +42,7 @@
             padding: 8px 16px !important; 
             background-color: var(--panel-bg); 
             border-bottom: 1px solid var(--border-color); 
-            min-height: 65px !important; /* height固定ではなくmin-heightに変更 */
+            min-height: 65px !important;
             box-sizing: border-box !important; 
             display: flex !important;
             flex-direction: column !important;
@@ -51,7 +51,6 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-/* タイトル行のレイアウト整列 */
         .header-title-row {
             display: flex;
             align-items: center;
@@ -66,7 +65,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            flex: 1; /* 長いタイトルは自動で「...」と省略 */
+            flex: 1;
             min-width: 0;
         }
 
@@ -76,10 +75,9 @@
             color: var(--text-muted);
             opacity: 0.7;
             white-space: nowrap;
-            flex-shrink: 0; /* スレ主IDが潰れないように保持 */
+            flex-shrink: 0;
         }
 
-/* 2行目のサブメニュー行 */
         .header-sub-row {
             font-size: 11px;
             color: var(--text-muted);
@@ -88,27 +86,67 @@
             align-items: center;
             margin-top: 4px;
             gap: 6px;
-            overflow-x: auto; /* 万が一横幅を超えても折り返さずに横スクロール可能に */
+            overflow-x: auto;
             white-space: nowrap;
         }
-        
-       
 
-        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：165pxに調整） */
+        /* 投稿一覧コンテナ */
         .posts-container { 
             position: absolute !important;
-            top: 65px !important;
+            top: 65px !important; 
             bottom: 165px !important; 
             left: 0 !important;
             width: 100% !important;
-            overflow-y: scroll !important; 
-            padding: 16px 16px 30px 16px !important; 
+            overflow-y: auto !important; 
+            padding: 12px 16px !important; 
             box-sizing: border-box !important; 
-            background-color: var(--bg-color); 
-            scroll-behavior: smooth;
         }
 
-        /* スマホ用：入力欄と広告をまとめた固定フッターエリア（165px） */
+        .post-item { 
+            background-color: var(--panel-bg); 
+            border: 1px solid var(--border-color); 
+            border-radius: 8px; 
+            padding: 12px; 
+            margin-bottom: 12px; 
+            font-size: 14px; 
+        }
+
+        .post-meta { 
+            font-size: 12px; 
+            color: var(--text-muted); 
+            margin-bottom: 6px; 
+            display: flex; 
+            gap: 8px; 
+            align-items: center; 
+            flex-wrap: wrap; 
+        }
+
+        .post-num { 
+            font-weight: bold; 
+            color: var(--accent-color); 
+            cursor: pointer; 
+        }
+
+        .post-num:hover { 
+            text-decoration: underline; 
+        }
+
+        .post-content { 
+            color: var(--text-main); 
+            line-height: 1.5; 
+            word-break: break-word; 
+            white-space: pre-wrap; 
+        }
+
+        .post-image { 
+            max-width: 100%; 
+            max-height: 300px; 
+            border-radius: 6px; 
+            margin-top: 8px; 
+            border: 1px solid var(--border-color); 
+        }
+
+        /* フッター（投稿エリア） */
         .footer-area { 
             position: absolute !important;
             bottom: 0 !important;
@@ -117,368 +155,250 @@
             height: 165px !important; 
             background-color: var(--panel-bg); 
             border-top: 1px solid var(--border-color); 
-            padding: 8px 16px !important; 
+            padding: 8px 12px !important; 
             box-sizing: border-box !important; 
             z-index: 10 !important;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            gap: 6px;
         }
 
-        /* 入力欄のすぐ下に配置するスマホ用広告スペース（320x50） */
+        .post-form-row {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+            flex: 1;
+        }
+
+        .post-textarea {
+            flex: 1;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 13px;
+            resize: none;
+            outline: none;
+        }
+
+        .post-textarea:focus {
+            border-color: var(--accent-color);
+        }
+
+        .post-submit-btn {
+            background-color: var(--accent-color);
+            color: #0f172a;
+            font-weight: 700;
+            border: none;
+            border-radius: 6px;
+            padding: 0 16px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+
+        .post-submit-btn:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .form-sub-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* 役職カラー */
+        .role-admin { color: #f43f5e; font-weight: bold; }
+        .role-sub-admin { color: #fb923c; font-weight: bold; }
+        .role-moderator { color: #a855f7; font-weight: bold; }
+        .role-pr { color: #38bdf8; font-weight: bold; }
+        .role-proposal { color: #4ade80; font-weight: bold; }
+        .role-log { color: #94a3b8; font-weight: bold; }
+
+        /* 広告エリア（SP用） */
         .ad-item-sp {
             width: 100%;
             height: 50px;
             display: flex;
-            align-items: center;
             justify-content: center;
-            background: rgba(0,0,0,0.2);
+            align-items: center;
+            background-color: rgba(0,0,0,0.2);
             border-radius: 4px;
             overflow: hidden;
-            box-sizing: border-box;
         }
 
-        .ad-space-pc {
-            display: none; /* スマホでは非表示 */
-        }
-
-        /* ----------------------------------------- */
-        /* PC画面（横幅768px以上）：右側に300x250広告を固定配置 */
-        /* ----------------------------------------- */
+        /* PC（768px以上）レスポンシブ適用 */
         @media (min-width: 768px) {
-            .posts-container {
+            .header-area, .posts-container, .footer-area {
                 right: 330px !important;
                 width: calc(100% - 330px) !important;
-                bottom: 110px !important;
-                padding: 16px 24px !important;
             }
 
             .footer-area {
-                right: 330px !important;
-                width: calc(100% - 330px) !important;
                 height: 110px !important;
-                padding: 12px 20px !important;
-                justify-content: center;
             }
 
-            #scroll-to-bottom-btn {
-                bottom: calc(110px + 14px) !important;
-                right: 350px !important;
+            .posts-container {
+                bottom: 110px !important;
             }
 
             .ad-item-sp {
-                display: none; /* PCではスマホ用広告を非表示 */
+                display: none !important;
             }
 
             .ad-space-pc {
-                display: flex;
-                position: absolute;
-                top: 65px;
-                right: 0;
-                width: 330px;
-                bottom: 0;
-                background-color: var(--panel-bg);
+                position: absolute !important;
+                top: 0 !important;
+                right: 0 !important;
+                width: 330px !important;
+                height: 100% !important;
                 border-left: 1px solid var(--border-color);
-                align-items: center;
+                background-color: var(--panel-bg);
+                display: flex !important;
                 justify-content: center;
-                flex-direction: column;
-                z-index: 9;
-                box-sizing: border-box;
-                padding: 10px;
+                align-items: center;
+                z-index: 20 !important;
             }
         }
 
-        .post-item { 
-            margin-bottom: 16px; 
-            font-size: 14px; 
-            background: var(--panel-bg);
-            padding: 12px 16px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-        }
-        .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-        
-        /* 番号リンク（クリックで入力欄に引用） */
-        .post-num { 
-            font-weight: 700; 
-            color: var(--accent-color); 
-            cursor: pointer;
-            text-decoration: none;
-        }
-        .post-num:hover { 
-            text-decoration: underline; 
-        }
-
-        /* >>アンカーのスタイル（色付き・ジャンプ用） */
-        .post-anchor {
-            color: #f43f5e;
-            font-weight: 600;
-            text-decoration: none;
-        }
-        .post-anchor:hover {
-            text-decoration: underline;
-        }
-
-        .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
-        .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
-        
-        /* 役職ごとの色設定 */
-        .post-name { color: var(--text-main) !important; font-weight: 500; }
-        .role-admin { color: #f87171 !important; font-weight: 700; }
-        .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
-        .role-moderator { color: #34d399 !important; font-weight: 700; }
-        .role-pr { color: #4ade80 !important; font-weight: 700; }
-        .role-proposal { color: #fbbf24 !important; font-weight: 700; }
-        .role-log { color: #38bdf8 !important; font-weight: 700; }
-
-        input[type="text"], textarea {
-            background: var(--bg-color);
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-            border-radius: 4px;
-            padding: 4px 8px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        input[type="text"]:focus, textarea:focus {
-            border-color: var(--accent-color);
-        }
-
-        button {
-            cursor: pointer;
-            border-radius: 4px;
-            font-weight: 600;
-            transition: background 0.2s;
-        }
-
-        a {
-            color: var(--accent-color);
-            text-decoration: none;
-        }
-        a:hover {
-            text-decoration: underline;
+        @media (max-width: 767px) {
+            .ad-space-pc {
+                display: none !important;
+            }
         }
     </style>
 </head>
 <body>
 
     <div class="header-area">
-        <div style="font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);">
-            {{ thread.title }}
+        <div class="header-title-row">
+            <div class="header-title-text">{{ thread.title }}</div>
             {% if op_user_id %}
-            <span style="font-size: 11px; font-weight: 400; color: var(--text-muted); opacity: 0.7;">スレ主 ID:{{ op_user_id }}</span>
+            <span class="header-op-id">スレ主 ID:{{ op_user_id }}</span>
             {% endif %}
         </div>
-        <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px; flex-wrap: wrap; gap: 6px;">
-            <div>
-                <a href="{{ back_to_board }}">← 掲示板に戻る</a>
-                <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 6px;">
-                <div id="mode-toggle" style="display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; font-size: 11px;">
-                    <button type="button" id="mode-btn-view" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">📖 スレ閲覧</button>
-                    <button type="button" id="mode-btn-realtime" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">⚡ リアルタイム</button>
-                </div>
-            </div>
-            {% if is_admin_user %}
-            <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
-                <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 11px;">スレッド削除</button>
-            </form>
-            {% endif %}
-        </div>
-    </div>
 
-    <div class="ad-space-pc">
-        <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">スポンサーリンク</div>
-        <div style="width: 300px; height: 250px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); border-radius: 4px; overflow: hidden;">
-            <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+        <div class="header-sub-row">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <a href="{{ back_to_board }}" style="color: var(--accent-color); text-decoration: none;">← 掲示板に戻る</a>
+                <span>アクセス: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
+            </div>
+            
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div id="mode-toggle" style="display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; font-size: 10px;">
+                    <button type="button" id="mode-btn-view" class="mode-btn" style="border: none; padding: 2px 6px; cursor: pointer;">📖 閲覧</button>
+                    <button type="button" id="mode-btn-realtime" class="mode-btn" style="border: none; padding: 2px 6px; cursor: pointer;">⚡ リアルタイム</button>
+                </div>
+
+                {% if is_admin_user %}
+                <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
+                    <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 10px; border-radius: 4px; cursor: pointer;">削除</button>
+                </form>
+                {% endif %}
+            </div>
         </div>
     </div>
 
     <div class="posts-container" id="postsContainer">
-        {% for r in thread.replies %}
-        <div class="post-item" id="post-{{ loop.index }}" data-reply-id="{{ r.id }}">
+        {% for reply in replies %}
+        <div class="post-item" id="post-{{ loop.index }}" data-reply-id="{{ reply.id }}">
             <div class="post-meta">
                 <span class="post-num" onclick="quoteReply({{ loop.index }})">#{{ loop.index }}</span>
                 
-                {% set role_cls = 'post-name' %}
-                {% if r.role == 'admin' or r.is_admin %}
-                    {% set role_cls = 'role-admin' %}
-                {% elif r.role == 'sub_admin' %}
-                    {% set role_cls = 'role-sub-admin' %}
-                {% elif r.role == 'moderator' %}
-                    {% set role_cls = 'role-moderator' %}
-                {% elif r.role == 'pr' %}
-                    {% set role_cls = 'role-pr' %}
-                {% elif r.role == 'proposal' %}
-                    {% set role_cls = 'role-proposal' %}
-                {% elif r.role == 'log' %}
-                    {% set role_cls = 'role-log' %}
-                {% endif %}
+                <span class="{% if reply.role == 'admin' or reply.is_admin %}role-admin{% elif reply.role == 'sub_admin' %}role-sub-admin{% elif reply.role == 'moderator' %}role-moderator{% elif reply.role == 'pr' %}role-pr{% elif reply.role == 'proposal' %}role-proposal{% elif reply.role == 'log' %}role-log{% else %}post-name{% endif %}">
+                    {{ reply.author or '名無しさん' }}
+                    {% if reply.is_admin or reply.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}
+                </span>
 
-                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
-                {% if r.is_op %}
+                {% if reply.is_op %}
                 <span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>
                 {% endif %}
-                <span>{{ r.date }}</span>
-                <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
-                
+
+                <span>{{ reply.date }}</span>
+                <span style="color: var(--text-muted);">ID:{{ reply.user_id }}</span>
+
                 {% if is_admin_user %}
                 <div style="margin-left: auto; display: flex; gap: 4px;">
-                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
-                        <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=reply.id) }}" method="POST" onsubmit="return confirm('削除しますか？');" style="margin:0;">
+                        <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">削除</button>
                     </form>
-                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
-                        <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                    <form action="{{ url_for('ban_user', reply_id=reply.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
+                        <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer;">BAN</button>
                     </form>
                 </div>
                 {% endif %}
             </div>
-            <div class="post-content">{{ r.content | safe }}</div>
-            {% if r.image_url %}
-            <a href="{{ r.image_url }}" target="_blank">
-                <img src="{{ r.image_url }}" class="post-image" loading="lazy">
+
+            <div class="post-content">{{ reply.content }}</div>
+
+            {% if reply.image_url %}
+            <a href="{{ reply.image_url }}" target="_blank">
+                <img src="{{ reply.image_url }}" class="post-image" loading="lazy">
             </a>
             {% endif %}
         </div>
         {% endfor %}
     </div>
 
-    <button id="scroll-to-bottom-btn" style="
-        position: fixed;
-        right: 20px;
-        bottom: calc(165px + 14px);
-        z-index: 50;
-        background: var(--accent-color);
-        color: #0f172a;
-        border: none;
-        border-radius: 50%;
-        width: 46px;
-        height: 46px;
-        font-size: 18px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-    ">
-        ↓
-        <span id="scroll-to-bottom-badge" style="
-            position: absolute;
-            top: -6px;
-            right: -6px;
-            background: var(--danger-color);
-            color: #fff;
-            font-size: 11px;
-            font-weight: 700;
-            min-width: 18px;
-            height: 18px;
-            border-radius: 9px;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            padding: 0 4px;
-            box-sizing: border-box;
-        ">0</span>
-    </button>
-
     <div class="footer-area">
-        <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
-                <label style="font-size: 11px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 11px;" value="名無しさん"></label>
-                <label style="font-size: 11px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
-                <button type="submit" id="submit-btn" style="font-size: 11px; padding: 3px 12px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
+        <form id="bbsForm" action="{{ url_for('add_reply', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="height: 100%; display: flex; flex-direction: column; justify-content: space-between;">
+            <div class="post-form-row">
+                <textarea name="content" class="post-textarea" placeholder="コメントを入力..." required></textarea>
+                <button type="submit" id="submit-btn" class="post-submit-btn">投稿</button>
             </div>
-            <div>
-                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
+
+            <div class="form-sub-controls">
+                <input type="file" name="image" accept="image/*" style="font-size: 11px; max-width: 200px;">
+                <span>画像添付可</span>
+            </div>
+
+            <div class="ad-item-sp">
+                <ins class="adsbygoogle"
+                     style="display:inline-block;width:320px;height:50px"
+                     data-ad-client="ca-pub-3410577348918125"
+                     data-ad-slot="1234567890"></ins>
+                <script>
+                     (adsbygoogle = window.adsbygoogle || []).push({});
+                </script>
             </div>
         </form>
-
-        <div class="ad-item-sp">
-            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
-            </div>
-        </div>
     </div>
 
+    <div class="ad-space-pc">
+        <ins class="adsbygoogle"
+             style="display:inline-block;width:300px;height:250px"
+             data-ad-client="ca-pub-3410577348918125"
+             data-ad-slot="0987654321"></ins>
+        <script>
+             (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+    </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const threadId = {{ thread.id }};
         const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
 
-        const container = document.getElementById('postsContainer');
-        const bottomBtn = document.getElementById('scroll-to-bottom-btn');
-        const badge = document.getElementById('scroll-to-bottom-badge');
+        let currentMode = 'realtime'; // 初期モード: リアルタイム
+        let pollingTimer = null;
+
         const btnView = document.getElementById('mode-btn-view');
         const btnRealtime = document.getElementById('mode-btn-realtime');
 
-        let currentMode = 'realtime'; // 初期モード: リアルタイム
-        let unreadCount = 0;          // 未読レス件数
-        let pollingTimer = null;
-
-        // >>数字 をアンカーリンクに変換する関数
-        function formatAnchors(text) {
-            if (!text) return '';
-            return text.replace(
-                /(&gt;&gt;|>>)(\d+)/g,
-                (match, prefix, num) => `<a href="#post-${num}" class="post-anchor" onclick="scrollToPost(${num}); return false;">&gt;&gt;${num}</a>`
-            );
-        }
-
-        // 一番下にスクロールしているか判定（誤差50px考慮）
-        function isAtBottom() {
-            if (!container) return true;
-            return (container.scrollHeight - container.scrollTop - container.clientHeight) < 50;
-        }
-
-        // 一番下にスクロール
+        // 一番下（最新レス）へスクロールする関数
         function scrollToBottom() {
+            const container = document.getElementById('postsContainer');
             if (container) {
-                container.scrollTop = container.scrollHeight;
+                setTimeout(() => {
+                    container.scrollTop = container.scrollHeight;
+                }, 50);
             }
         }
 
-        // 未読件数バッジの表示更新
-        function updateBadge() {
-            if (!badge) return;
-            if (unreadCount > 0) {
-                badge.style.display = 'flex';
-                badge.textContent = unreadCount;
-            } else {
-                badge.style.display = 'none';
-            }
-        }
-
-        // ★「一番下に行くボタン」の表示制御（モードにかかわらず、一番下にいない時に表示）
-        function updateButtonVisibility() {
-            if (!bottomBtn) return;
-            
-            if (isAtBottom()) {
-                bottomBtn.style.display = 'none';
-                unreadCount = 0; // 一番下に着いたら未読件数をリセット
-                updateBadge();
-            } else {
-                bottomBtn.style.display = 'flex';
-            }
-        }
-
-        // スクロール時にボタン表示/非表示を判定
-        if (container) {
-            container.addEventListener('scroll', updateButtonVisibility);
-        }
-
-        // ボタンが押されたら一番下にジャンプ
-        if (bottomBtn) {
-            bottomBtn.addEventListener('click', () => {
-                scrollToBottom();
-                unreadCount = 0;
-                updateBadge();
-                bottomBtn.style.display = 'none';
-            });
-        }
-
-        // モード切り替え処理
+        // モード切り替えとボタンデザインの更新
         function setMode(mode) {
             currentMode = mode;
             if (mode === 'realtime') {
@@ -492,6 +412,9 @@
                     btnView.style.color = 'var(--text-main)';
                     btnView.style.fontWeight = 'normal';
                 }
+                scrollToBottom();
+                fetchNewReplies();
+                startPolling();
             } else {
                 if (btnView) {
                     btnView.style.background = '#0284c7';
@@ -503,25 +426,30 @@
                     btnRealtime.style.color = 'var(--text-main)';
                     btnRealtime.style.fontWeight = 'normal';
                 }
+                stopPolling();
             }
-            updateButtonVisibility();
         }
 
         if (btnView) btnView.addEventListener('click', () => setMode('view'));
         if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
 
-        // 初期表示設定
-        setMode('realtime');
-
-        // バックグラウンドで新着取得（どちらのモードでも動作し、件数をカウント）
+        // 2秒ごとの定期取得（ポーリング）
         function startPolling() {
             if (pollingTimer) clearInterval(pollingTimer);
             pollingTimer = setInterval(fetchNewReplies, 2000);
         }
 
-        startPolling();
+        function stopPolling() {
+            if (pollingTimer) {
+                clearInterval(pollingTimer);
+                pollingTimer = null;
+            }
+        }
 
+        // バックグラウンドで新着レスを取得して画面に追加
         async function fetchNewReplies() {
+            if (currentMode !== 'realtime') return;
+
             let maxId = 0;
             document.querySelectorAll('.post-item').forEach(el => {
                 const id = parseInt(el.getAttribute('data-reply-id')) || 0;
@@ -534,29 +462,15 @@
                 const data = await res.json();
 
                 if (data.success && data.replies && data.replies.length > 0) {
-                    let addedCount = 0;
+                    let added = false;
                     data.replies.forEach(reply => {
                         if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
                             appendReply(reply);
-                            addedCount++;
+                            added = true;
                         }
                     });
-
-                    if (addedCount > 0) {
-                        if (currentMode === 'realtime') {
-                            // リアルタイムモード：一番下にいれば自動で下へスクロール
-                            if (isAtBottom()) {
-                                scrollToBottom();
-                            } else {
-                                unreadCount += addedCount;
-                                updateBadge();
-                            }
-                        } else {
-                            // ★スレ閲覧モード：自動スクロールせず未読件数を加算してバッジ表示
-                            unreadCount += addedCount;
-                            updateBadge();
-                        }
-                        updateButtonVisibility();
+                    if (added && currentMode === 'realtime') {
+                        scrollToBottom();
                     }
                 }
             } catch (e) {
@@ -564,8 +478,11 @@
             }
         }
 
+        // レス要素を動的追加
         function appendReply(reply) {
+            const container = document.getElementById('postsContainer');
             if (!container) return;
+
             if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
 
             const replyCount = container.querySelectorAll('.post-item').length + 1;
@@ -616,8 +533,6 @@
                 `;
             }
 
-            const formattedContent = formatAnchors(reply.content || '');
-
             replyDiv.innerHTML = `
                 <div class="post-meta">
                     <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
@@ -627,7 +542,7 @@
                     <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
                     ${adminBtns}
                 </div>
-                <div class="post-content">${formattedContent}</div>
+                <div class="post-content">${reply.content}</div>
                 ${imgHtml}
             `;
 
@@ -660,11 +575,7 @@
                         const fileInput = bbsForm.querySelector('input[type="file"]');
                         if (fileInput) fileInput.value = '';
 
-                        // 自分が書き込んだ時は一番下にジャンプ＆カウントリセット
                         scrollToBottom();
-                        unreadCount = 0;
-                        updateBadge();
-                        updateButtonVisibility();
                     } else {
                         alert(data.error || '投稿に失敗しました。');
                     }
@@ -677,30 +588,11 @@
             });
         }
 
-        // 初期表示時の位置調整（URLに#post-1等のハッシュがなければ最下部へ）
-        if (window.location.hash) {
-            const target = document.querySelector(window.location.hash);
-            if (target) {
-                setTimeout(() => {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 100);
-            }
-        } else {
-            scrollToBottom();
-        }
-        updateButtonVisibility();
+        // 初期表示でリアルタイムモードをオンにし自動スクロール
+        setMode('realtime');
     });
 
-    // グローバル関数（アンカー移動と引用）
-    function scrollToPost(num) {
-        const target = document.getElementById(`post-${num}`);
-        if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            target.style.background = 'rgba(56, 189, 248, 0.2)';
-            setTimeout(() => { target.style.background = ''; }, 1500);
-        }
-    }
-
+    // レスアンカー引用処理
     function quoteReply(num) {
         const textarea = document.querySelector('textarea[name="content"]');
         if (textarea) {
@@ -709,7 +601,5 @@
         }
     }
     </script>
-
-   
 </body>
 </html>
