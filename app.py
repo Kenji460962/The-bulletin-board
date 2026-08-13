@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response, session
+from flask_socketio import SocketIO, join_room, leave_room
 from datetime import datetime, timedelta
 import json
 import html
@@ -15,10 +16,11 @@ import psutil
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-# static配下(CSS・画像・favicon等)のキャッシュ期間を7日に設定。ファイル名を変えない限りブラウザに残るので再訪問時が速くなる
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
 
-# psutilのCPU使用率計測を起動時に一度呼んで初期化
+# SocketIO の初期化
+socketio = SocketIO(app, cors_allowed_origins="*")
+
 psutil.cpu_percent(interval=None)
 
 # --- Cloudflare D1 接続設定 ---
@@ -27,7 +29,6 @@ CF_D1_DATABASE_ID = os.environ.get('CF_D1_DATABASE_ID')
 CF_D1_API_TOKEN = os.environ.get('CF_D1_API_TOKEN')
 
 def query_d1(sql, params=None):
-    """Cloudflare D1 REST APIを使ってSQLを実行する共通関数"""
     if not CF_D1_ACCOUNT_ID or not CF_D1_DATABASE_ID or not CF_D1_API_TOKEN:
         return []
         
@@ -49,7 +50,7 @@ def query_d1(sql, params=None):
         print(f"D1 API通信エラー: {e}")
     return []
 
-# ---- cgroup(コンテナに実際に割り当てられた上限・使用量)を直接読む ----
+# ---- cgroup 設定 ----
 _last_cpu_usage_usec = None
 _last_cpu_check_time = None
 
@@ -153,7 +154,6 @@ app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345'
 
 CF_SHARED_SECRET = os.environ.get('CF_SHARED_SECRET')
 
-# スリープ防止
 @app.before_request
 def response_to_uptimerobot():
     if request.method == 'HEAD':
@@ -166,7 +166,6 @@ def enforce_cloudflare_only():
     if CF_SHARED_SECRET and request.headers.get('X-Origin-Verify') != CF_SHARED_SECRET:
         return "Access denied", 403
 
-# Cloudflare R2 (S3互換) の設定
 s3_client = boto3.client(
     's3',
     endpoint_url=os.environ.get('R2_ENDPOINT'),
@@ -179,11 +178,9 @@ R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 
 ADMIN_PASSWORD = "setokoji114514810072"
 
-# セキュリティ強化 ユーザーごとの最後の書き込み時間を記録する場所
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
 
-# IPアドレスを元に毎日変わるIDを生成
 def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
     raw_str = f"{ip_address}_{today_str}"
@@ -243,6 +240,20 @@ def get_staff_role():
 
 def can_manage_board():
     return session.get('staff_role') in ['admin', 'sub_admin']
+
+
+# ==================== WebSocket イベント ====================
+@socketio.on('join_thread')
+def handle_join_thread(data):
+    thread_id = data.get('thread_id')
+    if thread_id:
+        join_room(f"thread_{thread_id}")
+
+@socketio.on('leave_thread')
+def handle_leave_thread(data):
+    thread_id = data.get('thread_id')
+    if thread_id:
+        leave_room(f"thread_{thread_id}")
 
 
 @app.route('/login_secret_8823', methods=['GET', 'POST'])
@@ -306,7 +317,6 @@ def filter_ng_words(text):
     return text
 
 def update_and_get_user_counts(current_token, location):
-    """D1を使ってアクティブユーザーを記録・集計する"""
     now = datetime.utcnow()
     cutoff = (now - timedelta(minutes=2)).isoformat()
 
@@ -335,12 +345,10 @@ def privacy():
 def roles():
     return render_template('roles.html')
 
-# エラー解消のために追加した games_hub ルート
 @app.route('/games')
 def games_hub():
     return redirect(url_for('index'))
 
-# エラー解消のために追加した archive_list ルート
 @app.route('/archive')
 def archive_list():
     return redirect(url_for('index'))
@@ -357,7 +365,6 @@ def index():
     page = request.args.get('page', default=1, type=int)
     per_page = 20
     start_index = (page - 1) * per_page
-    end_index = start_index + per_page - 1
 
     search_query = request.args.get('q', default='', type=str).strip()
 
@@ -617,6 +624,10 @@ def thread_view(thread_id):
                         new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
                     except Exception as ope:
                         new_reply['is_op'] = False
+
+                    # WebSocketで部屋内の全員に一斉配信
+                    socketio.emit('new_reply', new_reply, room=f"thread_{thread_id}")
+
                     return {"success": True, "reply": new_reply}
             except Exception as e:
                 print(f"レス保存エラー: {e}")
@@ -775,4 +786,4 @@ def server_metrics():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=port)
