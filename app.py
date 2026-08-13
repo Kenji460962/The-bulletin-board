@@ -693,6 +693,38 @@ def thread_view(thread_id):
         
     return response
 
+
+@app.route('/thread/<int:thread_id>/get_new_replies')
+def get_new_replies(thread_id):
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return {"success": False, "error": "Banned"}, 403
+
+    after_id = request.args.get('after_id', default=0, type=int)
+    try:
+        replies = query_d1(
+            "SELECT * FROM replies WHERE thread_id = ? AND id > ? ORDER BY id ASC",
+            [thread_id, after_id]
+        )
+        op_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+        op_ip = op_res[0]['ip_address'] if op_res else None
+        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+
+        for r in replies:
+            if r.get('date'):
+                dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            if r.get('content'):
+                r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', r['content'])
+            r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
+
+        return {"success": True, "replies": replies}
+    except Exception as e:
+        print(f"新着レス取得エラー: {e}")
+        return {"success": False, "error": "データベースエラー"}, 500
+
+
 @app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
 def delete_thread(thread_id):
     if not can_manage_board():
