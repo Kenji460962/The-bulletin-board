@@ -557,9 +557,9 @@ def index():
 
         try:
             active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
-            active_res = supabase.table('active_users').select('location').gte('last_seen', active_cutoff).execute()
+            active_res = query_d1("SELECT location FROM active_users WHERE last_seen >= ?", [active_cutoff])
             thread_active_counts = {}
-            for row in (active_res.data or []):
+            for row in (active_res or []):
                 loc = row.get('location', '')
                 thread_active_counts[loc] = thread_active_counts.get(loc, 0) + 1
         except Exception as ace:
