@@ -285,6 +285,51 @@ def get_staff_role():
 def can_manage_board():
     return session.get('staff_role') in ['admin', 'sub_admin']
 
+
+####################
+
+
+@app.route('/admin_migrate_data_run_once')
+def admin_migrate_data_run_once():
+    """SupabaseからD1へ過去データを1回だけコピーする一時ルート"""
+    try:
+        # 1. Supabaseからスレッドを全件取得
+        res_threads = supabase.table('threads').select('*').execute()
+        threads = res_threads.data if res_threads and res_threads.data else []
+        
+        migrated_threads = 0
+        for t in threads:
+            sql = "INSERT OR IGNORE INTO threads (id, title, ip_address, created_at) VALUES (?, ?, ?, ?)"
+            query_d1(sql, [t.get('id'), t.get('title'), t.get('ip_address'), t.get('created_at')])
+            migrated_threads += 1
+
+        # 2. Supabaseからレスを全件取得
+        res_replies = supabase.table('replies').select('*').execute()
+        replies = res_replies.data if res_replies and res_replies.data else []
+        
+        migrated_replies = 0
+        for r in replies:
+            sql = """
+            INSERT OR IGNORE INTO replies (id, thread_id, author, content, user_id, is_admin, role, image_url, ip_address, date) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            query_d1(sql, [
+                r.get('id'), r.get('thread_id'), r.get('author'), r.get('content'), 
+                r.get('user_id'), 1 if r.get('is_admin') else 0, r.get('role'), 
+                r.get('image_url'), r.get('ip_address'), r.get('date')
+            ])
+            migrated_replies += 1
+
+        return f"データ移行完了！ スレッド: {migrated_threads}件, レス: {migrated_replies}件 をD1にコピーしました。"
+    except Exception as e:
+        return f"移行エラー: {str(e)}"
+
+
+##########################
+
+
+
+
 @app.route('/login_secret_8823', methods=['GET', 'POST'])
 def staff_login():
     if request.method == 'POST':
