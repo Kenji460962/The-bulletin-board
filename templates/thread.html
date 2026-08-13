@@ -28,488 +28,614 @@
             margin: 0 !important; 
             padding: 0 !important; 
             overflow: hidden !important; 
-            background-color: var(--bg-color) !important;
-            color: var(--text-main) !important;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
-            line-height: 1.5 !important;
+            background-color: var(--bg-color); 
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif; 
         }
-
-        .app-container {
+        
+        .header-area { 
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            padding: 10px 24px !important; 
+            background-color: var(--panel-bg); 
+            border-bottom: 1px solid var(--border-color); 
+            height: 65px !important; 
+            box-sizing: border-box !important; 
             display: flex !important;
             flex-direction: column !important;
-            height: 100vh !important;
-            height: 100dvh !important;
-            width: 100% !important;
-            max-width: 800px !important;
-            margin: 0 auto !important;
-            box-sizing: border-box !important;
-            background-color: var(--bg-color) !important;
-        }
-
-        .header {
-            flex-shrink: 0 !important;
-            background-color: rgba(30, 41, 59, 0.9) !important;
-            backdrop-filter: blur(8px) !important;
-            border-bottom: 1px solid var(--border-color) !important;
-            padding: 12px 16px !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            z-index: 10 !important;
-        }
-
-        .header-left {
-            display: flex !important;
-            align-items: center !important;
-            gap: 12px !important;
-            min-width: 0 !important;
-        }
-
-        .btn-back {
-            display: inline-flex !important;
-            align-items: center !important;
             justify-content: center !important;
-            width: 36px !important;
-            height: 36px !important;
-            border-radius: 8px !important;
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            color: var(--text-main) !important;
-            text-decoration: none !important;
-            transition: all 0.2s !important;
-            flex-shrink: 0 !important;
-        }
-
-        .btn-back:hover {
-            background-color: rgba(255, 255, 255, 0.1) !important;
-            color: var(--accent-color) !important;
-        }
-
-        .thread-title {
-            font-size: 16px !important;
-            font-weight: 700 !important;
-            color: var(--text-main) !important;
-            margin: 0 !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-        }
-
-        .active-badge {
-            display: inline-flex !important;
-            align-items: center !important;
-            gap: 6px !important;
-            background-color: rgba(56, 189, 248, 0.1) !important;
-            color: var(--accent-color) !important;
-            border: 1px solid rgba(56, 189, 248, 0.2) !important;
-            padding: 4px 10px !important;
-            border-radius: 20px !important;
-            font-size: 12px !important;
-            font-weight: 600 !important;
-            flex-shrink: 0 !important;
-        }
-
-        .active-dot {
-            width: 6px !important;
-            height: 6px !important;
-            background-color: var(--accent-color) !important;
-            border-radius: 50% !important;
-            box-shadow: 0 0 8px var(--accent-color) !important;
-        }
-
-        .replies-scroll-area {
-            flex: 1 1 auto !important;
-            overflow-y: auto !important;
-            padding: 16px !important;
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 16px !important;
-            -webkit-overflow-scrolling: touch !important;
-        }
-
-        .reply-card {
-            background-color: var(--panel-bg) !important;
-            border: 1px solid var(--border-color) !important;
-            border-radius: 12px !important;
-            padding: 14px 16px !important;
-            word-break: break-word !important;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
-        }
-
-        .reply-header {
-            display: flex !important;
-            flex-wrap: wrap !important;
-            align-items: center !important;
-            gap: 8px !important;
-            font-size: 13px !important;
-            margin-bottom: 8px !important;
-            padding-bottom: 6px !important;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
-        }
-
-        .reply-num {
-            font-weight: 700 !important;
-            color: var(--accent-color) !important;
-        }
-
-        .reply-author {
-            font-weight: 600 !important;
-            color: var(--text-main) !important;
-        }
-
-        .reply-id {
-            color: var(--text-muted) !important;
-            font-family: monospace !important;
-            font-size: 12px !important;
-            background: rgba(0, 0, 0, 0.2) !important;
-            padding: 1px 6px !important;
-            border-radius: 4px !important;
-        }
-
-        .badge-op {
-            background-color: #10b981 !important;
-            color: #ffffff !important;
-            font-size: 10px !important;
-            font-weight: 700 !important;
-            padding: 1px 5px !important;
-            border-radius: 4px !important;
-        }
-
-        .badge-role {
-            background-color: #8b5cf6 !important;
-            color: #ffffff !important;
-            font-size: 10px !important;
-            font-weight: 700 !important;
-            padding: 1px 5px !important;
-            border-radius: 4px !important;
-        }
-
-        .reply-date {
-            color: var(--text-muted) !important;
-            font-size: 12px !important;
-            margin-left: auto !important;
-        }
-
-        .reply-content {
-            font-size: 14px !important;
-            line-height: 1.6 !important;
-            color: #e2e8f0 !important;
-            white-space: pre-wrap !important;
-        }
-
-        .reply-image {
-            margin-top: 10px !important;
-            max-width: 100% !important;
-            max-height: 300px !important;
-            border-radius: 8px !important;
-            border: 1px solid var(--border-color) !important;
-            object-fit: contain !important;
-        }
-
-        .form-container {
-            flex-shrink: 0 !important;
-            background-color: var(--panel-bg) !important;
-            border-top: 1px solid var(--border-color) !important;
-            padding: 12px 16px !important;
             z-index: 10 !important;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-        .post-form {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 10px !important;
-        }
-
-        .form-row {
-            display: flex !important;
-            gap: 8px !important;
-        }
-
-        .input-text {
-            background-color: var(--bg-color) !important;
-            border: 1px solid var(--border-color) !important;
-            border-radius: 8px !important;
-            color: var(--text-main) !important;
-            padding: 8px 12px !important;
-            font-size: 13px !important;
-            outline: none !important;
-        }
-
-        .input-text:focus {
-            border-color: var(--accent-color) !important;
-        }
-
-        .input-author {
-            width: 140px !important;
-            flex-shrink: 0 !important;
-        }
-
-        .input-textarea {
+        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：165pxに調整） */
+        .posts-container { 
+            position: absolute !important;
+            top: 65px !important;
+            bottom: 165px !important; 
+            left: 0 !important;
             width: 100% !important;
-            height: 50px !important;
-            resize: none !important;
-            box-sizing: border-box !important;
-            font-family: inherit !important;
+            overflow-y: scroll !important; 
+            padding: 16px 16px 30px 16px !important; 
+            box-sizing: border-box !important; 
+            background-color: var(--bg-color); 
+            scroll-behavior: smooth;
         }
 
-        .form-footer {
-            display: flex !important;
-            justify-content: space-between !important;
-            align-items: center !important;
+        /* スマホ用：入力欄と広告をまとめた固定フッターエリア（165px） */
+        .footer-area { 
+            position: absolute !important;
+            bottom: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 165px !important; 
+            background-color: var(--panel-bg); 
+            border-top: 1px solid var(--border-color); 
+            padding: 8px 16px !important; 
+            box-sizing: border-box !important; 
+            z-index: 10 !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         }
 
-        .file-label {
-            display: inline-flex !important;
-            align-items: center !important;
-            gap: 6px !important;
-            color: var(--text-muted) !important;
-            font-size: 12px !important;
-            cursor: pointer !important;
-            padding: 6px 10px !important;
-            border-radius: 6px !important;
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            transition: background-color 0.2s !important;
+        /* 入力欄のすぐ下に配置するスマホ用広告スペース（320x50） */
+        .ad-item-sp {
+            width: 100%;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            box-sizing: border-box;
         }
 
-        .file-label:hover {
-            background-color: rgba(255, 255, 255, 0.1) !important;
-            color: var(--text-main) !important;
+        .ad-space-pc {
+            display: none; /* スマホでは非表示 */
         }
 
-        .btn-submit {
-            background-color: var(--accent-color) !important;
-            color: #0f172a !important;
-            border: none !important;
-            border-radius: 8px !important;
-            padding: 8px 18px !important;
-            font-size: 13px !important;
-            font-weight: 700 !important;
-            cursor: pointer !important;
-            transition: background-color 0.2s !important;
+        /* ----------------------------------------- */
+        /* PC画面（横幅768px以上）：右側に300x250広告を固定配置 */
+        /* ----------------------------------------- */
+        @media (min-width: 768px) {
+            .posts-container {
+                right: 330px !important;
+                width: calc(100% - 330px) !important;
+                bottom: 110px !important;
+                padding: 16px 24px !important;
+            }
+
+            .footer-area {
+                right: 330px !important;
+                width: calc(100% - 330px) !important;
+                height: 110px !important;
+                padding: 12px 20px !important;
+                justify-content: center;
+            }
+
+            #scroll-to-bottom-btn {
+                bottom: calc(110px + 14px) !important;
+                right: 350px !important;
+            }
+
+            .ad-item-sp {
+                display: none; /* PCではスマホ用広告を非表示 */
+            }
+
+            .ad-space-pc {
+                display: flex;
+                position: absolute;
+                top: 65px;
+                right: 0;
+                width: 330px;
+                bottom: 0;
+                background-color: var(--panel-bg);
+                border-left: 1px solid var(--border-color);
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                z-index: 9;
+                box-sizing: border-box;
+                padding: 10px;
+            }
         }
 
-        .btn-submit:hover {
-            background-color: var(--accent-hover) !important;
+        .post-item { 
+            margin-bottom: 16px; 
+            font-size: 14px; 
+            background: var(--panel-bg);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        
+        /* 番号リンク（クリックで入力欄に引用） */
+        .post-num { 
+            font-weight: 700; 
+            color: var(--accent-color); 
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .post-num:hover { 
+            text-decoration: underline; 
         }
 
-        .admin-btn {
-            background: none !important;
-            border: none !important;
-            color: var(--danger-color) !important;
-            font-size: 11px !important;
-            cursor: pointer !important;
-            padding: 0 !important;
-            margin-left: 6px !important;
-            text-decoration: underline !important;
+        /* >>アンカーのスタイル（色付き・ジャンプ用） */
+        .post-anchor {
+            color: #f43f5e;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .post-anchor:hover {
+            text-decoration: underline;
+        }
+
+        .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
+        .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
+        
+        /* 役職ごとの色設定 */
+        .post-name { color: var(--text-main) !important; font-weight: 500; }
+        .role-admin { color: #f87171 !important; font-weight: 700; }
+        .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
+        .role-moderator { color: #34d399 !important; font-weight: 700; }
+        .role-pr { color: #4ade80 !important; font-weight: 700; }
+        .role-proposal { color: #fbbf24 !important; font-weight: 700; }
+        .role-log { color: #38bdf8 !important; font-weight: 700; }
+
+        input[type="text"], textarea {
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 4px;
+            padding: 4px 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="text"]:focus, textarea:focus {
+            border-color: var(--accent-color);
+        }
+
+        button {
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <header class="header">
-            <div class="header-left">
-                <a href="{{ back_to_board or '/' }}" class="btn-back" title="戻る">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                </a>
-                <h1 class="thread-title">{{ thread.title }}</h1>
-            </div>
-            <div class="active-badge">
-                <span class="active-dot"></span>
-                <span id="activeCount">{{ active_count }}</span>人閲覧中
-            </div>
-        </header>
 
-        <main class="replies-scroll-area" id="repliesContainer">
-            {% if thread.replies %}
-                {% for reply in thread.replies %}
-                    <div class="reply-card" data-reply-id="{{ reply.id }}">
-                        <div class="reply-header">
-                            <span class="reply-num">{{ loop.index }}</span>
-                            <span class="reply-author" style="{% if reply.role == 'admin' %}color: #f43f5e; font-weight: bold;{% elif reply.role == 'sub_admin' %}color: #a855f7; font-weight: bold;{% elif reply.is_op %}color: #10b981; font-weight: bold;{% endif %}">{{ reply.author }}</span>
-                            
-                            {% if reply.is_op %}
-                                <span class="badge-op">主</span>
-                            {% endif %}
-                            
-                            {% if reply.role %}
-                                <span class="badge-role">{{ reply.role }}</span>
-                            {% endif %}
-
-                            <span class="reply-id">ID:{{ reply.user_id }}</span>
-                            <span class="reply-date">{{ reply.date }}</span>
-
-                            {% if is_admin_user %}
-                                <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=reply.id) }}" method="post" style="display:inline;" onsubmit="return confirm('このレスを削除しますか？');">
-                                    <button type="submit" class="admin-btn">削除</button>
-                                </form>
-                                <form action="{{ url_for('ban_user', reply_id=reply.id) }}" method="post" style="display:inline;" onsubmit="return confirm('このユーザーをBANしますか？');">
-                                    <button type="submit" class="admin-btn">BAN</button>
-                                </form>
-                            {% endif %}
-                        </div>
-                        <div class="reply-content">{{ reply.content|safe }}</div>
-                        {% if reply.image_url %}
-                            <a href="{{ reply.image_url }}" target="_blank">
-                                <img src="{{ reply.image_url }}" class="reply-image" alt="添付画像" loading="lazy">
-                            </a>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-            {% else %}
-                <div style="text-align: center; color: var(--text-muted); margin-top: 40px; font-size: 14px;" id="noReplies">
-                    まだ書き込みがありません。最初のレスを投稿してみましょう！
-                </div>
+    <div class="header-area">
+        <div style="font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);">
+            {{ thread.title }}
+            {% if op_user_id %}
+            <span style="font-size: 11px; font-weight: 400; color: var(--text-muted); opacity: 0.7;">スレ主 ID:{{ op_user_id }}</span>
             {% endif %}
-        </main>
-
-        <footer class="form-container">
-            <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="post" enctype="multipart/form-data" class="post-form">
-                <div class="form-row">
-                    <input type="text" name="author" class="input-text input-author" placeholder="名前 (省略可)" maxlength="20">
-                    <textarea name="content" class="input-text input-textarea" placeholder="書き込み内容を入力..." maxlength="500" required></textarea>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px; flex-wrap: wrap; gap: 6px;">
+            <div>
+                <a href="{{ back_to_board }}">← 掲示板に戻る</a>
+                <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <div id="mode-toggle" style="display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; font-size: 11px;">
+                    <button type="button" id="mode-btn-view" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">📖 スレ閲覧</button>
+                    <button type="button" id="mode-btn-realtime" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">⚡ リアルタイム</button>
                 </div>
-                <div class="form-footer">
-                    <label class="file-label">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
-                        <span id="fileName">画像を選択</span>
-                        <input type="file" name="image" accept="image/*" style="display: none;" id="imageInput">
-                    </label>
-                    <button type="submit" class="btn-submit" id="submitBtn">書き込む</button>
-                </div>
+            </div>
+            {% if is_admin_user %}
+            <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
+                <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 11px;">スレッド削除</button>
             </form>
-        </footer>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="ad-space-pc">
+        <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">スポンサーリンク</div>
+        <div style="width: 300px; height: 250px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); border-radius: 4px; overflow: hidden;">
+            <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+        </div>
+    </div>
+
+    <div class="posts-container" id="postsContainer">
+        {% for r in thread.replies %}
+        <div class="post-item" id="post-{{ loop.index }}" data-reply-id="{{ r.id }}">
+            <div class="post-meta">
+                <span class="post-num" onclick="quoteReply({{ loop.index }})">#{{ loop.index }}</span>
+                
+                {% set role_cls = 'post-name' %}
+                {% if r.role == 'admin' or r.is_admin %}
+                    {% set role_cls = 'role-admin' %}
+                {% elif r.role == 'sub_admin' %}
+                    {% set role_cls = 'role-sub-admin' %}
+                {% elif r.role == 'moderator' %}
+                    {% set role_cls = 'role-moderator' %}
+                {% elif r.role == 'pr' %}
+                    {% set role_cls = 'role-pr' %}
+                {% elif r.role == 'proposal' %}
+                    {% set role_cls = 'role-proposal' %}
+                {% elif r.role == 'log' %}
+                    {% set role_cls = 'role-log' %}
+                {% endif %}
+
+                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                {% if r.is_op %}
+                <span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>
+                {% endif %}
+                <span>{{ r.date }}</span>
+                <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
+                
+                {% if is_admin_user %}
+                <div style="margin-left: auto; display: flex; gap: 4px;">
+                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
+                        <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                    </form>
+                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                        <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+            <div class="post-content">{{ r.content | safe }}</div>
+            {% if r.image_url %}
+            <a href="{{ r.image_url }}" target="_blank">
+                <img src="{{ r.image_url }}" class="post-image" loading="lazy">
+            </a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <button id="scroll-to-bottom-btn" style="
+        position: fixed;
+        right: 20px;
+        bottom: calc(165px + 14px);
+        z-index: 50;
+        background: var(--accent-color);
+        color: #0f172a;
+        border: none;
+        border-radius: 50%;
+        width: 46px;
+        height: 46px;
+        font-size: 18px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    ">
+        ↓
+        <span id="scroll-to-bottom-badge" style="
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: var(--danger-color);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            box-sizing: border-box;
+        ">0</span>
+    </button>
+
+    <div class="footer-area">
+        <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
+                <label style="font-size: 11px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 11px;" value="名無しさん"></label>
+                <label style="font-size: 11px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
+                <button type="submit" id="submit-btn" style="font-size: 11px; padding: 3px 12px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
+            </div>
+            <div>
+                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
+            </div>
+        </form>
+
+        <div class="ad-item-sp">
+            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+            </div>
+        </div>
     </div>
 
     <script>
-        const scrollArea = document.getElementById('repliesContainer');
-        const imageInput = document.getElementById('imageInput');
-        const fileNameSpan = document.getElementById('fileName');
-        const bbsForm = document.getElementById('bbsForm');
         const threadId = {{ thread.id }};
+        const container = document.getElementById('postsContainer');
 
-        function forceScrollBottom() {
-            if (scrollArea) {
-                scrollArea.scrollTop = scrollArea.scrollHeight;
+        function forceScrollBottom(instant) {
+            if (instant) {
+                const prevBehavior = container.style.scrollBehavior;
+                container.style.scrollBehavior = 'auto';
+                container.scrollTop = container.scrollHeight;
+                container.style.scrollBehavior = prevBehavior;
+            } else {
+                container.scrollTop = container.scrollHeight;
             }
         }
 
-        window.addEventListener('load', () => {
-            setTimeout(forceScrollBottom, 50);
+        // ---- 「一番下へ戻る」ボタン・新着件数バッジ・モード切替 ----
+        const scrollBtn = document.getElementById('scroll-to-bottom-btn');
+        const scrollBadge = document.getElementById('scroll-to-bottom-badge');
+        const modeBtnView = document.getElementById('mode-btn-view');
+        const modeBtnRealtime = document.getElementById('mode-btn-realtime');
+        let unreadCount = 0;
+        let currentMode = 'realtime'; // 'realtime' or 'view'
+        const BOTTOM_THRESHOLD = 60; // この距離以内なら「一番下にいる」とみなす(ボタンの表示/非表示の判定にのみ使用)
+
+        function isNearBottom() {
+            return container.scrollHeight - container.scrollTop - container.clientHeight < BOTTOM_THRESHOLD;
+        }
+
+        function updateModeButtonStyles() {
+            if (currentMode === 'realtime') {
+                modeBtnRealtime.style.background = 'var(--accent-color)';
+                modeBtnRealtime.style.color = '#0f172a';
+                modeBtnView.style.background = 'transparent';
+                modeBtnView.style.color = 'var(--text-muted)';
+            } else {
+                modeBtnView.style.background = 'var(--accent-color)';
+                modeBtnView.style.color = '#0f172a';
+                modeBtnRealtime.style.background = 'transparent';
+                modeBtnRealtime.style.color = 'var(--text-muted)';
+            }
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            updateModeButtonStyles();
+            if (mode === 'realtime') {
+                // リアルタイムモードに切り替えたら、未読は無かったことにして一番下まで追いつく
+                unreadCount = 0;
+                scrollBadge.style.display = 'none';
+                scrollBadge.textContent = '0';
+                forceScrollBottom();
+            }
+            updateScrollButtonVisibility();
+        }
+
+        modeBtnView.addEventListener('click', () => setMode('view'));
+        modeBtnRealtime.addEventListener('click', () => setMode('realtime'));
+        updateModeButtonStyles();
+
+        function updateScrollButtonVisibility() {
+            if (isNearBottom()) {
+                scrollBtn.style.display = 'none';
+            } else {
+                scrollBtn.style.display = 'flex';
+            }
+        }
+
+        function addUnread(count) {
+            if (count <= 0) return;
+            unreadCount += count;
+            scrollBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
+            scrollBadge.style.display = 'flex';
+        }
+
+        scrollBtn.addEventListener('click', () => {
+            forceScrollBottom();
+            unreadCount = 0;
+            scrollBadge.style.display = 'none';
+            scrollBadge.textContent = '0';
+            scrollBtn.style.display = 'none';
         });
 
-        if (imageInput && fileNameSpan) {
-            imageInput.addEventListener('change', (e) => {
-                if (e.target.files && e.target.files[0]) {
-                    fileNameSpan.textContent = e.target.files[0].name;
-                } else {
-                    fileNameSpan.textContent = '画像を選択';
-                }
+        container.addEventListener('scroll', updateScrollButtonVisibility);
+
+        // #番号をクリックした時に呼ばれる関数（>>989\nを挿入）
+        function quoteReply(num) {
+            const textarea = document.querySelector('textarea[name="content"]');
+            if (textarea) {
+                const addText = `>>${num}\n`;
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const val = textarea.value;
+                
+                textarea.value = val.substring(0, start) + addText + val.substring(end);
+                textarea.selectionStart = textarea.selectionEnd = start + addText.length;
+                textarea.focus();
+            }
+        }
+
+        // 本文中の >>数字 をリンクに変換する関数
+        function formatContent(text) {
+            if (!text) return '';
+            // URLリンク化
+            let formatted = text.replace(/(https?:\/\/[^\s<>]+)/g, '<a href="$1" target="_blank" style="color: var(--accent-color); text-decoration: underline;">$1</a>');
+            // >>数字 をアンカーリンクに変換
+            formatted = formatted.replace(/&gt;&gt;(\d+)|>>(\d+)/g, (match, p1, p2) => {
+                const num = p1 || p2;
+                return `<a href="#post-${num}" class="post-anchor">&gt;&gt;${num}</a>`;
+            });
+            return formatted;
+        }
+
+        // サーバー側から届くデータ(ポーリングAPI・投稿直後のレスポンス)は、URLリンク化は既にサーバー側で済んでいるため
+        // ここでURLをもう一度変換すると二重にリンク化されて壊れる。>>アンカーの変換だけ行う。
+        function formatAnchorsOnly(text) {
+            if (!text) return '';
+            return text.replace(/&gt;&gt;(\d+)|>>(\d+)/g, (match, p1, p2) => {
+                const num = p1 || p2;
+                return `<a href="#post-${num}" class="post-anchor">&gt;&gt;${num}</a>`;
             });
         }
 
-        function appendReply(reply) {
-            const noReplies = document.getElementById('noReplies');
-            if (noReplies) {
-                noReplies.remove();
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                let date = new Date();
+                date.setTime(date.getTime() + (days*24*60*60*1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + encodeURIComponent(value) + expires + "; path=/";
+        }
+
+        function getCookie(name) {
+            let nameEQ = name + "=";
+            let ca = document.cookie.split(';');
+            for(let i=0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0)==' ') c = c.substring(1,c.length);
+                if (c.indexOf(nameEQ) == 0) return decodeURIComponent(c.substring(nameEQ.length,c.length));
+            }
+            return null;
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const savedAuthor = getCookie('bbs_saved_author');
+            const authorInput = document.querySelector('input[name="author"]');
+            if (savedAuthor && authorInput) {
+                authorInput.value = savedAuthor;
             }
 
-            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) {
+            // 既存のレスの本文も >>アンカー形式に整形
+            document.querySelectorAll('.post-content').forEach(el => {
+                el.innerHTML = formatContent(el.textContent);
+            });
+
+            forceScrollBottom(true);
+        });
+
+        window.addEventListener('load', () => {
+            forceScrollBottom(true);
+            setTimeout(() => forceScrollBottom(true), 100);
+            setTimeout(() => forceScrollBottom(true), 300);
+            setTimeout(() => { forceScrollBottom(true); updateScrollButtonVisibility(); }, 600);
+        });
+
+        let lastReplyId = 0;
+        document.querySelectorAll('.post-item[data-reply-id]').forEach(el => {
+            const rid = parseInt(el.getAttribute('data-reply-id'), 10);
+            if (rid > lastReplyId) lastReplyId = rid;
+        });
+
+        function appendReply(reply) {
+            if (document.querySelector(`.post-item[data-reply-id="${reply.id}"]`)) {
                 return;
             }
 
-            const currentRepliesCount = scrollArea.querySelectorAll('.reply-card').length;
-            const replyNum = currentRepliesCount + 1;
+            let formattedDate = reply.date || '';
 
-            const card = document.createElement('div');
-            card.className = 'reply-card';
-            card.setAttribute('data-reply-id', reply.id);
+            let contentText = reply.content || '';
+            let formattedContentText = formatAnchorsOnly(contentText);
 
-            let authorStyle = '';
-            if (reply.role === 'admin') {
-                authorStyle = 'color: #f43f5e; font-weight: bold;';
+            let adminStar = '';
+            let roleClass = 'post-name';
+
+            if (reply.role === 'admin' || reply.is_admin) {
+                roleClass = 'role-admin';
+                adminStar = '★';
             } else if (reply.role === 'sub_admin') {
-                authorStyle = 'color: #a855f7; font-weight: bold;';
-            } else if (reply.is_op) {
-                authorStyle = 'color: #10b981; font-weight: bold;';
+                roleClass = 'role-sub-admin';
+                adminStar = '★';
+            } else if (reply.role === 'moderator') {
+                roleClass = 'role-moderator';
+                adminStar = '★';
+            } else if (reply.role === 'pr') {
+                roleClass = 'role-pr';
+            } else if (reply.role === 'proposal') {
+                roleClass = 'role-proposal';
+            } else if (reply.role === 'log') {
+                roleClass = 'role-log';
             }
 
-            let headerHTML = `
-                <div class="reply-header">
-                    <span class="reply-num">${replyNum}</span>
-                    <span class="reply-author" style="${authorStyle}">${escapeHtml(reply.author || '名無しさん')}</span>
-            `;
-
-            if (reply.is_op) {
-                headerHTML += `<span class="badge-op">主</span>`;
-            }
-
-            if (reply.role) {
-                headerHTML += `<span class="badge-role">${escapeHtml(reply.role)}</span>`;
-            }
-
-            headerHTML += `
-                    <span class="reply-id">ID:${escapeHtml(reply.user_id || '???')}</span>
-                    <span class="reply-date">${escapeHtml(reply.date || '')}</span>
-                </div>
-            `;
-
-            let contentHTML = `<div class="reply-content">${reply.content || ''}</div>`;
-
-            let imageHTML = '';
+            let imageHtml = '';
             if (reply.image_url) {
-                imageHTML = `
-                    <a href="${escapeHtml(reply.image_url)}" target="_blank">
-                        <img src="${escapeHtml(reply.image_url)}" class="reply-image" alt="添付画像" loading="lazy">
-                    </a>
+                imageHtml = `<a href="${reply.image_url}" target="_blank"><img src="${reply.image_url}" class="post-image" loading="lazy"></a>`;
+            }
+
+            const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
+            let adminButtonsHtml = '';
+            if (isAdminUser) {
+                adminButtonsHtml = `
+                    <div style="margin-left: auto; display: flex; gap: 4px;">
+                        <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');">
+                            <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                        </form>
+                        <form action="/thread/${threadId}/ban/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                            <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                        </form>
+                    </div>
                 `;
             }
 
-            card.innerHTML = headerHTML + contentHTML + imageHTML;
-            scrollArea.appendChild(card);
+            const currentPostCount = container.querySelectorAll('.post-item').length + 1;
+
+            const newDiv = document.createElement('div');
+            newDiv.className = 'post-item';
+            newDiv.id = `post-${currentPostCount}`;
+            newDiv.setAttribute('data-reply-id', reply.id);
+            newDiv.innerHTML = `
+                <div class="post-meta">
+                    <span class="post-num" onclick="quoteReply(${currentPostCount})">#${currentPostCount}</span>
+                    <span class="${roleClass}">${reply.author}${adminStar}</span>
+                    ${reply.is_op ? '<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>' : ''}
+                    <span>${formattedDate}</span>
+                    <span style="color: var(--text-muted);">ID:${reply.user_id}</span>
+                    ${adminButtonsHtml}
+                </div>
+                <div class="post-content">${formattedContentText}</div>
+                ${imageHtml}
+            `;
+
+            container.appendChild(newDiv);
+            if (reply.id > lastReplyId) lastReplyId = reply.id;
         }
 
-        function escapeHtml(str) {
-            if (!str) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
-        }
-
-        // ==================== リアルタイム自動追加ロジック ====================
-        let lastReplyId = 0;
-        const initialCards = document.querySelectorAll('.reply-card');
-        if (initialCards.length > 0) {
-            lastReplyId = parseInt(initialCards[initialCards.length - 1].getAttribute('data-reply-id')) || 0;
-        }
-
-        setInterval(async () => {
+        async function pollThreadUpdates() {
             try {
-                const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${lastReplyId}`);
-                if (!res.ok) return;
+                const res = await fetch(`/api/thread/${threadId}/updates?last_id=${lastReplyId}`);
                 const data = await res.json();
-                if (data.success && data.replies && data.replies.length > 0) {
-                    data.replies.forEach(reply => {
-                        if (reply.id > lastReplyId) {
-                            lastReplyId = reply.id;
-                        }
-                        appendReply(reply);
-                    });
-                    forceScrollBottom();
+                if (data.replies && data.replies.length > 0) {
+                    data.replies.forEach(appendReply);
+                    if (currentMode === 'realtime') {
+                        forceScrollBottom();
+                    } else {
+                        addUnread(data.replies.length);
+                    }
                 }
-            } catch (e) {
-                console.error('新着取得エラー:', e);
+                const activeEl = document.getElementById('active-count');
+                if (activeEl && typeof data.active_count !== 'undefined') {
+                    activeEl.textContent = data.active_count;
+                }
+            } catch (err) {
+                console.error('更新の取得に失敗しました:', err);
             }
-        }, 2000);
+        }
 
-        // ==================== フォーム送信 (AJAX) ====================
+        setInterval(pollThreadUpdates, 2000);
+
+        const bbsForm = document.getElementById('bbsForm');
         if (bbsForm) {
             bbsForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
 
+                const authorInput = bbsForm.querySelector('input[name="author"]');
+                if (authorInput) {
+                    setCookie('bbs_saved_author', authorInput.value, 365);
+                }
+
                 const formData = new FormData(bbsForm);
-                const submitBtn = document.getElementById('submitBtn');
+                const submitBtn = document.getElementById('submit-btn');
                 
                 if (submitBtn) {
                     submitBtn.disabled = true;
@@ -530,12 +656,8 @@
                         
                         const imageInput = bbsForm.querySelector('input[name="image"]');
                         if (imageInput) imageInput.value = '';
-                        if (fileNameSpan) fileNameSpan.textContent = '画像を選択';
 
                         if (result.reply) {
-                            if (result.reply.id > lastReplyId) {
-                                lastReplyId = result.reply.id;
-                            }
                             appendReply(result.reply);
                             forceScrollBottom();
                         }
@@ -553,6 +675,46 @@
                 }
             });
         }
+
+        // ==================== ここから追加：デザインに影響しないリアルタイム更新 ====================
+        setInterval(async () => {
+            try {
+                // 現在画面にある最後のレスIDを取得
+                let maxId = 0;
+                document.querySelectorAll('.reply-card').forEach(card => {
+                    const id = parseInt(card.getAttribute('data-reply-id')) || 0;
+                    if (id > maxId) maxId = id;
+                });
+
+                // threadIdが定義されていなければURLから取得
+                const currentThreadId = typeof threadId !== 'undefined' ? threadId : window.location.pathname.split('/').pop();
+                
+                // 新着レスを取得
+                const res = await fetch(`/thread/${currentThreadId}/get_new_replies?after_id=${maxId}`);
+                if (!res.ok) return;
+                
+                const data = await res.json();
+                if (data.success && data.replies && data.replies.length > 0) {
+                    data.replies.forEach(reply => {
+                        // すでに表示済みのレスならスキップ（重複防止）
+                        if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
+                        
+                        // お手元の元の appendReply 関数を使って画面に追加
+                        if (typeof appendReply === 'function') {
+                            appendReply(reply);
+                        }
+                    });
+                    
+                    // お手元の元の forceScrollBottom 関数で一番下までスクロール
+                    if (typeof forceScrollBottom === 'function') {
+                        forceScrollBottom();
+                    }
+                }
+            } catch (e) {
+                console.error('リアルタイム更新エラー:', e);
+            }
+        }, 2000);
+        // ==================== ここまで ====================
     </script>
 </body>
 </html>
