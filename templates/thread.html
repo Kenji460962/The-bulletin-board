@@ -31,17 +31,18 @@
             background-color: var(--bg-color); 
             color: var(--text-main);
             font-family: 'Inter', sans-serif; 
+
+
         }
-        
         .header-area { 
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
             width: 100% !important;
-            padding: 10px 24px !important; 
+            padding: 8px 16px !important; 
             background-color: var(--panel-bg); 
             border-bottom: 1px solid var(--border-color); 
-            height: 65px !important; 
+            min-height: 65px !important; /* height固定ではなくmin-heightに変更 */
             box-sizing: border-box !important; 
             display: flex !important;
             flex-direction: column !important;
@@ -49,6 +50,49 @@
             z-index: 10 !important;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
+
+/* タイトル行のレイアウト整列 */
+        .header-title-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+        }
+
+        .header-title-text {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-main);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1; /* 長いタイトルは自動で「...」と省略 */
+            min-width: 0;
+        }
+
+        .header-op-id {
+            font-size: 11px;
+            font-weight: 400;
+            color: var(--text-muted);
+            opacity: 0.7;
+            white-space: nowrap;
+            flex-shrink: 0; /* スレ主IDが潰れないように保持 */
+        }
+
+/* 2行目のサブメニュー行 */
+        .header-sub-row {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 4px;
+            gap: 6px;
+            overflow-x: auto; /* 万が一横幅を超えても折り返さずに横スクロール可能に */
+            white-space: nowrap;
+        }
+        
+       
 
         /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：165pxに調整） */
         .posts-container { 
