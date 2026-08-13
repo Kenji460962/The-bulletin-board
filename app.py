@@ -491,11 +491,22 @@ def index():
     search_query = request.args.get('q', default='', type=str).strip()
 
     try:
-        threads_query = supabase.table('threads').select('*').order('id', desc=True)
         if search_query:
-            threads_query = threads_query.ilike('title', f'%{search_query}%')
-        threads_response = threads_query.range(start_index, end_index).execute()
-        threads = threads_response.data
+            threads = query_d1(
+                "SELECT * FROM threads WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
+                [f"%{search_query}%", per_page, start_index]
+            )
+        else:
+            threads = query_d1(
+                "SELECT * FROM threads ORDER BY id DESC LIMIT ? OFFSET ?",
+                [per_page, start_index]
+            )
+
+
+
+
+
+        
         has_next = len(threads) == per_page
 
         pinned_ids = [4, 3, 2, 1]
