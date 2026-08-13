@@ -773,10 +773,13 @@ def thread_view(thread_id):
         return {"success": False, "error": "書き込み内容が空です。"}, 400
 
     try:
-        thread_res = supabase.table('threads').select('*').eq('id', thread_id).execute()
-        if not thread_res.data:
+        thread_res = query_d1("SELECT * FROM threads WHERE id = ?", [thread_id])
+        if not thread_res:
             return "スレッドが見つかりません", 404
-        thread = thread_res.data[0]
+        thread = thread_res[0]
+        
+        
+        
 
         # Egress対策: 全レスではなく直近300件だけ取得(古いIDから昇順で表示するため一度desc取得してreverse)
         RECENT_REPLIES_LIMIT = 300
