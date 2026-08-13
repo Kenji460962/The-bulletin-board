@@ -50,6 +50,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
+        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：165pxに調整） */
         .posts-container { 
             position: absolute !important;
             top: 65px !important;
@@ -63,6 +64,7 @@
             scroll-behavior: smooth;
         }
 
+        /* スマホ用：入力欄と広告をまとめた固定フッターエリア（165px） */
         .footer-area { 
             position: absolute !important;
             bottom: 0 !important;
@@ -79,6 +81,7 @@
             justify-content: space-between;
         }
 
+        /* 入力欄のすぐ下に配置するスマホ用広告スペース（320x50） */
         .ad-item-sp {
             width: 100%;
             height: 50px;
@@ -92,9 +95,12 @@
         }
 
         .ad-space-pc {
-            display: none;
+            display: none; /* スマホでは非表示 */
         }
 
+        /* ----------------------------------------- */
+        /* PC画面（横幅768px以上）：右側に300x250広告を固定配置 */
+        /* ----------------------------------------- */
         @media (min-width: 768px) {
             .posts-container {
                 right: 330px !important;
@@ -117,7 +123,7 @@
             }
 
             .ad-item-sp {
-                display: none;
+                display: none; /* PCではスマホ用広告を非表示 */
             }
 
             .ad-space-pc {
@@ -148,6 +154,7 @@
         }
         .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         
+        /* 番号リンク（クリックで入力欄に引用） */
         .post-num { 
             font-weight: 700; 
             color: var(--accent-color); 
@@ -158,6 +165,7 @@
             text-decoration: underline; 
         }
 
+        /* >>アンカーのスタイル（色付き・ジャンプ用） */
         .post-anchor {
             color: #f43f5e;
             font-weight: 600;
@@ -170,6 +178,7 @@
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
+        /* 役職ごとの色設定 */
         .post-name { color: var(--text-main) !important; font-weight: 500; }
         .role-admin { color: #f87171 !important; font-weight: 700; }
         .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
@@ -237,322 +246,326 @@
 
     <div class="ad-space-pc">
         <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">スポンサーリンク</div>
-        <div style="width: 300px; height: 250px; background: rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; border-radius: 4px;">
-            <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125" crossorigin="anonymous"></script>
-            <ins class="adsbygoogle" style="display:inline-block;width:300px;height:250px" data-ad-client="ca-pub-3410577348918125" data-ad-slot="1234567890"></ins>
-            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+        <div style="width: 300px; height: 250px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); border-radius: 4px; overflow: hidden;">
+            <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
         </div>
     </div>
 
-    <div class="posts-container" id="posts-container">
-        {% for reply in replies %}
-        {% set outer_loop_index = loop.index %}
-        <div class="post-item" id="post-{{ outer_loop_index }}" data-reply-id="{{ reply.id }}">
+    <div class="posts-container" id="postsContainer">
+        {% for r in thread.replies %}
+        <div class="post-item" id="post-{{ loop.index }}" data-reply-id="{{ r.id }}">
             <div class="post-meta">
-                <span class="post-num" onclick="quoteReply('{{ outer_loop_index }}')">#{{ outer_loop_index }}</span>
-                <span class="post-name {% if reply.role %}role-{{ reply.role }}{% elif reply.is_admin %}role-admin{% endif %}">
-                    {{ reply.author }}
-                </span>
-                <span>{{ reply.date }}</span>
-                <span style="color: var(--text-muted);">ID:{{ reply.user_id }}</span>
+                <span class="post-num" onclick="quoteReply({{ loop.index }})">#{{ loop.index }}</span>
+                
+                {% set role_cls = 'post-name' %}
+                {% if r.role == 'admin' or r.is_admin %}
+                    {% set role_cls = 'role-admin' %}
+                {% elif r.role == 'sub_admin' %}
+                    {% set role_cls = 'role-sub-admin' %}
+                {% elif r.role == 'moderator' %}
+                    {% set role_cls = 'role-moderator' %}
+                {% elif r.role == 'pr' %}
+                    {% set role_cls = 'role-pr' %}
+                {% elif r.role == 'proposal' %}
+                    {% set role_cls = 'role-proposal' %}
+                {% elif r.role == 'log' %}
+                    {% set role_cls = 'role-log' %}
+                {% endif %}
+
+                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                {% if r.is_op %}
+                <span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>
+                {% endif %}
+                <span>{{ r.date }}</span>
+                <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
                 
                 {% if is_admin_user %}
-                <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=reply.id) }}" method="POST" onsubmit="return confirm('このレスを削除しますか？');" style="margin-left: auto;">
-                    <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 1px 4px; font-size: 10px;">削除</button>
-                </form>
+                <div style="margin-left: auto; display: flex; gap: 4px;">
+                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
+                        <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                    </form>
+                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                        <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                    </form>
+                </div>
                 {% endif %}
             </div>
-            <div class="post-content raw-content">{{ reply.content }}</div>
-            {% if reply.image_url %}
-            <div>
-                <a href="{{ reply.image_url }}" target="_blank">
-                    <img src="{{ reply.image_url }}" class="post-image" alt="添付画像">
-                </a>
-            </div>
+            <div class="post-content">{{ r.content | safe }}</div>
+            {% if r.image_url %}
+            <a href="{{ r.image_url }}" target="_blank">
+                <img src="{{ r.image_url }}" class="post-image" loading="lazy">
+            </a>
             {% endif %}
         </div>
         {% endfor %}
     </div>
 
-    <button id="scroll-to-bottom-btn" style="position: fixed; bottom: 180px; right: 20px; z-index: 100; background: var(--accent-color); color: var(--bg-color); border: none; border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.3); cursor: pointer;">
+    <button id="scroll-to-bottom-btn" style="
+        position: fixed;
+        right: 20px;
+        bottom: calc(165px + 14px);
+        z-index: 50;
+        background: var(--accent-color);
+        color: #0f172a;
+        border: none;
+        border-radius: 50%;
+        width: 46px;
+        height: 46px;
+        font-size: 18px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    ">
         ↓
-        <span id="scroll-to-bottom-badge" style="position: absolute; top: -5px; right: -5px; background: var(--danger-color); color: white; font-size: 10px; padding: 2px 6px; border-radius: 10px; display: none; font-weight: bold;">0</span>
+        <span id="scroll-to-bottom-badge" style="
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            background: var(--danger-color);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            min-width: 18px;
+            height: 18px;
+            border-radius: 9px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            box-sizing: border-box;
+        ">0</span>
     </button>
 
     <div class="footer-area">
-        <div class="ad-item-sp">
-            <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125" crossorigin="anonymous"></script>
-            <ins class="adsbygoogle" style="display:inline-block;width:320px;height:50px" data-ad-client="ca-pub-3410577348918125" data-ad-slot="0987654321"></ins>
-            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
-        </div>
-
-        <form id="bbsForm" action="{{ url_for('post_reply', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0; display: flex; flex-direction: column; gap: 4px;">
-            <div style="display: flex; gap: 6px; align-items: center;">
-                <input type="text" name="author" placeholder="名前 (省略可)" style="width: 120px; font-size: 13px;" value="{{ session.get('default_author', '') }}">
-                <input type="file" name="image" accept="image/*" style="font-size: 11px; color: var(--text-muted); width: 180px;">
-                {% if is_admin_user %}
-                <label style="font-size: 11px; display: flex; align-items: center; gap: 2px; color: var(--accent-color); cursor: pointer;">
-                    <input type="checkbox" name="post_as_admin" value="1" {% if session.get('post_as_admin_default') %}checked{% endif %}> 管理者として投稿
-                </label>
-                {% endif %}
-                <button type="submit" id="submit-btn" style="background-color: var(--accent-color); color: var(--bg-color); border: none; padding: 5px 14px; font-size: 13px; margin-left: auto;">書き込む</button>
+        <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
+                <label style="font-size: 11px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 11px;" value="名無しさん"></label>
+                <label style="font-size: 11px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
+                <button type="submit" id="submit-btn" style="font-size: 11px; padding: 3px 12px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
             </div>
-            <textarea name="content" rows="2" placeholder="本文を入力..." style="resize: none; font-size: 13px; width: 100%; box-sizing: border-box;" required></textarea>
+            <div>
+                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
+            </div>
         </form>
+
+        <div class="ad-item-sp">
+            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+            </div>
+        </div>
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const threadId = {{ thread.id }};
-            const container = document.getElementById('posts-container');
-            const bottomBtn = document.getElementById('scroll-to-bottom-btn');
-            const badge = document.getElementById('scroll-to-bottom-badge');
-            const btnView = document.getElementById('mode-btn-view');
-            const btnRealtime = document.getElementById('mode-btn-realtime');
+    document.addEventListener('DOMContentLoaded', () => {
+        const threadId = {{ thread.id }};
+        const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
 
-            let currentMode = 'realtime'; // 初期モードはリアルタイム
-            let unreadCount = 0;
-            let pollingTimer = null;
+        let currentMode = 'realtime'; // 初期モード: リアルタイム
+        let pollingTimer = null;
 
-            // テキスト内の >>数字 をクリック可能なアンカーリンクに置換する共通関数
-            function formatAnchors(text) {
-                if (!text) return '';
-                // エスケープ済みの &gt;&gt; または直接の >> に対応
-                return text.replace(
-                    /(&gt;&gt;|>>)(\d+)/g,
-                    (match, prefix, num) => `<a href="#post-${num}" class="post-anchor" onclick="scrollToPost(${num}); return false;">&gt;&gt;${num}</a>`
-                );
+        const btnView = document.getElementById('mode-btn-view');
+        const btnRealtime = document.getElementById('mode-btn-realtime');
+
+        // モード切り替えとボタンデザインの更新
+        function setMode(mode) {
+            currentMode = mode;
+            if (mode === 'realtime') {
+                if (btnRealtime) {
+                    btnRealtime.style.background = '#0284c7';
+                    btnRealtime.style.color = '#ffffff';
+                    btnRealtime.style.fontWeight = 'bold';
+                }
+                if (btnView) {
+                    btnView.style.background = 'transparent';
+                    btnView.style.color = 'var(--text-main)';
+                    btnView.style.fontWeight = 'normal';
+                }
+                startPolling();
+            } else {
+                if (btnView) {
+                    btnView.style.background = '#0284c7';
+                    btnView.style.color = '#ffffff';
+                    btnView.style.fontWeight = 'bold';
+                }
+                if (btnRealtime) {
+                    btnRealtime.style.background = 'transparent';
+                    btnRealtime.style.color = 'var(--text-main)';
+                    btnRealtime.style.fontWeight = 'normal';
+                }
+                stopPolling();
             }
+        }
 
-            // ページロード時の既存レスのテキストをアンカーリンク化
-            document.querySelectorAll('.raw-content').forEach(el => {
-                el.innerHTML = formatAnchors(el.textContent);
-                el.classList.remove('raw-content');
+        if (btnView) btnView.addEventListener('click', () => setMode('view'));
+        if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
+
+        // 初期表示設定
+        setMode('realtime');
+
+        // 2秒ごとの定期取得（ページリロードなし）
+        function startPolling() {
+            if (pollingTimer) clearInterval(pollingTimer);
+            pollingTimer = setInterval(fetchNewReplies, 2000);
+        }
+
+        function stopPolling() {
+            if (pollingTimer) {
+                clearInterval(pollingTimer);
+                pollingTimer = null;
+            }
+        }
+
+        // バックグラウンドで新着レスを取得して画面に追加
+        async function fetchNewReplies() {
+            if (currentMode !== 'realtime') return;
+
+            let maxId = 0;
+            document.querySelectorAll('.post-item').forEach(el => {
+                const id = parseInt(el.getAttribute('data-reply-id')) || 0;
+                if (id > maxId) maxId = id;
             });
 
-            // モード切り替え処理
-            function setMode(mode) {
-                currentMode = mode;
-                if (mode === 'realtime') {
-                    if (btnRealtime) { btnRealtime.style.background = 'var(--accent-color)'; btnRealtime.style.color = 'var(--bg-color)'; }
-                    if (btnView) { btnView.style.background = 'transparent'; btnView.style.color = 'var(--text-main)'; }
-                    unreadCount = 0;
-                    updateBadge();
-                    scrollToBottom();
-                    startPolling();
-                } else {
-                    if (btnView) { btnView.style.background = 'var(--accent-color)'; btnView.style.color = 'var(--bg-color)'; }
-                    if (btnRealtime) { btnRealtime.style.background = 'transparent'; btnRealtime.style.color = 'var(--text-main)'; }
-                    stopPolling();
+            try {
+                const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${maxId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+
+                if (data.success && data.replies && data.replies.length > 0) {
+                    let added = false;
+                    data.replies.forEach(reply => {
+                        if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
+                            appendReply(reply);
+                            added = true;
+                        }
+                    });
+                    if (added && currentMode === 'realtime') {
+                        scrollToBottom();
+                    }
                 }
+            } catch (e) {
+                console.error('新着レス取得エラー:', e);
+            }
+        }
+
+        // JSで動的に追加される要素も元のCSSデザイン（.post-item / .post-meta / .post-content）と完全に同じHTML構造で生成
+        function appendReply(reply) {
+            const container = document.getElementById('postsContainer');
+            if (!container) return;
+
+            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
+
+            const replyCount = container.querySelectorAll('.post-item').length + 1;
+
+            const replyDiv = document.createElement('div');
+            replyDiv.className = 'post-item';
+            replyDiv.id = `post-${replyCount}`;
+            replyDiv.setAttribute('data-reply-id', reply.id);
+
+            let roleCls = 'post-name';
+            if (reply.role === 'admin' || reply.is_admin) {
+                roleCls = 'role-admin';
+            } else if (reply.role === 'sub_admin') {
+                roleCls = 'role-sub-admin';
+            } else if (reply.role === 'moderator') {
+                roleCls = 'role-moderator';
+            } else if (reply.role === 'pr') {
+                roleCls = 'role-pr';
+            } else if (reply.role === 'proposal') {
+                roleCls = 'role-proposal';
+            } else if (reply.role === 'log') {
+                roleCls = 'role-log';
             }
 
-            if (btnView) btnView.addEventListener('click', () => setMode('view'));
-            if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
+            const starHtml = (reply.is_admin || ['admin', 'sub_admin', 'moderator'].includes(reply.role)) ? '★' : '';
+            const opHtml = reply.is_op ? `<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>` : '';
 
-            // 初期起動はリアルタイムモード
-            setMode('realtime');
-
-            function startPolling() {
-                if (pollingTimer) clearInterval(pollingTimer);
-                pollingTimer = setInterval(fetchNewReplies, 2000);
+            let imgHtml = '';
+            if (reply.image_url) {
+                imgHtml = `
+                    <a href="${reply.image_url}" target="_blank">
+                        <img src="${reply.image_url}" class="post-image" loading="lazy">
+                    </a>
+                `;
             }
 
-            function stopPolling() {
-                if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null; }
+            let adminBtns = '';
+            if (isAdminUser) {
+                adminBtns = `
+                    <div style="margin-left: auto; display: flex; gap: 4px;">
+                        <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');" style="margin:0;">
+                            <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                        </form>
+                        <form action="/ban_user/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
+                            <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                        </form>
+                    </div>
+                `;
             }
 
-            // ユーザーが一番下にいるか判定（下から80px以内）
-            function isAtBottom() {
-                if (!container) return true;
-                return (container.scrollHeight - container.scrollTop - container.clientHeight) < 80;
+            replyDiv.innerHTML = `
+                <div class="post-meta">
+                    <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
+                    <span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>
+                    ${opHtml}
+                    <span>${reply.date || ''}</span>
+                    <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
+                    ${adminBtns}
+                </div>
+                <div class="post-content">${reply.content}</div>
+                ${imgHtml}
+            `;
+
+            container.appendChild(replyDiv);
+        }
+
+        function scrollToBottom() {
+            const container = document.getElementById('postsContainer');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
             }
+        }
 
-            function scrollToBottom() {
-                if (container) {
-                    container.scrollTop = container.scrollHeight;
-                }
-            }
+        // フォーム送信（非同期投稿）
+        const bbsForm = document.getElementById('bbsForm');
+        if (bbsForm) {
+            bbsForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
 
-            function updateBadge() {
-                if (!badge) return;
-                if (unreadCount > 0) {
-                    badge.style.display = 'inline-block';
-                    badge.textContent = unreadCount;
-                } else {
-                    badge.style.display = 'none';
-                }
-            }
+                const submitBtn = document.getElementById('submit-btn');
+                if (submitBtn) submitBtn.disabled = true;
 
-            // 一番下へ行くボタンを押したときの処理
-            if (bottomBtn) {
-                bottomBtn.addEventListener('click', () => {
-                    scrollToBottom();
-                    unreadCount = 0;
-                    updateBadge();
-                });
-            }
-
-            // 新着レス取得ポーリング
-            async function fetchNewReplies() {
-                let maxId = 0;
-                document.querySelectorAll('.post-item').forEach(el => {
-                    const id = parseInt(el.getAttribute('data-reply-id')) || 0;
-                    if (id > maxId) maxId = id;
-                });
-
+                const formData = new FormData(bbsForm);
                 try {
-                    const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${maxId}`);
-                    if (!res.ok) return;
+                    const res = await fetch(bbsForm.action, {
+                        method: 'POST',
+                        body: formData
+                    });
                     const data = await res.json();
 
-                    if (data.success && data.replies && data.replies.length > 0) {
-                        let addedCount = 0;
-                        data.replies.forEach(reply => {
-                            if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
-                                appendReply(reply);
-                                addedCount++;
-                            }
-                        });
+                    if (data.success && data.reply) {
+                        appendReply(data.reply);
 
-                        if (addedCount > 0) {
-                            if (currentMode === 'realtime') {
-                                // リアルタイムモードかつ、自分がすでに一番下にいる場合のみ自動スクロール
-                                if (isAtBottom()) {
-                                    scrollToBottom();
-                                } else {
-                                    // 上を見ているときは強制スクロールせず、未読を増やす
-                                    unreadCount += addedCount;
-                                    updateBadge();
-                                }
-                            } else {
-                                // 閲覧専用モードのときは絶対に自動スクロールせず、未読を増やす
-                                unreadCount += addedCount;
-                                updateBadge();
-                            }
-                        }
+                        const contentInput = bbsForm.querySelector('textarea[name="content"]');
+                        if (contentInput) contentInput.value = '';
+
+                        const fileInput = bbsForm.querySelector('input[type="file"]');
+                        if (fileInput) fileInput.value = '';
+
+                        scrollToBottom();
+                    } else {
+                        alert(data.error || '投稿に失敗しました。');
                     }
-                } catch (e) {
-                    console.error('新着取得エラー:', e);
+                } catch (err) {
+                    console.error('投稿エラー:', err);
+                    alert('投稿中にエラーが発生しました。');
+                } finally {
+                    if (submitBtn) submitBtn.disabled = false;
                 }
-            }
-
-            // 新着レスをDOMに追加する関数
-            function appendReply(reply) {
-                if (!container) return;
-                if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
-
-                const replyCount = container.querySelectorAll('.post-item').length + 1;
-                const replyDiv = document.createElement('div');
-                replyDiv.className = 'post-item';
-                replyDiv.id = `post-${replyCount}`;
-                replyDiv.setAttribute('data-reply-id', reply.id);
-
-                let roleClass = '';
-                if (reply.role) {
-                    roleClass = `role-${reply.role}`;
-                } else if (reply.is_admin) {
-                    roleClass = 'role-admin';
-                }
-
-                let adminDeleteHtml = '';
-                {% if is_admin_user %}
-                adminDeleteHtml = `
-                    <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('このレスを削除しますか？');" style="margin-left: auto;">
-                        <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 1px 4px; font-size: 10px;">削除</button>
-                    </form>
-                `;
-                {% endif %}
-
-                let imageHtml = '';
-                if (reply.image_url) {
-                    imageHtml = `
-                        <div>
-                            <a href="${reply.image_url}" target="_blank">
-                                <img src="${reply.image_url}" class="post-image" alt="添付画像">
-                            </a>
-                        </div>
-                    `;
-                }
-
-                // 投稿内容の >>数字 をアンカーリンクに変換
-                const formattedContent = formatAnchors(reply.content || '');
-
-                replyDiv.innerHTML = `
-                    <div class="post-meta">
-                        <span class="post-num" onclick="quoteReply('${replyCount}')">#${replyCount}</span>
-                        <span class="post-name ${roleClass}">${reply.author || '名無しさん'}</span>
-                        <span>${reply.date || ''}</span>
-                        <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
-                        ${adminDeleteHtml}
-                    </div>
-                    <div class="post-content">${formattedContent}</div>
-                    ${imageHtml}
-                `;
-
-                container.appendChild(replyDiv);
-            }
-
-            // フォーム送信（非同期投稿）
-            const bbsForm = document.getElementById('bbsForm');
-            if (bbsForm) {
-                bbsForm.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-
-                    const submitBtn = document.getElementById('submit-btn');
-                    if (submitBtn) submitBtn.disabled = true;
-
-                    const formData = new FormData(bbsForm);
-                    try {
-                        const res = await fetch(bbsForm.action, {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const data = await res.json();
-
-                        if (data.success && data.reply) {
-                            appendReply(data.reply);
-
-                            const contentInput = bbsForm.querySelector('textarea[name="content"]');
-                            if (contentInput) contentInput.value = '';
-
-                            const fileInput = bbsForm.querySelector('input[type="file"]');
-                            if (fileInput) fileInput.value = '';
-
-                            // 自分が投稿したときは強制的に一番下へ行く
-                            scrollToBottom();
-                            unreadCount = 0;
-                            updateBadge();
-                        } else {
-                            alert(data.error || '投稿に失敗しました。');
-                        }
-                    } catch (err) {
-                        console.error('投稿エラー:', err);
-                        alert('投稿中にエラーが発生しました。');
-                    } finally {
-                        if (submitBtn) submitBtn.disabled = false;
-                    }
-                });
-            }
-        });
-
-        // 外部から呼び出されるジャンプ関数・引用関数
-        function scrollToPost(num) {
-            const target = document.getElementById(`post-${num}`);
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                target.style.background = 'rgba(56, 189, 248, 0.2)';
-                setTimeout(() => { target.style.background = ''; }, 1500);
-            }
+            });
         }
-
-        function quoteReply(num) {
-            const textarea = document.querySelector('textarea[name="content"]');
-            if (textarea) {
-                textarea.value += `>>${num}\n`;
-                textarea.focus();
-            }
-        }
+    });
     </script>
 </body>
 </html>
