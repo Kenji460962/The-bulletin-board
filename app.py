@@ -645,11 +645,19 @@ def create_thread():
     LAST_THREAD_TIMES[client_ip] = now 
     
     try:
-        response = supabase.table('threads').insert({
-            'title': title,
-            'ip_address': client_ip
-        }).execute()
-        new_thread = response.data[0] if response.data else None
+        query_d1(
+            "INSERT INTO threads (title, ip_address) VALUES (?, ?)",
+            [title, client_ip]
+        )
+        # 追加された最新のスレッドを取得
+        res = query_d1("SELECT * FROM threads ORDER BY id DESC LIMIT 1")
+        new_thread = res[0] if res else None
+
+
+
+
+
+        
     except Exception as e:
         print(f"スレッド作成エラー: {e}")
         return {"error": "データベースエラーが発生しました"}, 500
