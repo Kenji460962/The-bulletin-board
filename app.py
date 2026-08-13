@@ -785,6 +785,67 @@ def ban_thread_owner(thread_id):
         print(f"スレッドオーナーBANエラー: {e}")
         return f"エラーが発生しました: {e}", 500
 
+
+@app.route('/thread/<int:thread_id>/get_new_replies')
+def get_new_replies(thread_id):
+    try:
+        after_id = request.args.get('after_id', default=0, type=int)
+        
+        # 新着レスをデータベースから取得
+        replies = query_d1(
+            "SELECT * FROM replies WHERE thread_id = ? AND id > ? ORDER BY id ASC",
+            [thread_id, after_id]
+        )
+        if not replies:
+            replies = []
+
+        # スレ主の user_id を取得
+        op_user_id = None
+        try:
+            op_res = query_d1("SELECT user_id FROM threads WHERE id = ?", [thread_id])
+            if op_res and len(op_res) > 0:
+                op_user_id = op_res[0].get('user_id')
+        except Exception:
+            pass
+
+        formatted_replies = []
+        for r in replies:
+            reply_dict = dict(r)
+            
+            # 日時フォーマット (JST変換)
+            if reply_dict.get('date'):
+                try:
+                    raw_date = str(reply_dict['date']).replace('Z', '+00:00')
+                    dt_utc = datetime.fromisoformat(raw_date)
+                    dt_jst = dt_utc + timedelta(hours=9)
+                    reply_dict['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
+            
+            # URL自動リンク化
+            if reply_dict.get('content'):
+                try:
+                    reply_dict['content'] = re.sub(
+                        r'(https?://[^\s<>]+)',
+                        r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>',
+                        str(reply_dict['content'])
+                    )
+                except Exception:
+                    pass
+
+            # スレ主判定
+            reply_dict['is_op'] = bool(op_user_id and reply_dict.get('user_id') == op_user_id)
+
+            formatted_replies.append(reply_dict)
+
+        return {"success": True, "replies": formatted_replies}, 200
+
+    except Exception as e:
+        print(f"新着取得エラー: {e}")
+        return {"success": False, "error": "取得エラー", "replies": []}, 200
+
+
+
 @app.route('/server_metrics')
 def server_metrics():
     if not can_manage_board():
