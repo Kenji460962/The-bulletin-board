@@ -892,21 +892,17 @@ def ban_thread_owner(thread_id):
     if not can_manage_board():
         return "権限がありません", 403
     try:
-        thread_res = supabase.table('threads').select('ip_address').eq('id', thread_id).execute()
-        if thread_res.data and thread_res.data[0].get('ip_address'):
-            owner_ip = thread_res.data[0]['ip_address']
-            supabase.table('banned_ips').insert({'ip_address': owner_ip}).execute()
-                
-        supabase.table('threads').update({'title': '【このスレッドは管理員によってBANされました】'}).eq('id', thread_id).execute()
-        supabase.table('replies').delete().eq('thread_id', thread_id).execute()
-        supabase.table('replies').insert({
-            'thread_id': thread_id,
-            'author': 'あぼーん',
-            'content': 'このスレッドの作成者はBANされました。',
-            'user_id': '???',
-            'is_admin': False,
-            'image_url': ''
-        }).execute()
+        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+        if thread_res and thread_res[0].get('ip_address'):
+            owner_ip = thread_res[0]['ip_address']
+            query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [owner_ip])
+            query_d1("UPDATE threads SET title = ? WHERE id = ?", ['【このスレッドは管理員によってBANされました】', thread_id])
+            query_d1("DELETE FROM replies WHERE thread_id = ?", [thread_id])
+            query_d1(
+                """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                [thread_id, 'あぼーん', 'このスレッドの作成者はBANされました。', '???', 0, None, '', owner_ip]
+            )
     except Exception as e:
         return f"【スレ主BAN失敗】エラーの原因: {e}", 500
     return redirect(url_for('index'))
