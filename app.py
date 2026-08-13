@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, make_response, session
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import html
 import os
@@ -633,9 +633,12 @@ def thread_view(thread_id):
             return "スレッドが見つかりません", 404
         thread = thread_res.data[0]
 
-        replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=False).execute()
+        # Egress対策: 全レスではなく直近300件だけ取得(古いIDから昇順で表示するため一度desc取得してreverse)
+        RECENT_REPLIES_LIMIT = 300
+        replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=True).limit(RECENT_REPLIES_LIMIT).execute()
+        recent_replies = list(reversed(replies_res.data)) if replies_res.data else []
 
-        thread['replies'] = replies_res.data
+        thread['replies'] = recent_replies
         for r in thread['replies']:
             if r.get('date'):
                 dt_utc = datetime.fromisoformat(r['date'].replace('Z', '+00:00'))
@@ -823,25 +826,6 @@ def thread_updates(thread_id):
         "is_admin_user": is_admin_user, 
         "active_count": active_count
     }
-
-
-def cleanup_expired_rooms():
-    """5分以上更新がない部屋と、終了(finished)した部屋を削除する"""
-    try:
-        # 5分前の現在時刻 (UTC)
-        five_minutes_ago = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
-
-        # オセロ部屋 (othello_games) のクリーンアップ
-        supabase.table('othello_games').delete().lt('updated_at', five_minutes_ago).execute()
-        
-
-        # チェス部屋 (chess_games) のクリーンアップ
-        supabase.table('chess_games').delete().lt('updated_at', five_minutes_ago).execute()
-        
-    except Exception as e:
-        print(f"クリーンアップエラー: {e}")
-
-
 
 # ==================== オンラインオセロ ====================
 
