@@ -540,8 +540,12 @@ def index():
         reply_counts = {}
         if all_thread_ids:
             try:
-                counts_res = supabase.rpc('get_reply_counts', {'thread_ids': all_thread_ids}).execute()
-                for row in (counts_res.data or []):
+                placeholders = ','.join(['?'] * len(all_thread_ids))
+                counts_res = query_d1(
+                    f"SELECT thread_id, COUNT(*) as reply_count FROM replies WHERE thread_id IN ({placeholders}) GROUP BY thread_id",
+                    all_thread_ids
+                )
+                for row in (counts_res or []):
                     reply_counts[row['thread_id']] = row['reply_count']
             except Exception as re:
                 print(f"レス数取得エラー: {re}")
