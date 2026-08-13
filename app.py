@@ -783,8 +783,14 @@ def thread_view(thread_id):
 
         # Egress対策: 全レスではなく直近300件だけ取得(古いIDから昇順で表示するため一度desc取得してreverse)
         RECENT_REPLIES_LIMIT = 300
-        replies_res = supabase.table('replies').select('*').eq('thread_id', thread_id).order('id', desc=True).limit(RECENT_REPLIES_LIMIT).execute()
-        recent_replies = list(reversed(replies_res.data)) if replies_res.data else []
+
+        # SQLiteは昇順でLIMIT取得してから反転させるか、サブクエリを使います
+        replies_res = query_d1(
+            "SELECT * FROM (SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC",
+            [thread_id, RECENT_REPLIES_LIMIT]
+        )
+        recent_replies = replies_res if replies_res else []
+
 
         thread['replies'] = recent_replies
         for r in thread['replies']:
