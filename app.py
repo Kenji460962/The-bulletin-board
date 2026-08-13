@@ -523,9 +523,11 @@ def index():
                 if any(int(pt['id']) == pid for pt in pinned_threads):
                     continue
                 try:
-                    pinned_res = supabase.table('threads').select('*').eq('id', pid).execute()
-                    if pinned_res.data:
-                        pinned_threads.append(pinned_res.data[0])
+                    pinned_res = query_d1("SELECT * FROM threads WHERE id = ?", [pid])
+                    if pinned_res:
+                        pinned_threads.append(pinned_res[0])
+                    
+                
                 except Exception as pe:
                     print(f"固定スレッド取得エラー: {pe}")
 
