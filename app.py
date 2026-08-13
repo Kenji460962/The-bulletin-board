@@ -612,7 +612,7 @@ def update_admin_message():
     message = request.form.get('message')
     if message:
         try:
-            supabase.table('admin_messages').update({'message': message}).eq('id', 1).execute()
+            query_d1("UPDATE admin_messages SET message = ? WHERE id = ?", [message, 1])
         except Exception as e:
             print(f"メッセージ更新エラー: {e}")
     return redirect(url_for('index'))
