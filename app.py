@@ -326,6 +326,45 @@ def admin_migrate_data_run_once():
 
 
 ##########################
+@app.route('/manual_archive', methods=['GET'])
+def manual_archive():
+    """Supabaseの全スレッド・全レスをJSON形式にまとめ、Cloudflare R2にアーカイブとして保存する"""
+    if not can_manage_board():
+        return "権限がありません（管理者ログインが必要です）", 403
+
+    try:
+        # 1. Supabaseからすべてのスレッドとレスを取得
+        threads_res = supabase.table('threads').select('*').execute()
+        replies_res = supabase.table('replies').select('*').execute()
+
+        # 2. JSON構造にまとめる
+        archive_data = {
+            "version": 1,
+            "archived_at": datetime.utcnow().isoformat(),
+            "threads": threads_res.data,
+            "replies": replies_res.data
+        }
+
+        # 3. JSON文字列にシリアライズ（日本語が文字化けしないように ensure_ascii=False）
+        json_string = json.dumps(archive_data, ensure_ascii=False, indent=2)
+
+        # 4. R2に保存するファイル名（例: archives/bbs_data_20260606.json）
+        filename = f"archives/bbs_data_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+
+        # 5. Cloudflare R2へアップロード
+        s3_client.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=filename,
+            Body=json_string.encode('utf-8'),
+            ContentType='application/json'
+        )
+
+        return f"成功！全データをJSONにまとめてR2に保存しました。<br>保存先キー: <code>{filename}</code>"
+    
+    except Exception as e:
+        print(f"JSONアーカイブエラー: {e}")
+        return f"エラーが発生しました: {str(e)}", 500
+
 
 
 
