@@ -371,14 +371,16 @@ def staff_login():
         username = request.form.get('username')
         password = request.form.get('password')
         try:
-            res = supabase.table('staff_users').select('*').eq('username', username).execute()
-            if res.data:
-                user = res.data[0]
+            res = query_d1("SELECT * FROM staff_users WHERE username = ?", [username])
+            if res:
+                user = res[0]
                 if user['password'] == password: 
                     session['staff_id'] = user['id']
                     session['staff_role'] = user['role']
                     session['staff_name'] = user['display_name']
                     return redirect(url_for('index'))
+
+        
         except Exception as e:
             print(f"Login error: {e}")
         return "ログイン失敗", 401
