@@ -684,13 +684,14 @@ def thread_view(thread_id):
             return "スレッドが見つかりません", 404
         thread = thread_res[0]
 
-        RECENT_REPLIES_LIMIT = 300
+
+
         replies_res = query_d1(
-            "SELECT * FROM (SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT ?) ORDER BY id ASC",
-            [thread_id, RECENT_REPLIES_LIMIT]
+            "SELECT * FROM replies WHERE thread_id = ? ORDER BY id ASC",
+            [thread_id]
         )
-        recent_replies = replies_res if replies_res else []
-        thread['replies'] = recent_replies
+        thread['replies'] = replies_res if replies_res else []
+        
         
 
         for r in thread['replies']:
