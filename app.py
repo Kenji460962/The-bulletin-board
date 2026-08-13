@@ -842,7 +842,7 @@ def delete_thread(thread_id):
     if not can_manage_board():
         return "権限がありません", 403
     try:
-        supabase.table('threads').delete().eq('id', thread_id).execute()
+        query_d1("DELETE FROM threads WHERE id = ?", [thread_id])
     except Exception as e:
         print(f"スレッド削除エラー: {e}")
     return redirect(url_for('index'))
