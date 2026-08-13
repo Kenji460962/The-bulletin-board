@@ -852,13 +852,13 @@ def delete_reply(thread_id, reply_id):
     if not can_manage_board():
         return "権限がありません", 403
     try:
-        supabase.table('replies').update({
-            'author': 'あぼーん',
-            'content': 'この書き込みは管理員によって削除されました。',
-            'user_id': '???',
-            'is_admin': False,
-            'image_url': ''
-        }).eq('id', reply_id).execute()
+        query_d1(
+            """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
+               WHERE id = ?""",
+            ['あぼーん', 'この書き込みは管理員によって削除されました。', '???', 0, '', reply_id]
+        )
+
+    
     except Exception as e:
         print(f"レス削除エラー: {e}")
     return redirect(url_for('thread_view', thread_id=thread_id))
