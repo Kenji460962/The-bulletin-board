@@ -684,49 +684,84 @@
             container.appendChild(replyDiv);
         }
 
-        // 過去レスの追加読み込み（300件ずつ。件数制限ではなく分割取得）
+        // 過去レスの追加読み込み（300件ずつ）
         const loadOlderBtn = document.getElementById('load-older-btn');
         const loadOlderWrap = document.getElementById('load-older-wrap');
         let loadingOlder = false;
-        if (loadOlderBtn && loadOlderWrap) {
-            loadOlderBtn.addEventListener('click', async () => {
+
+        if (loadOlderBtn && loadOlderWrap && container) {
+            loadOlderBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
                 if (loadingOlder) return;
-                const beforeId = parseInt(loadOlderWrap.dataset.oldestLoadedId || '0');
+
+                const beforeId = parseInt(loadOlderWrap.getAttribute('data-oldest-loaded-id') || '0', 10);
                 if (!beforeId) return;
+
                 loadingOlder = true;
                 loadOlderBtn.disabled = true;
+                loadOlderBtn.style.opacity = '0.6';
+
+                // 追加前の位置を保存。過去レスを上に追加しても読んでいた場所を維持する。
                 const oldScrollHeight = container.scrollHeight;
                 const oldScrollTop = container.scrollTop;
+
                 try {
-                    const res = await fetch(`/thread/${threadId}/get_older_replies?before_id=${beforeId}`);
+                    const res = await fetch(
+                        `/thread/${threadId}/get_older_replies?before_id=${encodeURIComponent(beforeId)}`,
+                        { method: 'GET', cache: 'no-store' }
+                    );
+
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
                     const data = await res.json();
-                    const replies = data.replies || [];
-                    if (replies.length) {
-                        const fragment = document.createDocumentFragment();
-                        replies.forEach(reply => {
-                            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
-                            // appendReplyは末尾に追加するため、一旦DOMを生成して先頭へ移動
-                            const beforeCount = container.querySelectorAll('.post-item').length;
+                    const replies = Array.isArray(data.replies) ? data.replies : [];
+
+                    if (replies.length > 0) {
+                        // 先頭に追加するための要素を先に生成
+                        const newElements = [];
+                        for (const reply of replies) {
+                            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) continue;
+
                             appendReply(reply);
-                            const el = container.lastElementChild;
-                            if (el && el.classList.contains('post-item')) fragment.appendChild(el);
-                        });
-                        const firstPost = container.querySelector('.post-item');
-                        if (firstPost) replies.slice().reverse().forEach(reply => {
+
+                            // appendReplyは末尾へ追加するので、追加した要素を取得して移動する
                             const el = container.querySelector(`[data-reply-id="${reply.id}"]`);
-                            if (el) container.insertBefore(el, firstPost);
-                        });
-                        loadOlderWrap.dataset.oldestLoadedId = replies[0].id;
+                            if (el) newElements.push(el);
+                        }
+
+                        const firstPost = container.querySelector('.post-item');
+
+                        if (firstPost && newElements.length) {
+                            // repliesは古い→新しい順なので、この順番のまま先頭へ挿入
+                            const frag = document.createDocumentFragment();
+                            newElements.forEach(el => frag.appendChild(el));
+                            container.insertBefore(frag, firstPost);
+                        }
+
+                        // 次回は今回追加した中で最も古いレスを基準にする
+                        const oldestReply = replies[0];
+                        if (oldestReply && oldestReply.id) {
+                            loadOlderWrap.setAttribute('data-oldest-loaded-id', String(oldestReply.id));
+                        }
+
+                        // 追加前と同じレスを画面上の位置に保つ
                         container.scrollTop = oldScrollTop + (container.scrollHeight - oldScrollHeight);
                     }
-                    if (!data.has_more || !replies.length) {
+
+                    // サーバーがまだ過去レスを持っている限り、ボタンは絶対に消さない
+                    if (!data.has_more) {
+                        loadOlderBtn.remove();
                         loadOlderWrap.remove();
                     }
-                } catch (e) {
-                    console.error('過去レス取得エラー:', e);
+                } catch (err) {
+                    console.error('過去レス取得エラー:', err);
+                    // エラー時はボタンを残して再試行できるようにする
                 } finally {
                     loadingOlder = false;
-                    if (document.body.contains(loadOlderBtn)) loadOlderBtn.disabled = false;
+                    if (document.body.contains(loadOlderBtn)) {
+                        loadOlderBtn.disabled = false;
+                        loadOlderBtn.style.opacity = '1';
+                    }
                 }
             });
         }
