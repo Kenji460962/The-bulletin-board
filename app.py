@@ -496,6 +496,50 @@ def archive_view(thread_id):
 ARCHIVE_SECRET = os.environ.get('ARCHIVE_SECRET')
 ARCHIVE_PINNED_IDS = [1, 2, 3, 4]
 
+@app.route('/internal/rebuild-archive-index', methods=['POST'])
+def rebuild_archive_index():
+    # R2に実在するJSONから、D1の索引テーブル(archived_threads_index)を作り直す
+    if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
+        return {"error": "unauthorized"}, 403
+
+    rebuilt = []
+    errors = []
+
+    try:
+        paginator = s3_client.get_paginator('list_objects_v2')
+        keys = []
+        for page in paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='archive/'):
+            for obj in page.get('Contents', []):
+                if obj['Key'].endswith('.json'):
+                    keys.append(obj['Key'])
+    except Exception as e:
+        return {"error": f"R2一覧の取得に失敗しました: {e}"}, 500
+
+    for key in keys:
+        try:
+            m = re.search(r'thread_(\d+)\.json$', key)
+            if not m:
+                continue
+            tid = int(m.group(1))
+
+            obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+            payload = json.loads(obj['Body'].read().decode('utf-8'))
+
+            title = payload.get('thread', {}).get('title', '(無題)')
+            reply_count = len(payload.get('replies', []))
+            archived_at = payload.get('archived_at') or datetime.utcnow().isoformat()
+
+            query_d1(
+                "INSERT OR REPLACE INTO archived_threads_index (thread_id, title, reply_count, archived_at) VALUES (?, ?, ?, ?)",
+                [tid, title, reply_count, archived_at]
+            )
+            rebuilt.append(tid)
+        except Exception as e:
+            errors.append({"key": key, "error": str(e)})
+            print(f"索引再構築エラー({key}): {e}")
+
+    return {"rebuilt_count": len(rebuilt), "rebuilt_thread_ids": rebuilt, "errors": errors}
+
 @app.route('/internal/archive-old-threads', methods=['POST'])
 def archive_old_threads():
     if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
