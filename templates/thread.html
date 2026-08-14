@@ -616,7 +616,8 @@
                 `;
             }
 
-            const formattedContent = formatAnchors(reply.content || '');
+            // サーバー側(get_new_replies)で既にURL/アンカーとも変換済みなので、ここでは再変換しない(二重変換によるタグ崩れ防止)
+            const formattedContent = reply.content || '';
 
             replyDiv.innerHTML = `
                 <div class="post-meta">
