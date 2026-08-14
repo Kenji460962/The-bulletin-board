@@ -590,10 +590,23 @@
                         updateButtonVisibility();
                     }
                 } else {
-                    // 閲覧モードでは画面を動かさず、新着件数だけバッジ表示
-                    unreadCount += newReplies.length;
-                    updateBadge();
-                    if (scrollBtn) scrollBtn.style.display = 'flex';
+                    // 閲覧モードでも新着レス自体は画面に追加する。
+                    // ただしスクロール位置は一切動かさず、現在読んでいる場所を維持する。
+                    let addedCount = 0;
+                    newReplies.forEach(reply => {
+                        if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
+                            appendReply(reply);
+                            addedCount++;
+                        }
+                    });
+
+                    if (addedCount > 0) {
+                        // 新着件数だけ右上のバッジに表示。
+                        // scrollToBottom / smoothScrollToBottom はここでは呼ばない。
+                        unreadCount += addedCount;
+                        updateBadge();
+                        if (scrollBtn) scrollBtn.style.display = 'flex';
+                    }
                 }
             } catch (e) {
                 console.error('新着レス取得エラー:', e);
