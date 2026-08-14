@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>オンラインオセロ - talk-ch</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         :root {
             --bg-color: #0f172a;
@@ -461,10 +461,20 @@
         // ----------------------------------------------------
         // Supabase Realtime 設定（2秒毎のポーリングを排除）
         // ----------------------------------------------------
-        const SUPABASE_URL = 'https://YOUR_SUPABASE_URL.supabase.co'; 
-        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'; 
+       let statePollBusy = false;
 
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        async function pollGameState() {
+            if (statePollBusy) return;
+            statePollBusy = true;
+
+            try {
+                await fetchState();
+            } finally {
+                statePollBusy = false;
+            }
+        }
+
+setInterval(pollGameState, 1500);
 
         supabaseClient
             .channel('othello-room-' + roomCode)
