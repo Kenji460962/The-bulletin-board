@@ -176,6 +176,7 @@ ADMIN_PASSWORD = "setokoji114514810072"
 
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
+LAST_REPLY_SIGNATURES = {}
 
 def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
@@ -703,12 +704,23 @@ def thread_view(thread_id):
                     print(f"R2 Upload Error: {e}")
 
         if content.strip() or image_url:
+            # 同一クライアントから同じレスが短時間に二重送信された場合を防止。
+            # フロント側の二重イベント登録や通信リトライがあってもDBへ二重保存しない。
+            reply_signature = hashlib.sha256(
+                f"{thread_id}|{client_ip}|{author_input}|{content}|{image_url}".encode('utf-8')
+            ).hexdigest()
+            signature_now = time.time()
+            previous_signature_time = LAST_REPLY_SIGNATURES.get(reply_signature)
+            if previous_signature_time is not None and signature_now - previous_signature_time < 5:
+                return {"success": False, "duplicate": True, "error": "同じ内容が連続して送信されたため、重複投稿を防止しました。"}, 409
+
             try:
                 query_d1(
                     """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address) 
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip]
                 )
+                LAST_REPLY_SIGNATURES[reply_signature] = signature_now
                 res = query_d1("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
                 new_reply = res[0] if res else None
                 if new_reply:
