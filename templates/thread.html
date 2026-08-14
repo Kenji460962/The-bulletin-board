@@ -409,83 +409,31 @@
     </div>
 
 
+
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const threadId = {{ thread.id }};
         const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
 
-        const container = document.getElementById('postsContainer');
-        const bottomBtn = document.getElementById('scroll-to-bottom-btn');
-        const badge = document.getElementById('scroll-to-bottom-badge');
-        const btnView = document.getElementById('mode-btn-view');
-        const btnRealtime = document.getElementById('mode-btn-realtime');
-
-        let currentMode = 'realtime'; // 初期モード: リアルタイム
-        let unreadCount = 0;          // 未読レス件数
+        let currentMode = 'realtime'; // 初期状態: リアルタイム
         let pollingTimer = null;
 
-        // >>数字 をアンカーリンクに変換する関数
-        function formatAnchors(text) {
-            if (!text) return '';
-            return text.replace(
-                /(&gt;&gt;|>>)(\d+)/g,
-                (match, prefix, num) => `<a href="#post-${num}" class="post-anchor" onclick="scrollToPost(${num}); return false;">&gt;&gt;${num}</a>`
-            );
-        }
+        const btnView = document.getElementById('mode-btn-view');
+        const btnRealtime = document.getElementById('mode-btn-realtime');
+        const container = document.getElementById('postsContainer');
 
-        // 一番下にスクロールしているか判定（誤差50px考慮）
-        function isAtBottom() {
-            if (!container) return true;
-            return (container.scrollHeight - container.scrollTop - container.clientHeight) < 50;
-        }
-
-        // 一番下にスクロール
+        // 強制的に一番下（最新レス）へスクロールする関数（画像等の読み込み遅延も考慮して数回実行）
         function scrollToBottom() {
-            if (container) {
+            if (!container) return;
+            const scrollAction = () => {
                 container.scrollTop = container.scrollHeight;
-            }
+            };
+            scrollAction();
+            setTimeout(scrollAction, 100);
+            setTimeout(scrollAction, 300);
         }
 
-        // 未読件数バッジの表示更新
-        function updateBadge() {
-            if (!badge) return;
-            if (unreadCount > 0) {
-                badge.style.display = 'flex';
-                badge.textContent = unreadCount;
-            } else {
-                badge.style.display = 'none';
-            }
-        }
-
-        // ★「一番下に行くボタン」の表示制御（モードにかかわらず、一番下にいない時に表示）
-        function updateButtonVisibility() {
-            if (!bottomBtn) return;
-            
-            if (isAtBottom()) {
-                bottomBtn.style.display = 'none';
-                unreadCount = 0; // 一番下に着いたら未読件数をリセット
-                updateBadge();
-            } else {
-                bottomBtn.style.display = 'flex';
-            }
-        }
-
-        // スクロール時にボタン表示/非表示を判定
-        if (container) {
-            container.addEventListener('scroll', updateButtonVisibility);
-        }
-
-        // ボタンが押されたら一番下にジャンプ
-        if (bottomBtn) {
-            bottomBtn.addEventListener('click', () => {
-                scrollToBottom();
-                unreadCount = 0;
-                updateBadge();
-                bottomBtn.style.display = 'none';
-            });
-        }
-
-        // モード切り替え処理
+        // モード切り替えとボタン表示の制御
         function setMode(mode) {
             currentMode = mode;
             if (mode === 'realtime') {
@@ -499,6 +447,10 @@
                     btnView.style.color = 'var(--text-main)';
                     btnView.style.fontWeight = 'normal';
                 }
+                // リアルタイムモード有効化で即座に一番下へ＆取得開始
+                scrollToBottom();
+                fetchNewReplies();
+                startPolling();
             } else {
                 if (btnView) {
                     btnView.style.background = '#0284c7';
@@ -510,127 +462,30 @@
                     btnRealtime.style.color = 'var(--text-main)';
                     btnRealtime.style.fontWeight = 'normal';
                 }
+                stopPolling();
             }
-            updateButtonVisibility();
         }
 
         if (btnView) btnView.addEventListener('click', () => setMode('view'));
         if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
 
-        // 初期表示設定
-        setMode('realtime');
-
-        // バックグラウンドで新着取得（どちらのモードでも動作し、件数をカウント）
+        // 2秒ごとの定期取得（ポーリング）
         function startPolling() {
-            if (pollingTimer) clearInterval(pollingTimer);
+            stopPolling();
             pollingTimer = setInterval(fetchNewReplies, 2000);
         }
 
-        startPolling();
-
-        // ---- 「もっと見る」（過去のレスの追加読み込み） ----
-        const loadOlderWrap = document.getElementById('load-older-wrap');
-        const loadOlderBtn = document.getElementById('load-older-btn');
-
-        function prependReply(reply) {
-            if (!container) return null;
-            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return null;
-
-            const replyDiv = document.createElement('div');
-            replyDiv.className = 'post-item';
-            replyDiv.id = `post-${reply.post_num}`;
-            replyDiv.setAttribute('data-reply-id', reply.id);
-
-            let roleCls = 'post-name';
-            if (reply.role === 'admin' || reply.is_admin) {
-                roleCls = 'role-admin';
-            } else if (reply.role === 'sub_admin') {
-                roleCls = 'role-sub-admin';
-            } else if (reply.role === 'moderator') {
-                roleCls = 'role-moderator';
-            } else if (reply.role === 'pr') {
-                roleCls = 'role-pr';
-            } else if (reply.role === 'proposal') {
-                roleCls = 'role-proposal';
-            } else if (reply.role === 'log') {
-                roleCls = 'role-log';
+        function stopPolling() {
+            if (pollingTimer) {
+                clearInterval(pollingTimer);
+                pollingTimer = null;
             }
-
-            const starHtml = (reply.is_admin || ['admin', 'sub_admin', 'moderator'].includes(reply.role)) ? '★' : '';
-            const opHtml = reply.is_op ? `<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>` : '';
-
-            let imgHtml = '';
-            if (reply.image_url) {
-                imgHtml = `
-                    <a href="${reply.image_url}" target="_blank">
-                        <img src="${reply.image_url}" class="post-image" loading="lazy">
-                    </a>
-                `;
-            }
-
-            replyDiv.innerHTML = `
-                <div class="post-meta">
-                    <span class="post-num" onclick="quoteReply(${reply.post_num})">#${reply.post_num}</span>
-                    <span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>
-                    ${opHtml}
-                    <span>${reply.date || ''}</span>
-                    <span style="color: var(--text-muted);">ID:${reply.user_id || ''}</span>
-                </div>
-                <div class="post-content">${reply.content || ''}</div>
-                ${imgHtml}
-            `;
-            return replyDiv;
         }
 
-        if (loadOlderBtn) {
-            loadOlderBtn.addEventListener('click', async () => {
-                const beforeId = loadOlderWrap.getAttribute('data-oldest-loaded-id');
-                if (!beforeId) return;
-
-                loadOlderBtn.disabled = true;
-                loadOlderBtn.textContent = '読み込み中...';
-
-                try {
-                    const res = await fetch(`/thread/${threadId}/get_older_replies?before_id=${beforeId}`);
-                    const data = await res.json();
-
-                    if (data.success && data.replies && data.replies.length > 0) {
-                        // 追加前の高さを記録し、追加後もスクロール位置がズレないようにする
-                        const prevScrollHeight = container.scrollHeight;
-                        const prevScrollTop = container.scrollTop;
-
-                        const elements = [];
-                        data.replies.forEach(reply => {
-                            const el = prependReply(reply);
-                            if (el) elements.push(el);
-                        });
-                        if (elements.length > 0) {
-                            loadOlderWrap.after(...elements);
-                        }
-
-                        const newOldestId = data.replies[0].id;
-                        loadOlderWrap.setAttribute('data-oldest-loaded-id', newOldestId);
-
-                        container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight);
-
-                        if (!data.has_more) {
-                            loadOlderWrap.style.display = 'none';
-                        } else {
-                            loadOlderBtn.disabled = false;
-                            loadOlderBtn.textContent = '▲ もっと見る（過去のレス）';
-                        }
-                    } else {
-                        loadOlderWrap.style.display = 'none';
-                    }
-                } catch (err) {
-                    console.error('過去レス取得エラー:', err);
-                    loadOlderBtn.disabled = false;
-                    loadOlderBtn.textContent = '▲ もっと見る（過去のレス）';
-                }
-            });
-        }
-
+        // バックグラウンドで新着レスを取得
         async function fetchNewReplies() {
+            if (currentMode !== 'realtime') return;
+
             let maxId = 0;
             document.querySelectorAll('.post-item').forEach(el => {
                 const id = parseInt(el.getAttribute('data-reply-id')) || 0;
@@ -642,30 +497,21 @@
                 if (!res.ok) return;
                 const data = await res.json();
 
-                if (data.success && data.replies && data.replies.length > 0) {
+                // バックエンドの返却データ名に応じて対応
+                const newReplies = data.replies || data.new_replies || [];
+
+                if ((data.success || Array.isArray(newReplies)) && newReplies.length > 0) {
                     let addedCount = 0;
-                    data.replies.forEach(reply => {
+                    newReplies.forEach(reply => {
                         if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
                             appendReply(reply);
                             addedCount++;
                         }
                     });
 
-                    if (addedCount > 0) {
-                        if (currentMode === 'realtime') {
-                            // リアルタイムモード：一番下にいれば自動で下へスクロール
-                            if (isAtBottom()) {
-                                scrollToBottom();
-                            } else {
-                                unreadCount += addedCount;
-                                updateBadge();
-                            }
-                        } else {
-                            // ★スレ閲覧モード：自動スクロールせず未読件数を加算してバッジ表示
-                            unreadCount += addedCount;
-                            updateBadge();
-                        }
-                        updateButtonVisibility();
+                    // リアルタイムモード時に新着が来たら【強制最下部スクロール】
+                    if (addedCount > 0 && currentMode === 'realtime') {
+                        scrollToBottom();
                     }
                 }
             } catch (e) {
@@ -673,11 +519,12 @@
             }
         }
 
+        // 新規レス要素のDOM描画（元のデザイン構造を維持）
         function appendReply(reply) {
             if (!container) return;
             if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
 
-            const replyCount = reply.post_num || (container.querySelectorAll('.post-item').length + 1);
+            const replyCount = container.querySelectorAll('.post-item').length + 1;
 
             const replyDiv = document.createElement('div');
             replyDiv.className = 'post-item';
@@ -725,9 +572,6 @@
                 `;
             }
 
-            // サーバー側(get_new_replies)で既にURL/アンカーとも変換済みなので、ここでは再変換しない(二重変換によるタグ崩れ防止)
-            const formattedContent = reply.content || '';
-
             replyDiv.innerHTML = `
                 <div class="post-meta">
                     <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
@@ -737,14 +581,14 @@
                     <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
                     ${adminBtns}
                 </div>
-                <div class="post-content">${formattedContent}</div>
+                <div class="post-content">${reply.content}</div>
                 ${imgHtml}
             `;
 
             container.appendChild(replyDiv);
         }
 
-        // フォーム送信（非同期投稿）
+        // フォーム投稿（非同期処理）
         const bbsForm = document.getElementById('bbsForm');
         if (bbsForm) {
             bbsForm.addEventListener('submit', async (e) => {
@@ -770,11 +614,8 @@
                         const fileInput = bbsForm.querySelector('input[type="file"]');
                         if (fileInput) fileInput.value = '';
 
-                        // 自分が書き込んだ時は一番下にジャンプ＆カウントリセット
+                        // 投稿完了時に一番下へ自動移動
                         scrollToBottom();
-                        unreadCount = 0;
-                        updateBadge();
-                        updateButtonVisibility();
                     } else {
                         alert(data.error || '投稿に失敗しました。');
                     }
@@ -787,30 +628,23 @@
             });
         }
 
-        // 初期表示時の位置調整（URLに#post-1等のハッシュがなければ最下部へ）
-        if (window.location.hash) {
+        // スレ初期化時
+        if (!window.location.hash) {
+            // アンカー指定がない場合はデフォルトで「リアルタイムモード＆最下部スクロール」
+            setMode('realtime');
+        } else {
+            // #post-XX など指定がある場合は閲覧モードで対象へ移動
+            setMode('view');
             const target = document.querySelector(window.location.hash);
             if (target) {
                 setTimeout(() => {
                     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }, 100);
             }
-        } else {
-            scrollToBottom();
         }
-        updateButtonVisibility();
     });
 
-    // グローバル関数（アンカー移動と引用）
-    function scrollToPost(num) {
-        const target = document.getElementById(`post-${num}`);
-        if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            target.style.background = 'rgba(56, 189, 248, 0.2)';
-            setTimeout(() => { target.style.background = ''; }, 1500);
-        }
-    }
-
+    // レスアンカー引用入力
     function quoteReply(num) {
         const textarea = document.querySelector('textarea[name="content"]');
         if (textarea) {
@@ -819,6 +653,8 @@
         }
     }
     </script>
+
+
 
    
 </body>
