@@ -456,20 +456,112 @@ def games_hub():
 
 @app.route('/archive')
 def archive_list():
-    # 現在のthreadsテーブルには作成日時列がないため、最後のレス日時を基準に
-    # 「一定期間動きのないスレ」を過去ログとして扱う。
+    page = request.args.get('page', default=1, type=int)
+    per_page = 20
+    offset = (page - 1) * per_page
+    rows = query_d1(
+        "SELECT * FROM archived_threads_index ORDER BY archived_at DESC LIMIT ? OFFSET ?",
+        [per_page, offset]
+    )
+    archived_threads = rows or []
+    has_next = len(archived_threads) == per_page
+    return render_template('archive_list.html', archived_threads=archived_threads, current_page=page, has_next=has_next)
+
+@app.route('/archive/<int:thread_id>')
+def archive_view(thread_id):
+    archive_key = f"archive/thread_{thread_id}.json"
+    try:
+        obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=archive_key)
+        payload = json.loads(obj['Body'].read().decode('utf-8'))
+    except Exception as e:
+        print(f"過去ログ取得エラー(thread_id={thread_id}): {e}")
+        return "この過去ログは見つかりませんでした", 404
+
+    thread = payload.get('thread', {})
+    replies = payload.get('replies', [])
+
+    for r in replies:
+        if r.get('date'):
+            try:
+                dt_utc = datetime.fromisoformat(str(r['date']).replace('Z', '+00:00'))
+                dt_jst = dt_utc + timedelta(hours=9)
+                r['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+            except Exception:
+                pass
+        if r.get('content'):
+            r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', str(r['content']))
+
+    return render_template('archive_view.html', thread=thread, replies=replies, archived_at=payload.get('archived_at'))
+
+ARCHIVE_SECRET = os.environ.get('ARCHIVE_SECRET')
+ARCHIVE_PINNED_IDS = [1, 2, 3, 4]
+
+@app.route('/internal/archive-old-threads', methods=['POST'])
+def archive_old_threads():
+    if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
+        return {"error": "unauthorized"}, 403
+
     days = int(os.environ.get('ARCHIVE_AFTER_DAYS', '30') or 30)
     cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
-    threads = query_d1(
-        '''SELECT t.id, t.title, MAX(r.date) AS last_date
-           FROM threads t
-           LEFT JOIN replies r ON r.thread_id = t.id
-           GROUP BY t.id, t.title
-           HAVING last_date IS NOT NULL AND last_date < ?
-           ORDER BY t.id DESC LIMIT 100''',
-        [cutoff]
-    )
-    return render_template('archive.html', threads=threads, archive_after_days=days)
+    archived = []
+    errors = []
+
+    try:
+        all_threads = query_d1("SELECT * FROM threads", []) or []
+    except Exception as e:
+        return {"error": f"スレッド一覧の取得に失敗しました: {e}"}, 500
+
+    for t in all_threads:
+        tid = int(t['id'])
+        if tid in ARCHIVE_PINNED_IDS:
+            continue
+
+        try:
+            last_reply_res = query_d1(
+                "SELECT date FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1",
+                [tid]
+            )
+            last_activity = last_reply_res[0]['date'] if last_reply_res else t.get('created_at')
+            if not last_activity or last_activity > cutoff:
+                continue
+
+            all_replies = query_d1(
+                "SELECT * FROM replies WHERE thread_id = ? ORDER BY id ASC",
+                [tid]
+            ) or []
+
+            archive_payload = {
+                "thread": t,
+                "replies": all_replies,
+                "archived_at": datetime.utcnow().isoformat()
+            }
+
+            archive_key = f"archive/thread_{tid}.json"
+            s3_client.put_object(
+                Bucket=R2_BUCKET_NAME,
+                Key=archive_key,
+                Body=json.dumps(archive_payload, ensure_ascii=False, indent=2).encode('utf-8'),
+                ContentType='application/json'
+            )
+
+            query_d1("DELETE FROM replies WHERE thread_id = ?", [tid])
+            query_d1("DELETE FROM threads WHERE id = ?", [tid])
+
+            query_d1(
+                "INSERT OR REPLACE INTO archived_threads_index (thread_id, title, reply_count, archived_at) VALUES (?, ?, ?, ?)",
+                [tid, t.get('title', '(無題)'), len(all_replies), datetime.utcnow().isoformat()]
+            )
+
+            archived.append(tid)
+        except Exception as e:
+            errors.append({"thread_id": tid, "error": str(e)})
+            print(f"アーカイブエラー(thread_id={tid}): {e}")
+
+    return {
+        "archived_count": len(archived),
+        "archived_thread_ids": archived,
+        "errors": errors
+    }
 
 @app.route('/game')
 def game_lobby():
