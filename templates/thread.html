@@ -576,7 +576,7 @@
             if (!container) return;
             if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
 
-            const replyCount = container.querySelectorAll('.post-item').length + 1;
+            const replyCount = Number(reply.post_num) || (container.querySelectorAll('.post-item').length + 1);
 
             const replyDiv = document.createElement('div');
             replyDiv.className = 'post-item';
