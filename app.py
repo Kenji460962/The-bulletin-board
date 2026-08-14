@@ -448,9 +448,11 @@ def _cookie_response(resp, token):
     return resp
 
 
+
+
 @app.route('/games')
 def games_hub():
-    return redirect(url_for('game_lobby'))
+    return render_template('games_hub.html')
 
 @app.route('/archive')
 def archive_list():
