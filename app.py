@@ -514,6 +514,61 @@ def create_thread():
         
     return {"success": True, "thread": new_thread}
 
+# --- 「もっと見る」用: 過去のレスを追加読み込みするAPI ---
+@app.route('/thread/<int:thread_id>/get_older_replies')
+def get_older_replies(thread_id):
+    client_ip = get_client_ip()
+    if is_banned_ip(client_ip):
+        return {"success": False, "error": "Banned"}, 403
+
+    before_id = request.args.get('before_id', type=int)
+    if not before_id:
+        return {"success": False, "error": "before_idが必要です", "replies": [], "has_more": False}, 400
+
+    try:
+        count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ? AND id < ?", [thread_id, before_id])
+        count_before = count_res[0]['cnt'] if count_res else 0
+
+        LOAD_LIMIT = 300
+        older_res = query_d1(
+            "SELECT * FROM replies WHERE thread_id = ? AND id < ? ORDER BY id DESC LIMIT ?",
+            [thread_id, before_id, LOAD_LIMIT]
+        )
+        older_replies = list(reversed(older_res)) if older_res else []
+        start_num = count_before - len(older_replies) + 1
+
+        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
+        op_ip = thread_res[0]['ip_address'] if thread_res else None
+        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+
+        formatted_replies = []
+        for i, r in enumerate(older_replies):
+            reply_dict = dict(r)
+            if reply_dict.get('date'):
+                try:
+                    raw_date = str(reply_dict['date']).replace('Z', '+00:00')
+                    dt_utc = datetime.fromisoformat(raw_date)
+                    dt_jst = dt_utc + timedelta(hours=9)
+                    reply_dict['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception:
+                    pass
+            if reply_dict.get('content'):
+                try:
+                    content_str = str(reply_dict['content'])
+                    content_str = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', content_str)
+                    content_str = re.sub(r'&gt;&gt;(\d+)|>>(\d+)', r'<a href="#post-\1\2" class="post-anchor" onclick="scrollToPost(\1\2); return false;">&gt;&gt;\1\2</a>', content_str)
+                    reply_dict['content'] = content_str
+                except Exception:
+                    pass
+            reply_dict['is_op'] = bool(op_user_id) and reply_dict.get('user_id') == op_user_id
+            reply_dict['post_num'] = start_num + i
+            formatted_replies.append(reply_dict)
+
+        return {"success": True, "replies": formatted_replies, "has_more": count_before > len(older_replies)}, 200
+    except Exception as e:
+        print(f"過去レス取得エラー: {e}")
+        return {"success": False, "error": "データベースエラー", "replies": [], "has_more": False}, 500
+
 # --- リアルタイム自動更新用API ---
 @app.route('/thread/<int:thread_id>/get_new_replies')
 def get_new_replies(thread_id):
@@ -534,8 +589,12 @@ def get_new_replies(thread_id):
         op_ip = thread_res[0]['ip_address'] if thread_res else None
         op_user_id = get_daily_user_id(op_ip) if op_ip else None
 
+        total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
+        total_reply_count = total_count_res[0]['cnt'] if total_count_res else 0
+        start_num = total_reply_count - len(replies) + 1
+
         formatted_replies = []
-        for r in replies:
+        for idx, r in enumerate(replies):
             reply_dict = dict(r)
             if reply_dict.get('date'):
                 try:
@@ -567,6 +626,7 @@ def get_new_replies(thread_id):
                     pass
             
             reply_dict['is_op'] = bool(op_user_id) and reply_dict.get('user_id') == op_user_id
+            reply_dict['post_num'] = start_num + idx
             formatted_replies.append(reply_dict)
 
         return {"success": True, "replies": formatted_replies}, 200
@@ -672,6 +732,12 @@ def thread_view(thread_id):
                     except Exception as ope:
                         new_reply['is_op'] = False
 
+                    try:
+                        total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
+                        new_reply['post_num'] = total_count_res[0]['cnt'] if total_count_res else None
+                    except Exception:
+                        new_reply['post_num'] = None
+
                     return {"success": True, "reply": new_reply}
             except Exception as e:
                 print(f"レス保存エラー: {e}")
@@ -686,13 +752,24 @@ def thread_view(thread_id):
 
 
 
+        # 合計レス数を取得(通し番号の計算とページングに使う)
+        count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
+        total_reply_count = count_res[0]['cnt'] if count_res else 0
+
+        # D1のAPI応答サイズ制限対策として、直近300件だけ取得する(古い順に並べ直す)
+        RECENT_REPLIES_LIMIT = 300
         replies_res = query_d1(
-            "SELECT * FROM replies WHERE thread_id = ? ORDER BY id ASC",
-            [thread_id]
+            "SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT ?",
+            [thread_id, RECENT_REPLIES_LIMIT]
         )
-        thread['replies'] = replies_res if replies_res else []
-        
-        
+        loaded_replies = list(reversed(replies_res)) if replies_res else []
+        start_num = total_reply_count - len(loaded_replies) + 1
+        for i, r in enumerate(loaded_replies):
+            r['post_num'] = start_num + i
+
+        thread['replies'] = loaded_replies
+        thread['total_reply_count'] = total_reply_count
+        thread['has_older'] = total_reply_count > len(loaded_replies)
 
         for r in thread['replies']:
             if r.get('date'):
