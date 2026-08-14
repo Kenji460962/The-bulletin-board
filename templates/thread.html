@@ -418,6 +418,8 @@
         let currentMode = 'realtime'; // 初期状態: リアルタイム
         let pollingTimer = null;
         let unreadCount = 0; // 未読件数
+        let lastCheckedReplyId = 0; // 新着確認済みの最新ID
+        let realtimeFetchBusy = false;
 
         const btnView = document.getElementById('mode-btn-view');
         const btnRealtime = document.getElementById('mode-btn-realtime');
@@ -454,6 +456,12 @@
             }
         }
 
+        // 新着レスを滑らかに最下部へ移動
+        function smoothScrollToBottom() {
+            if (!container) return;
+            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+
         // 強制的に一番下へスクロールする関数
         function scrollToBottom() {
             if (!container) return;
@@ -483,6 +491,15 @@
         }
 
         // モード切り替えとボタン表示の制御
+        function getDomMaxReplyId() {
+            let maxId = 0;
+            document.querySelectorAll('.post-item').forEach(el => {
+                const id = parseInt(el.getAttribute('data-reply-id')) || 0;
+                if (id > maxId) maxId = id;
+            });
+            return maxId;
+        }
+
         function setMode(mode) {
             currentMode = mode;
             if (mode === 'realtime') {
@@ -496,8 +513,10 @@
                     btnView.style.color = 'var(--text-main)';
                     btnView.style.fontWeight = 'normal';
                 }
+                // 開いた直後も最下部から開始
                 scrollToBottom();
-                fetchNewReplies();
+                // 表示モード中に溜まった新着もまとめて取得して最下部へ
+                fetchNewReplies(true);
                 startPolling();
             } else {
                 if (btnView) {
@@ -511,6 +530,9 @@
                     btnRealtime.style.fontWeight = 'normal';
                 }
                 stopPolling();
+                // 表示モードに入った時点の最新IDから監視を開始
+                lastCheckedReplyId = Math.max(lastCheckedReplyId, getDomMaxReplyId());
+                startPolling();
             }
         }
 
@@ -530,24 +552,28 @@
             }
         }
 
-        // バックグラウンドで新着レスを取得
-        async function fetchNewReplies() {
-            if (currentMode !== 'realtime') return;
+        // 新着レスを取得
+        async function fetchNewReplies(forceRealtime = false) {
+            if (realtimeFetchBusy) return;
+            realtimeFetchBusy = true;
 
-            let maxId = 0;
-            document.querySelectorAll('.post-item').forEach(el => {
-                const id = parseInt(el.getAttribute('data-reply-id')) || 0;
-                if (id > maxId) maxId = id;
-            });
+            // リアルタイム時はDOMに表示済みの最新IDから取得。
+            // 閲覧時は「確認済みID」から取得して件数だけ通知する。
+            const afterId = (currentMode === 'realtime' || forceRealtime)
+                ? getDomMaxReplyId()
+                : lastCheckedReplyId;
 
             try {
-                const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${maxId}`);
+                const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${afterId}`);
                 if (!res.ok) return;
                 const data = await res.json();
-
                 const newReplies = data.replies || data.new_replies || [];
+                if (!Array.isArray(newReplies) || newReplies.length === 0) return;
 
-                if ((data.success || Array.isArray(newReplies)) && newReplies.length > 0) {
+                const newestId = Math.max(...newReplies.map(r => Number(r.id) || 0));
+                lastCheckedReplyId = Math.max(lastCheckedReplyId, newestId);
+
+                if (currentMode === 'realtime' || forceRealtime) {
                     let addedCount = 0;
                     newReplies.forEach(reply => {
                         if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
@@ -556,18 +582,23 @@
                         }
                     });
 
-                    if (addedCount > 0 && currentMode === 'realtime') {
-                        if (isAtBottom()) {
-                            scrollToBottom();
-                        } else {
-                            unreadCount += addedCount;
-                            updateBadge();
-                            updateButtonVisibility();
-                        }
+                    if (addedCount > 0) {
+                        // リアルタイムモードでは新着を滑らかに最下部へ表示
+                        smoothScrollToBottom();
+                        unreadCount = 0;
+                        updateBadge();
+                        updateButtonVisibility();
                     }
+                } else {
+                    // 閲覧モードでは画面を動かさず、新着件数だけバッジ表示
+                    unreadCount += newReplies.length;
+                    updateBadge();
+                    if (scrollBtn) scrollBtn.style.display = 'flex';
                 }
             } catch (e) {
                 console.error('新着レス取得エラー:', e);
+            } finally {
+                realtimeFetchBusy = false;
             }
         }
 
@@ -640,6 +671,53 @@
             container.appendChild(replyDiv);
         }
 
+        // 過去レスの追加読み込み（300件ずつ。件数制限ではなく分割取得）
+        const loadOlderBtn = document.getElementById('load-older-btn');
+        const loadOlderWrap = document.getElementById('load-older-wrap');
+        let loadingOlder = false;
+        if (loadOlderBtn && loadOlderWrap) {
+            loadOlderBtn.addEventListener('click', async () => {
+                if (loadingOlder) return;
+                const beforeId = parseInt(loadOlderWrap.dataset.oldestLoadedId || '0');
+                if (!beforeId) return;
+                loadingOlder = true;
+                loadOlderBtn.disabled = true;
+                const oldScrollHeight = container.scrollHeight;
+                const oldScrollTop = container.scrollTop;
+                try {
+                    const res = await fetch(`/thread/${threadId}/get_older_replies?before_id=${beforeId}`);
+                    const data = await res.json();
+                    const replies = data.replies || [];
+                    if (replies.length) {
+                        const fragment = document.createDocumentFragment();
+                        replies.forEach(reply => {
+                            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
+                            // appendReplyは末尾に追加するため、一旦DOMを生成して先頭へ移動
+                            const beforeCount = container.querySelectorAll('.post-item').length;
+                            appendReply(reply);
+                            const el = container.lastElementChild;
+                            if (el && el.classList.contains('post-item')) fragment.appendChild(el);
+                        });
+                        const firstPost = container.querySelector('.post-item');
+                        if (firstPost) replies.slice().reverse().forEach(reply => {
+                            const el = container.querySelector(`[data-reply-id="${reply.id}"]`);
+                            if (el) container.insertBefore(el, firstPost);
+                        });
+                        loadOlderWrap.dataset.oldestLoadedId = replies[0].id;
+                        container.scrollTop = oldScrollTop + (container.scrollHeight - oldScrollHeight);
+                    }
+                    if (!data.has_more || !replies.length) {
+                        loadOlderWrap.remove();
+                    }
+                } catch (e) {
+                    console.error('過去レス取得エラー:', e);
+                } finally {
+                    loadingOlder = false;
+                    if (document.body.contains(loadOlderBtn)) loadOlderBtn.disabled = false;
+                }
+            });
+        }
+
         // フォーム投稿（非同期処理）
         const bbsForm = document.getElementById('bbsForm');
         if (bbsForm && !bbsForm.dataset.submitHandlerBound) {
@@ -688,16 +766,14 @@
             });
         }
 
-        // 初期表示時
-        if (!window.location.hash) {
-            setMode('realtime');
-        } else {
-            setMode('view');
+        // 初期表示時は常にリアルタイムモード
+        setMode('realtime');
+        if (window.location.hash) {
             const target = document.querySelector(window.location.hash);
             if (target) {
                 setTimeout(() => {
                     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 100);
+                }, 150);
             }
         }
         updateButtonVisibility();
