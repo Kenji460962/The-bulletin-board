@@ -13,6 +13,16 @@
     
     
     <title> talk-ch トークちゃんねる </title>
+
+    <script>
+        (function() {
+            var saved = localStorage.getItem('talk_ch_theme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        })();
+    </script>
+
     <style>
         body { 
             background-image: url("{{ url_for('static', filename='bg-space.webp') }}"); 
@@ -157,6 +167,64 @@
             letter-spacing: 3px; 
             text-shadow: 0 2px 8px rgba(0,0,0,0.8);
         }
+
+        .theme-toggle-btn {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #ccc;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            padding: 8px 14px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* ---- ライトモード ---- */
+        html[data-theme="light"] body {
+            background-image: none;
+            background-color: #eef2f7;
+            color: #1a1a1a;
+        }
+        html[data-theme="light"] .menu-bar {
+            background-color: rgba(255, 255, 255, 0.85);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        html[data-theme="light"] .menu-btn {
+            background-color: rgba(0, 0, 0, 0.05);
+            color: #333;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+        }
+        html[data-theme="light"] .menu-btn:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+            color: #000;
+        }
+        html[data-theme="light"] .theme-toggle-btn {
+            background-color: rgba(0, 0, 0, 0.05);
+            color: #333;
+            border: 1px solid rgba(0, 0, 0, 0.15);
+        }
+        html[data-theme="light"] .glass-panel {
+            background-color: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            color: #1a1a1a;
+        }
+        html[data-theme="light"] .res-count {
+            color: #666;
+        }
+        html[data-theme="light"] .lobby-title {
+            color: #1a1a1a;
+            text-shadow: none;
+        }
+        html[data-theme="light"] .admin-box {
+            color: #0b5ed7;
+        }
+        html[data-theme="light"] h1 {
+            text-shadow: 
+                1px 1px 0px #fff,
+                -1px -1px 0px #fff,
+                1px -1px 0px #fff,
+                -1px 1px 0px #fff,
+                0px 0px 12px rgba(0, 150, 255, 0.5);
+        }
     </style>
    
 </head>
@@ -177,8 +245,11 @@
         </div>
 
         <!-- 右側：バーの右端に固定されたオンライン人数 -->
-        <div style="color: #4dabff; font-weight: bold; font-size: 14px; padding-right: 15px; text-shadow: 0 0 5px rgba(77, 171, 255, 0.4); white-space: nowrap;">
-            🟢 オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <button type="button" id="theme-toggle-btn" class="theme-toggle-btn">🌙</button>
+            <div style="color: #4dabff; font-weight: bold; font-size: 14px; text-shadow: 0 0 5px rgba(77, 171, 255, 0.4); white-space: nowrap;">
+                🟢 オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
+            </div>
         </div>
     </div>
 
@@ -353,6 +424,29 @@
 
 
         <script>
+
+    // ---- ライト/ダークモード切り替え ----
+    (function() {
+        const btn = document.getElementById('theme-toggle-btn');
+        function applyLabel() {
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            if (btn) btn.textContent = isLight ? '☀️' : '🌙';
+        }
+        applyLabel();
+        if (btn) {
+            btn.addEventListener('click', () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                if (isLight) {
+                    document.documentElement.removeAttribute('data-theme');
+                    localStorage.setItem('talk_ch_theme', 'dark');
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                    localStorage.setItem('talk_ch_theme', 'light');
+                }
+                applyLabel();
+            });
+        }
+    })();
 
     async function pollLobbyActiveCount() {
         try {
