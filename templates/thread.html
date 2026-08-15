@@ -11,6 +11,16 @@
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
+    <script>
+        // ページ描画前にテーマを適用(一瞬ダーク→ライトに切り替わるチラつきを防ぐ)
+        (function() {
+            var saved = localStorage.getItem('talk_ch_theme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        })();
+    </script>
+
     <style>
         :root {
             --bg-color: #0f172a;
@@ -21,6 +31,27 @@
             --accent-color: #38bdf8;
             --accent-hover: #0ea5e9;
             --danger-color: #f43f5e;
+        }
+
+        html[data-theme="light"] {
+            --bg-color: #eef2f7;
+            --panel-bg: #ffffff;
+            --border-color: #cbd5e1;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --accent-color: #0284c7;
+            --accent-hover: #0369a1;
+            --danger-color: #e11d48;
+        }
+
+        .theme-toggle-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 12px;
+            cursor: pointer;
         }
 
         html, body { 
@@ -275,6 +306,7 @@
                 <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
+                <button type="button" id="theme-toggle-btn" class="theme-toggle-btn">🌙</button>
                 <div id="mode-toggle" style="display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; font-size: 11px;">
                     <button type="button" id="mode-btn-view" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">📖 スレ閲覧</button>
                     <button type="button" id="mode-btn-realtime" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">⚡ リアルタイム</button>
@@ -298,7 +330,7 @@
     <div class="posts-container" id="postsContainer">
         {% if thread.has_older %}
         <div id="load-older-wrap" style="text-align: center; padding: 8px 0 16px 0;" data-oldest-loaded-id="{{ thread.replies[0].id if thread.replies else '' }}">
-            <button id="load-older-btn" type="button" style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); padding: 6px 16px; border-radius: 4px; font-size: 13px; cursor: pointer;">
+            <button id="load-older-btn" type="button" style="background: rgba(255,255,255,0.1); color: var(--text-main); border: 1px solid var(--border-color); padding: 6px 16px; border-radius: 4px; font-size: 13px; cursor: pointer;">
                 ▲ もっと見る（過去のレス）
             </button>
         </div>
@@ -426,6 +458,27 @@
         const container = document.getElementById('postsContainer');
         const scrollBtn = document.getElementById('scroll-to-bottom-btn');
         const scrollBadge = document.getElementById('scroll-to-bottom-badge');
+
+        // ---- ライト/ダークモード切り替え ----
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        function applyThemeButtonLabel() {
+            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            if (themeToggleBtn) themeToggleBtn.textContent = isLight ? '☀️' : '🌙';
+        }
+        applyThemeButtonLabel();
+        if (themeToggleBtn) {
+            themeToggleBtn.addEventListener('click', () => {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                if (isLight) {
+                    document.documentElement.removeAttribute('data-theme');
+                    localStorage.setItem('talk_ch_theme', 'dark');
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                    localStorage.setItem('talk_ch_theme', 'light');
+                }
+                applyThemeButtonLabel();
+            });
+        }
 
         // 一番下にいるかどうかの判定（誤差20px許容）
         function isAtBottom() {
