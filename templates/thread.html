@@ -444,6 +444,13 @@
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
+
+        // 名前をローカルストレージから復元
+        const nameInput = document.querySelector('input[name="author"]');
+        const savedName = localStorage.getItem('user_name');
+        if (savedName) {
+            nameInput.value = savedName;
+        }
         const threadId = {{ thread.id }};
         const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
 
@@ -837,6 +844,8 @@
                 if (submitBtn) submitBtn.disabled = true;
 
                 const formData = new FormData(bbsForm);
+                // 投稿時に名前を保存
+                localStorage.setItem('user_name', nameInput.value);
                 try {
                     const res = await fetch(bbsForm.action, {
                         method: 'POST',
