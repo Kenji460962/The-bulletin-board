@@ -571,6 +571,60 @@ def migrate_from_supabase():
         "replies_inserted_or_ignored": replies_inserted
     }
 
+@app.route('/internal/migrate-from-supabase-safe', methods=['POST'])
+def migrate_from_supabase_safe():
+    # ID衝突を避けるため、今のD1の最大IDより確実に大きい番号にずらしてから追加する版
+    if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
+        return {"error": "unauthorized"}, 403
+
+    sb_url = request.headers.get('X-Supabase-Url')
+    sb_key = request.headers.get('X-Supabase-Key')
+    if not sb_url or not sb_key:
+        return {"error": "X-Supabase-Url / X-Supabase-Key ヘッダーが必要です"}, 400
+
+    try:
+        max_tid_res = query_d1("SELECT MAX(id) as m FROM threads", [])
+        max_rid_res = query_d1("SELECT MAX(id) as m FROM replies", [])
+        current_max_tid = (max_tid_res[0]['m'] if max_tid_res and max_tid_res[0]['m'] is not None else 0)
+        current_max_rid = (max_rid_res[0]['m'] if max_rid_res and max_rid_res[0]['m'] is not None else 0)
+    except Exception as e:
+        return {"error": f"現在のD1の最大IDの取得に失敗しました: {e}"}, 500
+
+    thread_offset = current_max_tid + 10000
+    reply_offset = current_max_rid + 10000
+
+    try:
+        threads = _fetch_all_from_supabase(sb_url, sb_key, 'threads', 'id,title,created_at,ip_address')
+        replies = _fetch_all_from_supabase(sb_url, sb_key, 'replies', 'id,thread_id,author,content,user_id,is_admin,image_url,ip_address,date,role')
+    except Exception as e:
+        return {"error": f"Supabaseからの取得に失敗しました: {e}"}, 500
+
+    # ID・thread_idをまとめてずらす
+    for t in threads:
+        t['id'] = t['id'] + thread_offset
+    for r in replies:
+        r['id'] = r['id'] + reply_offset
+        r['thread_id'] = r['thread_id'] + thread_offset
+
+    try:
+        threads_inserted = _d1_batch_insert(
+            'threads', ['id', 'title', 'created_at', 'ip_address'], threads, chunk_size=200
+        )
+        replies_inserted = _d1_batch_insert(
+            'replies', ['id', 'thread_id', 'author', 'content', 'user_id', 'is_admin', 'image_url', 'ip_address', 'date', 'role'], replies, chunk_size=90
+        )
+    except Exception as e:
+        return {"error": f"D1への書き込みに失敗しました: {e}"}, 500
+
+    return {
+        "thread_offset": thread_offset,
+        "reply_offset": reply_offset,
+        "threads_fetched": len(threads),
+        "replies_fetched": len(replies),
+        "threads_inserted_or_ignored": threads_inserted,
+        "replies_inserted_or_ignored": replies_inserted
+    }
+
 @app.route('/internal/rebuild-archive-index', methods=['POST'])
 def rebuild_archive_index():
     # R2に実在するJSONから、D1の索引テーブル(archived_threads_index)を作り直す
