@@ -207,9 +207,13 @@
             color: #333;
             border: 1px solid rgba(0, 0, 0, 0.15);
         }
+        
+
         html[data-theme="light"] .glass-panel {
-            background-color: rgba(238, 236, 230, 0.92);
-            border: 1px solid rgba(0, 0, 0, 0.1);
+            background-color: rgba(255, 255, 255, 0.55); /* ←数値を下げるほど透けます */
+            backdrop-filter: blur(4px);                  /* ←すりガラスのボカシを追加 */
+            -webkit-backdrop-filter: blur(4px);
+            border: 1px solid rgba(0, 0, 0, 0.15);
             color: #1a1a1a;
         }
         html[data-theme="light"] .res-count {
