@@ -444,6 +444,82 @@ def _chess_pseudo(board, r, c):
             if 0<=rr<8 and 0<=cc<8 and board[rr*8+cc] and board[rr*8+cc][0]!=color: out.append((rr,cc))
     return out
 
+def _chess_find_king(board, color):
+    target = color + 'K'
+    for i, p in enumerate(board):
+        if p == target:
+            return i // 8, i % 8
+    return None
+
+def _chess_attacked(board, r, c, by_color):
+    # ポーンの攻撃
+    d = 1 if by_color == 'w' else -1
+    for dc in (-1, 1):
+        pr, pc = r + d, c + dc
+        if 0 <= pr < 8 and 0 <= pc < 8 and board[pr*8+pc] == by_color + 'P':
+            return True
+    # ナイトの攻撃
+    for dr, dc in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
+        rr, cc = r + dr, c + dc
+        if 0 <= rr < 8 and 0 <= cc < 8 and board[rr*8+cc] == by_color + 'N':
+            return True
+    # 王の攻撃(隣接マス)
+    for dr in (-1, 0, 1):
+        for dc in (-1, 0, 1):
+            if dr == 0 and dc == 0: continue
+            rr, cc = r + dr, c + dc
+            if 0 <= rr < 8 and 0 <= cc < 8 and board[rr*8+cc] == by_color + 'K':
+                return True
+    # 直線(ルーク・クイーン)
+    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+        rr, cc = r + dr, c + dc
+        while 0 <= rr < 8 and 0 <= cc < 8:
+            p = board[rr*8+cc]
+            if p:
+                if p[0] == by_color and p[1] in ('R', 'Q'): return True
+                break
+            rr += dr; cc += dc
+    # 斜め(ビショップ・クイーン)
+    for dr, dc in [(-1,-1),(-1,1),(1,-1),(1,1)]:
+        rr, cc = r + dr, c + dc
+        while 0 <= rr < 8 and 0 <= cc < 8:
+            p = board[rr*8+cc]
+            if p:
+                if p[0] == by_color and p[1] in ('B', 'Q'): return True
+                break
+            rr += dr; cc += dc
+    return False
+
+def _chess_in_check(board, color):
+    pos = _chess_find_king(board, color)
+    if not pos: return False
+    r, c = pos
+    opp = 'b' if color == 'w' else 'w'
+    return _chess_attacked(board, r, c, opp)
+
+def _chess_apply(board, r, c, tr, tc):
+    """盤面をコピーして着手を適用した新しい盤面を返す(王手判定のシミュレーション用)"""
+    nb = board[:]
+    piece = nb[r*8+c]
+    nb[r*8+c] = ''
+    if piece[1] == 'P' and tr in (0, 7):
+        nb[tr*8+tc] = piece[0] + 'Q'
+    else:
+        nb[tr*8+tc] = piece
+    return nb
+
+def _chess_legal_moves(board, color):
+    """自分の王が王手にさらされる手を除いた、本当に指せる手の一覧"""
+    moves = []
+    for i, p in enumerate(board):
+        if p and p[0] == color:
+            r, c = i // 8, i % 8
+            for tr, tc in _chess_pseudo(board, r, c):
+                simulated = _chess_apply(board, r, c, tr, tc)
+                if not _chess_in_check(simulated, color):
+                    moves.append((r, c, tr, tc))
+    return moves
+
 def _cookie_response(resp, token):
     if not request.cookies.get('game_player_token'):
         resp.set_cookie('game_player_token', token, max_age=60*60*24*365, httponly=True, samesite='Lax')
@@ -862,17 +938,31 @@ def chess_move(room_code):
     piece = board[fr*8+fc]
     if not piece or piece[0]!=color: return {'success':False,'error':'自分の駒を選んでください'}
     if (tr,tc) not in _chess_pseudo(board,fr,fc): return {'success':False,'error':'その駒はそこへ動かせません'}
-    
-    # 駒の移動と削除
-    board[tr*8+tc] = piece
-    board[fr*8+fc] = ''
-    # 簡易昇格: 最終段でポーンをクイーンにする
-    if piece[1]=='P' and tr in (0,7): board[tr*8+tc] = color+'Q'
-    
-    newb = json.dumps(board)
+
+    # その手を指した結果、自分の王が王手にさらされる場合は指せない
+    simulated = _chess_apply(board, fr, fc, tr, tc)
+    if _chess_in_check(simulated, color):
+        return {'success':False,'error':'その手を指すと自分の王が王手にさらされます'}
+
+    board = simulated
     nextc = 'b' if color=='w' else 'w'
+
+    # 次の手番が王手されているか、さらに合法手が残っているか(チェックメイト/ステイルメイト判定)
+    next_in_check = _chess_in_check(board, nextc)
+    next_has_moves = len(_chess_legal_moves(board, nextc)) > 0
+
+    new_status = r['status']
+    winner = r.get('winner')
+    if not next_has_moves:
+        new_status = 'finished'
+        winner = 'draw' if not next_in_check else color
+
+    newb = json.dumps(board)
     now = datetime.utcnow().isoformat()
-    query_d1('UPDATE chess_rooms SET board=?,turn=?,updated_at=? WHERE room_code=? AND turn=?',[newb,nextc,now,code,color])
+    query_d1(
+        'UPDATE chess_rooms SET board=?,turn=?,updated_at=?,in_check=?,status=?,winner=? WHERE room_code=? AND turn=?',
+        [newb, nextc, now, (nextc if next_in_check else None), new_status, winner, code, color]
+    )
     return {'success':True}
 
 @app.route('/', methods=['GET', 'HEAD'])
