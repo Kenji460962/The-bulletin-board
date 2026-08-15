@@ -389,9 +389,11 @@ def _othello_apply(board, player, r, c):
             for fr,fc in flips: a[fr*8+fc]=player
     return ''.join(a)
 
+
+
 def _initial_chess():
-    # クライアントの盤面表現: 先頭文字が色(w/b)、2文字目が駒(KQRBNP)
-    return ''.join([
+    # 64要素のリストを作成し、JSON文字列にシリアライズして返す
+    board_list = [
         'bR','bN','bB','bQ','bK','bB','bN','bR',
         'bP','bP','bP','bP','bP','bP','bP','bP',
         '','','','','','','','',
@@ -400,11 +402,11 @@ def _initial_chess():
         '','','','','','','','',
         'wP','wP','wP','wP','wP','wP','wP','wP',
         'wR','wN','wB','wQ','wK','wB','wN','wR'
-    ])
+    ]
+    return json.dumps(board_list)
 
 def _chess_board():
-    rows=[['bR','bN','bB','bQ','bK','bB','bN','bR'],['bP']*8,['']*8,['']*8,['']*8,['']*8,['wP']*8,['wR','wN','wB','wQ','wK','wB','wN','wR']]
-    return ''.join(rows[r][c] for r in range(8) for c in range(8))
+    return _initial_chess()
 
 def _chess_pseudo(board, r, c):
     p=board[r*8+c]
@@ -819,12 +821,24 @@ def chess_join(room_code):
     query_d1('UPDATE chess_rooms SET black_token=?,black_name=?,status=?,updated_at=? WHERE room_code=?',[token,name,'playing',datetime.utcnow().isoformat(),code])
     return {'success':True}
 
+
 @app.route('/api/chess/<room_code>/state')
 def chess_state(room_code):
     rows=query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1',[room_code.upper()])
     if not rows: return {'error':'not found'},404
     r=rows[0]; token=_game_token(); my='w' if r.get('white_token')==token else ('b' if r.get('black_token')==token else None)
-    return {'success':True,'room_code':r['room_code'],'board':r['board'],'turn':r['turn'],'status':r['status'],'winner':r['winner'],'in_check':r['in_check'],'white_name':r.get('white_name') or '名無しさん','black_name':r.get('black_name') or '名無しさん','white_id':(r.get('white_token') or '')[:4],'black_id':(r.get('black_token') or '')[:4],'has_black':bool(r.get('black_token')),'my_color':my}
+    
+    # DBに保存されたJSON文字列を配列に変換してフロントに渡す
+    try:
+        board_data = json.loads(r['board'])
+    except Exception:
+        board_data = []
+
+    return {'success':True,'room_code':r['room_code'],'board':board_data,'turn':r['turn'],'status':r['status'],'winner':r['winner'],'in_check':r['in_check'],'white_name':r.get('white_name') or '名無しさん','black_name':r.get('black_name') or '名無しさん','white_id':(r.get('white_token') or '')[:4],'black_id':(r.get('black_token') or '')[:4],'has_black':bool(r.get('black_token')),'my_color':my}
+
+
+
+
 
 @app.route('/chess/<room_code>/move',methods=['POST'])
 def chess_move(room_code):
@@ -838,17 +852,28 @@ def chess_move(room_code):
     try: fr,fc,tr,tc=[int(body[k]) for k in ('from_row','from_col','to_row','to_col')]
     except Exception: return {'success':False,'error':'着手情報が不正です'},400
     if not all(0<=x<8 for x in (fr,fc,tr,tc)): return {'success':False,'error':'着手位置が不正です'},400
-    board=r['board']; piece=board[fr*8+fc]
+    
+    # JSON文字列をリストに読み込んで操作する
+    try:
+        board = json.loads(r['board'])
+    except Exception:
+        return {'success':False,'error':'盤面データの読み込みに失敗しました'},500
+
+    piece = board[fr*8+fc]
     if not piece or piece[0]!=color: return {'success':False,'error':'自分の駒を選んでください'}
     if (tr,tc) not in _chess_pseudo(board,fr,fc): return {'success':False,'error':'その駒はそこへ動かせません'}
-    a=list(board); a[tr*8+tc]=piece; a[fr*8+fc]=''
+    
+    # 駒の移動と削除
+    board[tr*8+tc] = piece
+    board[fr*8+fc] = ''
     # 簡易昇格: 最終段でポーンをクイーンにする
-    if piece[1]=='P' and tr in (0,7): a[tr*8+tc]=color+'Q'
-    newb=''.join(a); nextc='b' if color=='w' else 'w'; now=datetime.utcnow().isoformat()
-    # この既存HTMLは盤面/手番表示を中心にしているため、王手・詰み判定は簡易運用
+    if piece[1]=='P' and tr in (0,7): board[tr*8+tc] = color+'Q'
+    
+    newb = json.dumps(board)
+    nextc = 'b' if color=='w' else 'w'
+    now = datetime.utcnow().isoformat()
     query_d1('UPDATE chess_rooms SET board=?,turn=?,updated_at=? WHERE room_code=? AND turn=?',[newb,nextc,now,code,color])
     return {'success':True}
-
 
 @app.route('/', methods=['GET', 'HEAD'])
 def index():
