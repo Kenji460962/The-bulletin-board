@@ -514,6 +514,7 @@
             }
         }
 
+        
         async function fetchState() {
             try {
                 const res = await fetch(`/api/chess/${roomCode}/state`);
@@ -521,13 +522,22 @@
                 const data = await res.json();
                 if (data.my_color) myColor = data.my_color;
 
+                // boardが文字列で届いた場合に安全に配列へパースする処理を追加
+                let board = data.board;
+                if (typeof board === 'string') {
+                    try { board = JSON.parse(board); } catch(e) {}
+                }
+
                 updatePlayersBox(data);
                 updateStatusBar(data);
-                renderBoard(data.board, data);
+                renderBoard(board, data);
             } catch (e) {
                 console.error('状態取得エラー:', e);
             }
         }
+
+
+        
 
         document.getElementById('copy-link-btn').addEventListener('click', () => {
             navigator.clipboard.writeText(window.location.href).then(() => {
