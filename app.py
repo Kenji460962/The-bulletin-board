@@ -496,6 +496,81 @@ def archive_view(thread_id):
 ARCHIVE_SECRET = os.environ.get('ARCHIVE_SECRET')
 ARCHIVE_PINNED_IDS = [1, 2, 3, 4]
 
+def _fetch_all_from_supabase(sb_url, sb_key, table, columns):
+    """PostgRESTのRangeヘッダーでページ送りしながら全件取得する(1000件の壁を回避)"""
+    all_rows = []
+    page_size = 1000
+    offset = 0
+    headers = {
+        "apikey": sb_key,
+        "Authorization": f"Bearer {sb_key}",
+    }
+    while True:
+        headers["Range"] = f"{offset}-{offset + page_size - 1}"
+        resp = httpx.get(
+            f"{sb_url.rstrip('/')}/rest/v1/{table}",
+            params={"select": columns, "order": "id.asc"},
+            headers=headers,
+            timeout=30
+        )
+        if resp.status_code not in (200, 206):
+            raise Exception(f"{table}取得エラー: {resp.status_code} {resp.text[:300]}")
+        rows = resp.json()
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        offset += page_size
+    return all_rows
+
+def _d1_batch_insert(table, columns, rows, chunk_size):
+    """複数行をまとめたINSERT OR IGNOREをchunk_size件ずつD1に流し込む"""
+    inserted = 0
+    placeholders_one = "(" + ",".join(["?"] * len(columns)) + ")"
+    for i in range(0, len(rows), chunk_size):
+        chunk = rows[i:i + chunk_size]
+        placeholders = ",".join([placeholders_one] * len(chunk))
+        sql = f"INSERT OR IGNORE INTO {table} ({','.join(columns)}) VALUES {placeholders}"
+        params = []
+        for row in chunk:
+            for col in columns:
+                params.append(row.get(col))
+        query_d1(sql, params)
+        inserted += len(chunk)
+    return inserted
+
+@app.route('/internal/migrate-from-supabase', methods=['POST'])
+def migrate_from_supabase():
+    if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
+        return {"error": "unauthorized"}, 403
+
+    sb_url = request.headers.get('X-Supabase-Url')
+    sb_key = request.headers.get('X-Supabase-Key')
+    if not sb_url or not sb_key:
+        return {"error": "X-Supabase-Url / X-Supabase-Key ヘッダーが必要です"}, 400
+
+    try:
+        threads = _fetch_all_from_supabase(sb_url, sb_key, 'threads', 'id,title,created_at,ip_address')
+        replies = _fetch_all_from_supabase(sb_url, sb_key, 'replies', 'id,thread_id,author,content,user_id,is_admin,image_url,ip_address,date,role')
+    except Exception as e:
+        return {"error": f"Supabaseからの取得に失敗しました: {e}"}, 500
+
+    try:
+        threads_inserted = _d1_batch_insert(
+            'threads', ['id', 'title', 'created_at', 'ip_address'], threads, chunk_size=200
+        )
+        replies_inserted = _d1_batch_insert(
+            'replies', ['id', 'thread_id', 'author', 'content', 'user_id', 'is_admin', 'image_url', 'ip_address', 'date', 'role'], replies, chunk_size=90
+        )
+    except Exception as e:
+        return {"error": f"D1への書き込みに失敗しました: {e}"}, 500
+
+    return {
+        "threads_fetched": len(threads),
+        "replies_fetched": len(replies),
+        "threads_inserted_or_ignored": threads_inserted,
+        "replies_inserted_or_ignored": replies_inserted
+    }
+
 @app.route('/internal/rebuild-archive-index', methods=['POST'])
 def rebuild_archive_index():
     # R2に実在するJSONから、D1の索引テーブル(archived_threads_index)を作り直す
