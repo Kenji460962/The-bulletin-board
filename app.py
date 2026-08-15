@@ -1358,7 +1358,11 @@ def delete_reply(thread_id, reply_id):
     if not can_manage_board():
         return "権限がありません", 403
     try:
-        query_d1("DELETE FROM replies WHERE id = ? AND thread_id = ?", [reply_id, thread_id])
+        query_d1(
+            """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
+               WHERE id = ? AND thread_id = ?""",
+            ['あぼーん', 'この書き込みは管理員によって削除されました。', '???', 0, '', reply_id, thread_id]
+        )
     except Exception as e:
         print(f"レス削除エラー: {e}")
     return redirect(url_for('thread_view', thread_id=thread_id))
