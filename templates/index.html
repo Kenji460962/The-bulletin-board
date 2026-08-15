@@ -178,9 +178,14 @@
             font-weight: bold;
         }
 
+        
+
         /* ---- ライトモード ---- */
         html[data-theme="light"] body {
-            background-image: none;
+            background-image: url("{{ url_for('static', filename='あなたの画像ファイル名.webp') }}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
             background-color: #dfe0dc;
             color: #1a1a1a;
         }
