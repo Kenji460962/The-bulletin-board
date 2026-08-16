@@ -172,7 +172,7 @@ s3_client = boto3.client(
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
 
-ADMIN_PASSWORD = "setokoji114514810072"
+
 
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
@@ -1183,16 +1183,16 @@ def create_thread():
     is_admin = can_manage_board()
     now = time.time()
 
-    thread_cooldown = 180
+    thread_cooldown = 300
     if not is_admin and is_proxy_or_vpn(client_ip):
-        thread_cooldown = 600
+        thread_cooldown = 900
 
     if not is_admin:
         if client_ip in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[client_ip] < thread_cooldown:
             remaining_time = int(thread_cooldown - (now - LAST_THREAD_TIMES[client_ip]))
             minutes = remaining_time // 60
             seconds = remaining_time % 60
-            return {"error": f"スレッド作成は3分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429
+            return {"error": f"スレッド作成は5分に1回までです。(proxy,VPNは15分）あと {minutes}分 {seconds}秒 お待ちください。"}, 429
             
     LAST_THREAD_TIMES[client_ip] = now 
     
