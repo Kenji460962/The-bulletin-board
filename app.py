@@ -408,7 +408,7 @@ def _initial_chess():
 def _chess_board():
     return _initial_chess()
 
-def _chess_pseudo(board, r, c):
+def _chess_pseudo(board, r, c, castling='', en_passant=None):
     p=board[r*8+c]
     if not p: return []
     color,typ=p[0],p[1]; out=[]
@@ -441,7 +441,30 @@ def _chess_pseudo(board, r, c):
             if r==start and not board[rr2*8+c]: out.append((rr2,c))
         for dc in (-1,1):
             rr,cc=r+d,c+dc
-            if 0<=rr<8 and 0<=cc<8 and board[rr*8+cc] and board[rr*8+cc][0]!=color: out.append((rr,cc))
+            if 0<=rr<8 and 0<=cc<8:
+                if board[rr*8+cc] and board[rr*8+cc][0]!=color:
+                    out.append((rr,cc))
+                elif en_passant and en_passant==(rr,cc):
+                    out.append((rr,cc))
+
+    if typ=='K':
+        row = 7 if color=='w' else 0
+        if r==row and c==4:
+            k_flag = 'K' if color=='w' else 'k'
+            q_flag = 'Q' if color=='w' else 'q'
+            opp = 'b' if color=='w' else 'w'
+            if (k_flag in castling and not board[row*8+5] and not board[row*8+6]
+                    and board[row*8+7]==color+'R'
+                    and not _chess_attacked(board,row,4,opp)
+                    and not _chess_attacked(board,row,5,opp)
+                    and not _chess_attacked(board,row,6,opp)):
+                out.append((row,6))
+            if (q_flag in castling and not board[row*8+3] and not board[row*8+2] and not board[row*8+1]
+                    and board[row*8+0]==color+'R'
+                    and not _chess_attacked(board,row,4,opp)
+                    and not _chess_attacked(board,row,3,opp)
+                    and not _chess_attacked(board,row,2,opp)):
+                out.append((row,2))
     return out
 
 def _chess_find_king(board, color):
@@ -501,20 +524,45 @@ def _chess_apply(board, r, c, tr, tc):
     """盤面をコピーして着手を適用した新しい盤面を返す(王手判定のシミュレーション用)"""
     nb = board[:]
     piece = nb[r*8+c]
+    color, typ = piece[0], piece[1]
     nb[r*8+c] = ''
-    if piece[1] == 'P' and tr in (0, 7):
-        nb[tr*8+tc] = piece[0] + 'Q'
+
+    if typ == 'K' and abs(tc - c) == 2:
+        # キャスリング: 王が横に2マス動く手 -> ルークも一緒に動かす
+        nb[tr*8+tc] = piece
+        row = r
+        if tc == 6:
+            nb[row*8+7] = ''
+            nb[row*8+5] = color + 'R'
+        elif tc == 2:
+            nb[row*8+0] = ''
+            nb[row*8+3] = color + 'R'
+    elif typ == 'P' and c != tc and not board[tr*8+tc]:
+        # アンパッサン: ポーンが斜めに動いたのに移動先が空 -> 通過されたポーンを取る
+        nb[tr*8+tc] = piece
+        nb[r*8+tc] = ''
+    elif typ == 'P' and tr in (0, 7):
+        nb[tr*8+tc] = color + 'Q'
     else:
         nb[tr*8+tc] = piece
     return nb
 
-def _chess_legal_moves(board, color):
+def _chess_update_castling_rights(castling, typ, color, r, c, tr, tc):
+    new_castling = castling or ''
+    if typ == 'K':
+        new_castling = new_castling.replace('K', '').replace('Q', '') if color == 'w' else new_castling.replace('k', '').replace('q', '')
+    for (rr, cc), flag in [((7, 0), 'Q'), ((7, 7), 'K'), ((0, 0), 'q'), ((0, 7), 'k')]:
+        if (r, c) == (rr, cc) or (tr, tc) == (rr, cc):
+            new_castling = new_castling.replace(flag, '')
+    return new_castling
+
+def _chess_legal_moves(board, color, castling='', en_passant=None):
     """自分の王が王手にさらされる手を除いた、本当に指せる手の一覧"""
     moves = []
     for i, p in enumerate(board):
         if p and p[0] == color:
             r, c = i // 8, i % 8
-            for tr, tc in _chess_pseudo(board, r, c):
+            for tr, tc in _chess_pseudo(board, r, c, castling, en_passant):
                 simulated = _chess_apply(board, r, c, tr, tc)
                 if not _chess_in_check(simulated, color):
                     moves.append((r, c, tr, tc))
@@ -877,7 +925,7 @@ def chess_lobby():
 @app.route('/chess/create',methods=['POST'])
 def chess_create():
     token=_game_token(); name=_game_name(); code=_new_room_code(); now=datetime.utcnow().isoformat()
-    query_d1('INSERT INTO chess_rooms (room_code,white_token,white_name,black_token,black_name,board,turn,status,winner,in_check,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',[code,token,name,None,None,_chess_board(),'w','waiting',None,None,now,now])
+    query_d1('INSERT INTO chess_rooms (room_code,white_token,white_name,black_token,black_name,board,turn,status,winner,in_check,castling,en_passant,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[code,token,name,None,None,_chess_board(),'w','waiting',None,None,'KQkq',None,now,now])
     resp=redirect(url_for('chess_room',room_code=code)); return _cookie_response(resp,token)
 
 @app.route('/chess/<room_code>')
@@ -910,7 +958,10 @@ def chess_state(room_code):
     except Exception:
         board_data = []
 
-    return {'success':True,'room_code':r['room_code'],'board':board_data,'turn':r['turn'],'status':r['status'],'winner':r['winner'],'in_check':r['in_check'],'white_name':r.get('white_name') or '名無しさん','black_name':r.get('black_name') or '名無しさん','white_id':(r.get('white_token') or '')[:4],'black_id':(r.get('black_token') or '')[:4],'has_black':bool(r.get('black_token')),'my_color':my}
+    en_passant_raw = r.get('en_passant')
+    en_passant_out = json.loads(en_passant_raw) if en_passant_raw else None
+
+    return {'success':True,'room_code':r['room_code'],'board':board_data,'turn':r['turn'],'status':r['status'],'winner':r['winner'],'in_check':r['in_check'],'castling':r.get('castling') or 'KQkq','en_passant':en_passant_out,'white_name':r.get('white_name') or '名無しさん','black_name':r.get('black_name') or '名無しさん','white_id':(r.get('white_token') or '')[:4],'black_id':(r.get('black_token') or '')[:4],'has_black':bool(r.get('black_token')),'my_color':my}
 
 
 
@@ -935,21 +986,33 @@ def chess_move(room_code):
     except Exception:
         return {'success':False,'error':'盤面データの読み込みに失敗しました'},500
 
+    castling = r.get('castling') or 'KQkq'
+    en_passant_raw = r.get('en_passant')
+    en_passant = tuple(json.loads(en_passant_raw)) if en_passant_raw else None
+
     piece = board[fr*8+fc]
     if not piece or piece[0]!=color: return {'success':False,'error':'自分の駒を選んでください'}
-    if (tr,tc) not in _chess_pseudo(board,fr,fc): return {'success':False,'error':'その駒はそこへ動かせません'}
+    if (tr,tc) not in _chess_pseudo(board,fr,fc,castling,en_passant): return {'success':False,'error':'その駒はそこへ動かせません'}
 
     # その手を指した結果、自分の王が王手にさらされる場合は指せない
     simulated = _chess_apply(board, fr, fc, tr, tc)
     if _chess_in_check(simulated, color):
         return {'success':False,'error':'その手を指すと自分の王が王手にさらされます'}
 
+    # キャスリング権の更新(王・ルークが動いた/取られたら該当する権利を失う)
+    new_castling = _chess_update_castling_rights(castling, piece[1], color, fr, fc, tr, tc)
+
+    # アンパッサンの対象マスの更新(ポーンが2マス動いた時だけセット)
+    new_en_passant = None
+    if piece[1] == 'P' and abs(tr - fr) == 2:
+        new_en_passant = [(fr + tr) // 2, fc]
+
     board = simulated
     nextc = 'b' if color=='w' else 'w'
 
     # 次の手番が王手されているか、さらに合法手が残っているか(チェックメイト/ステイルメイト判定)
     next_in_check = _chess_in_check(board, nextc)
-    next_has_moves = len(_chess_legal_moves(board, nextc)) > 0
+    next_has_moves = len(_chess_legal_moves(board, nextc, new_castling, new_en_passant)) > 0
 
     new_status = r['status']
     winner = r.get('winner')
@@ -958,10 +1021,11 @@ def chess_move(room_code):
         winner = 'draw' if not next_in_check else color
 
     newb = json.dumps(board)
+    new_ep_json = json.dumps(new_en_passant) if new_en_passant else None
     now = datetime.utcnow().isoformat()
     query_d1(
-        'UPDATE chess_rooms SET board=?,turn=?,updated_at=?,in_check=?,status=?,winner=? WHERE room_code=? AND turn=?',
-        [newb, nextc, now, (nextc if next_in_check else None), new_status, winner, code, color]
+        'UPDATE chess_rooms SET board=?,turn=?,updated_at=?,in_check=?,status=?,winner=?,castling=?,en_passant=? WHERE room_code=? AND turn=?',
+        [newb, nextc, now, (nextc if next_in_check else None), new_status, winner, new_castling, new_ep_json, code, color]
     )
     return {'success':True}
 
