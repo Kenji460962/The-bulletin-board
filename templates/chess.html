@@ -305,11 +305,13 @@
         const KING_DIRS = ROOK_DIRS.concat(BISHOP_DIRS);
         function inBounds(r,c) { return r>=0 && r<8 && c>=0 && c<8; }
 
-        function pseudoTargets(board, r, c) {
+        function pseudoTargets(board, r, c, statusData) {
             const piece = board[r*8+c];
             if (!piece) return [];
             const color = piece[0], ptype = piece[1];
             const targets = [];
+            const enPassant = statusData && statusData.en_passant;
+            const castling = (statusData && statusData.castling) || '';
             if (ptype === 'P') {
                 const dir = color==='w' ? -1 : 1;
                 const startRow = color==='w' ? 6 : 1;
@@ -323,7 +325,11 @@
                     const tr=r+dir, tc=c+dc;
                     if (inBounds(tr,tc)) {
                         const t = board[tr*8+tc];
-                        if (t && t[0]!==color) targets.push([tr,tc]);
+                        if (t && t[0]!==color) {
+                            targets.push([tr,tc]);
+                        } else if (!t && enPassant && enPassant[0]===tr && enPassant[1]===tc) {
+                            targets.push([tr,tc]);
+                        }
                     }
                 }
             } else if (ptype === 'N') {
@@ -354,6 +360,18 @@
                     if (inBounds(tr,tc)) {
                         const t = board[tr*8+tc];
                         if (!t || t[0]!==color) targets.push([tr,tc]);
+                    }
+                }
+                // キャスリング(見た目のヒントのみ。実際の可否はサーバー側が最終判定)
+                const homeRow = color==='w' ? 7 : 0;
+                if (r===homeRow && c===4) {
+                    const kFlag = color==='w' ? 'K' : 'k';
+                    const qFlag = color==='w' ? 'Q' : 'q';
+                    if (castling.includes(kFlag) && !board[homeRow*8+5] && !board[homeRow*8+6] && board[homeRow*8+7]===color+'R') {
+                        targets.push([homeRow,6]);
+                    }
+                    if (castling.includes(qFlag) && !board[homeRow*8+3] && !board[homeRow*8+2] && !board[homeRow*8+1] && board[homeRow*8+0]===color+'R') {
+                        targets.push([homeRow,2]);
                     }
                 }
             }
@@ -417,7 +435,7 @@
                 // 選び直し
                 if (piece && piece[0] === myColor) {
                     selected = [r, c];
-                    legalTargetsForSelected = pseudoTargets(board, r, c);
+                    legalTargetsForSelected = pseudoTargets(board, r, c, statusData);
                     renderBoard(board, statusData);
                 } else {
                     selected = null;
@@ -427,7 +445,7 @@
             } else {
                 if (piece && piece[0] === myColor) {
                     selected = [r, c];
-                    legalTargetsForSelected = pseudoTargets(board, r, c);
+                    legalTargetsForSelected = pseudoTargets(board, r, c, statusData);
                     renderBoard(board, statusData);
                 }
             }
