@@ -10,3 +10,5 @@ psutil
 flask-socketio
 python-socketio
 eventlet
+flask-socketio
+eventlet
