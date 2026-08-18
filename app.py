@@ -12,10 +12,13 @@ import random
 import httpx
 import boto3
 import psutil
+
 from werkzeug.utils import secure_filename
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 psutil.cpu_percent(interval=None)
 
@@ -1438,13 +1441,19 @@ def thread_view(thread_id):
                     except Exception as ope:
                         new_reply['is_op'] = False
 
+                    
                     try:
                         total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
                         new_reply['post_num'] = total_count_res[0]['cnt'] if total_count_res else None
                     except Exception:
                         new_reply['post_num'] = None
 
+                    # --- WebSocketイベントで同スレッドの閲覧者全員に新着レスを即時配信 ---
+                    socketio.emit('new_reply', new_reply, room=f"thread_{thread_id}")
+
                     return {"success": True, "reply": new_reply}
+                
+                
             except Exception as e:
                 print(f"レス保存エラー: {e}")
                 return {"success": False, "error": "データベースエラーが発生しました。"}, 500
@@ -1624,6 +1633,25 @@ def server_metrics():
         "tx_kbps": tx_kbps
     }
 
+
+@socketio.on('join_thread')
+def handle_join_thread(data):
+    thread_id = data.get('thread_id')
+    if thread_id:
+        room_name = f"thread_{thread_id}"
+        join_room(room_name)
+        emit('user_joined', {'status': 'connected'}, room=room_name)
+
+@socketio.on('leave_thread')
+def handle_leave_thread(data):
+    thread_id = data.get('thread_id')
+    if thread_id:
+        room_name = f"thread_{thread_id}"
+        leave_room(room_name)
+
+
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=port)
