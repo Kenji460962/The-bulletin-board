@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125" crossorigin="anonymous"></script>
-    
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <title>{{ thread.title }}</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -440,475 +440,404 @@
         </div>
     </div>
 
-
-
     <script>
-    document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', () => {
 
-        // 名前をローカルストレージから復元
-        const nameInput = document.querySelector('input[name="author"]');
-        const savedName = localStorage.getItem('user_name');
-        if (savedName) {
-            nameInput.value = savedName;
-        }
-        const threadId = {{ thread.id }};
-        const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
+            // 名前をローカルストレージから復元
+            const nameInput = document.querySelector('input[name="author"]');
+            const savedName = localStorage.getItem('user_name');
+            if (savedName && nameInput) {
+                nameInput.value = savedName;
+            }
 
-        let currentMode = 'realtime'; // 初期状態: リアルタイム
-        let pollingTimer = null;
-        let unreadCount = 0; // 未読件数
-        let lastCheckedReplyId = 0; // 新着確認済みの最新ID
-        let realtimeFetchBusy = false;
+            const threadId = {{ thread.id }};
+            const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
 
-        const btnView = document.getElementById('mode-btn-view');
-        const btnRealtime = document.getElementById('mode-btn-realtime');
-        const container = document.getElementById('postsContainer');
-        const scrollBtn = document.getElementById('scroll-to-bottom-btn');
-        const scrollBadge = document.getElementById('scroll-to-bottom-badge');
+            // --- Socket.IO の初期化と接続 ---
+            const socket = io();
 
-        // ---- ライト/ダークモード切り替え ----
-        const themeToggleBtn = document.getElementById('theme-toggle-btn');
-        function applyThemeButtonLabel() {
-            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-            if (themeToggleBtn) themeToggleBtn.textContent = isLight ? '☀️' : '🌙';
-        }
-        applyThemeButtonLabel();
-        if (themeToggleBtn) {
-            themeToggleBtn.addEventListener('click', () => {
-                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-                if (isLight) {
-                    document.documentElement.removeAttribute('data-theme');
-                    localStorage.setItem('talk_ch_theme', 'dark');
-                } else {
-                    document.documentElement.setAttribute('data-theme', 'light');
-                    localStorage.setItem('talk_ch_theme', 'light');
-                }
-                applyThemeButtonLabel();
+            socket.on('connect', () => {
+                // スレッド固有のルームへ参加
+                socket.emit('join_thread', { thread_id: threadId });
             });
-        }
 
-        // 一番下にいるかどうかの判定（誤差20px許容）
-        function isAtBottom() {
-            if (!container) return true;
-            return container.scrollHeight - container.scrollTop - container.clientHeight < 20;
-        }
+            let currentMode = 'realtime'; // 初期状態: リアルタイム
+            let unreadCount = 0; // 未読件数
 
-        // ボタンとバッジの表示制御
-        function updateButtonVisibility() {
-            if (!scrollBtn) return;
-            if (isAtBottom()) {
-                scrollBtn.style.display = 'none';
+            const btnView = document.getElementById('mode-btn-view');
+            const btnRealtime = document.getElementById('mode-btn-realtime');
+            const container = document.getElementById('postsContainer');
+            const scrollBtn = document.getElementById('scroll-to-bottom-btn');
+            const scrollBadge = document.getElementById('scroll-to-bottom-badge');
+
+            // ---- ライト/ダークモード切り替え ----
+            const themeToggleBtn = document.getElementById('theme-toggle-btn');
+            function applyThemeButtonLabel() {
+                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                if (themeToggleBtn) themeToggleBtn.textContent = isLight ? '☀️' : '🌙';
+            }
+            applyThemeButtonLabel();
+            if (themeToggleBtn) {
+                themeToggleBtn.addEventListener('click', () => {
+                    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+                    if (isLight) {
+                        document.documentElement.removeAttribute('data-theme');
+                        localStorage.setItem('talk_ch_theme', 'dark');
+                    } else {
+                        document.documentElement.setAttribute('data-theme', 'light');
+                        localStorage.setItem('talk_ch_theme', 'light');
+                    }
+                    applyThemeButtonLabel();
+                });
+            }
+
+            // 一番下にいるかどうかの判定（誤差20px許容）
+            function isAtBottom() {
+                if (!container) return true;
+                return container.scrollHeight - container.scrollTop - container.clientHeight < 20;
+            }
+
+            // ボタンとバッジの表示制御
+            function updateButtonVisibility() {
+                if (!scrollBtn) return;
+                if (isAtBottom()) {
+                    scrollBtn.style.display = 'none';
+                    unreadCount = 0;
+                    updateBadge();
+                } else {
+                    scrollBtn.style.display = 'flex';
+                }
+            }
+
+            // 未読バッジの更新
+            function updateBadge() {
+                if (!scrollBadge) return;
+                if (unreadCount > 0) {
+                    scrollBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                    scrollBadge.style.display = 'flex';
+                } else {
+                    scrollBadge.style.display = 'none';
+                }
+            }
+
+            // 新着レスを滑らかに最下部へ移動
+            function smoothScrollToBottom() {
+                if (!container) return;
+                container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+            }
+
+            // 強制的に一番下へスクロールする関数
+            function scrollToBottom() {
+                if (!container) return;
+                const scrollAction = () => {
+                    container.scrollTop = container.scrollHeight;
+                };
+                scrollAction();
+                setTimeout(scrollAction, 100);
+                setTimeout(scrollAction, 300);
                 unreadCount = 0;
                 updateBadge();
-            } else {
-                scrollBtn.style.display = 'flex';
-            }
-        }
-
-        // 未読バッジの更新
-        function updateBadge() {
-            if (!scrollBadge) return;
-            if (unreadCount > 0) {
-                scrollBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
-                scrollBadge.style.display = 'flex';
-            } else {
-                scrollBadge.style.display = 'none';
-            }
-        }
-
-        // 新着レスを滑らかに最下部へ移動
-        function smoothScrollToBottom() {
-            if (!container) return;
-            container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-        }
-
-        // 強制的に一番下へスクロールする関数
-        function scrollToBottom() {
-            if (!container) return;
-            const scrollAction = () => {
-                container.scrollTop = container.scrollHeight;
-            };
-            scrollAction();
-            setTimeout(scrollAction, 100);
-            setTimeout(scrollAction, 300);
-            unreadCount = 0;
-            updateBadge();
-            updateButtonVisibility();
-        }
-
-        // ボタンクリック時の動作
-        if (scrollBtn) {
-            scrollBtn.addEventListener('click', () => {
-                scrollToBottom();
-            });
-        }
-
-        // スクロール時のイベント監視
-        if (container) {
-            container.addEventListener('scroll', () => {
                 updateButtonVisibility();
-            });
-        }
-
-        // モード切り替えとボタン表示の制御
-        function getDomMaxReplyId() {
-            let maxId = 0;
-            document.querySelectorAll('.post-item').forEach(el => {
-                const id = parseInt(el.getAttribute('data-reply-id')) || 0;
-                if (id > maxId) maxId = id;
-            });
-            return maxId;
-        }
-
-        function setMode(mode) {
-            currentMode = mode;
-            if (mode === 'realtime') {
-                if (btnRealtime) {
-                    btnRealtime.style.background = '#0284c7';
-                    btnRealtime.style.color = '#ffffff';
-                    btnRealtime.style.fontWeight = 'bold';
-                }
-                if (btnView) {
-                    btnView.style.background = 'transparent';
-                    btnView.style.color = 'var(--text-main)';
-                    btnView.style.fontWeight = 'normal';
-                }
-                // 開いた直後も最下部から開始
-                scrollToBottom();
-                // 表示モード中に溜まった新着もまとめて取得して最下部へ
-                fetchNewReplies(true);
-                startPolling();
-            } else {
-                if (btnView) {
-                    btnView.style.background = '#0284c7';
-                    btnView.style.color = '#ffffff';
-                    btnView.style.fontWeight = 'bold';
-                }
-                if (btnRealtime) {
-                    btnRealtime.style.background = 'transparent';
-                    btnRealtime.style.color = 'var(--text-main)';
-                    btnRealtime.style.fontWeight = 'normal';
-                }
-                stopPolling();
-                // 表示モードに入った時点の最新IDから監視を開始
-                lastCheckedReplyId = Math.max(lastCheckedReplyId, getDomMaxReplyId());
-                startPolling();
             }
-        }
 
-        if (btnView) btnView.addEventListener('click', () => setMode('view'));
-        if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
-
-        // 2秒ごとの定期取得（ポーリング）
-        function startPolling() {
-            stopPolling();
-            pollingTimer = setInterval(fetchNewReplies, 2000);
-        }
-
-        function stopPolling() {
-            if (pollingTimer) {
-                clearInterval(pollingTimer);
-                pollingTimer = null;
+            // ボタンクリック時の動作
+            if (scrollBtn) {
+                scrollBtn.addEventListener('click', () => {
+                    scrollToBottom();
+                });
             }
-        }
 
-        // 新着レスを取得
-        async function fetchNewReplies(forceRealtime = false) {
-            if (realtimeFetchBusy) return;
-            realtimeFetchBusy = true;
+            // スクロール時のイベント監視
+            if (container) {
+                container.addEventListener('scroll', () => {
+                    updateButtonVisibility();
+                });
+            }
 
-            // リアルタイム時はDOMに表示済みの最新IDから取得。
-            // 閲覧時は「確認済みID」から取得して件数だけ通知する。
-            const afterId = (currentMode === 'realtime' || forceRealtime)
-                ? getDomMaxReplyId()
-                : lastCheckedReplyId;
-
-            try {
-                const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${afterId}`);
-                if (!res.ok) return;
-                const data = await res.json();
-                const newReplies = data.replies || data.new_replies || [];
-                if (!Array.isArray(newReplies) || newReplies.length === 0) return;
-
-                const newestId = Math.max(...newReplies.map(r => Number(r.id) || 0));
-                lastCheckedReplyId = Math.max(lastCheckedReplyId, newestId);
-
-                if (currentMode === 'realtime' || forceRealtime) {
-                    let addedCount = 0;
-                    newReplies.forEach(reply => {
-                        if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
-                            appendReply(reply);
-                            addedCount++;
-                        }
-                    });
-
-                    if (addedCount > 0) {
-                        // リアルタイムモードでは新着を滑らかに最下部へ表示
-                        smoothScrollToBottom();
-                        unreadCount = 0;
-                        updateBadge();
-                        updateButtonVisibility();
+            // モード切り替え
+            function setMode(mode) {
+                currentMode = mode;
+                if (mode === 'realtime') {
+                    if (btnRealtime) {
+                        btnRealtime.style.background = '#0284c7';
+                        btnRealtime.style.color = '#ffffff';
+                        btnRealtime.style.fontWeight = 'bold';
                     }
+                    if (btnView) {
+                        btnView.style.background = 'transparent';
+                        btnView.style.color = 'var(--text-main)';
+                        btnView.style.fontWeight = 'normal';
+                    }
+                    scrollToBottom();
                 } else {
-                    // 閲覧モードでも新着レス自体は画面に追加する。
-                    // ただしスクロール位置は一切動かさず、現在読んでいる場所を維持する。
-                    let addedCount = 0;
-                    newReplies.forEach(reply => {
-                        if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
-                            appendReply(reply);
-                            addedCount++;
-                        }
-                    });
-
-                    if (addedCount > 0) {
-                        // 新着件数だけ右上のバッジに表示。
-                        // scrollToBottom / smoothScrollToBottom はここでは呼ばない。
-                        unreadCount += addedCount;
-                        updateBadge();
-                        if (scrollBtn) scrollBtn.style.display = 'flex';
+                    if (btnView) {
+                        btnView.style.background = '#0284c7';
+                        btnView.style.color = '#ffffff';
+                        btnView.style.fontWeight = 'bold';
+                    }
+                    if (btnRealtime) {
+                        btnRealtime.style.background = 'transparent';
+                        btnRealtime.style.color = 'var(--text-main)';
+                        btnRealtime.style.fontWeight = 'normal';
                     }
                 }
-            } catch (e) {
-                console.error('新着レス取得エラー:', e);
-            } finally {
-                realtimeFetchBusy = false;
-            }
-        }
-
-        // 新規レス要素のDOM描画
-        function appendReply(reply) {
-            if (!container) return;
-            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
-
-            const replyCount = Number(reply.post_num) || (container.querySelectorAll('.post-item').length + 1);
-
-            const replyDiv = document.createElement('div');
-            replyDiv.className = 'post-item';
-            replyDiv.id = `post-${replyCount}`;
-            replyDiv.setAttribute('data-reply-id', reply.id);
-
-            let roleCls = 'post-name';
-            if (reply.role === 'admin' || reply.is_admin) {
-                roleCls = 'role-admin';
-            } else if (reply.role === 'sub_admin') {
-                roleCls = 'role-sub-admin';
-            } else if (reply.role === 'moderator') {
-                roleCls = 'role-moderator';
-            } else if (reply.role === 'pr') {
-                roleCls = 'role-pr';
-            } else if (reply.role === 'proposal') {
-                roleCls = 'role-proposal';
-            } else if (reply.role === 'log') {
-                roleCls = 'role-log';
             }
 
-            const starHtml = (reply.is_admin || ['admin', 'sub_admin', 'moderator'].includes(reply.role)) ? '★' : '';
-            const opHtml = reply.is_op ? `<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>` : '';
+            if (btnView) btnView.addEventListener('click', () => setMode('view'));
+            if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
 
-            let imgHtml = '';
-            if (reply.image_url) {
-                imgHtml = `
-                    <a href="${reply.image_url}" target="_blank">
-                        <img src="${reply.image_url}" class="post-image" loading="lazy">
-                    </a>
-                `;
-            }
+            // ==========================================
+            // WebSocket: サーバーからのリアルタイム受信ハンドラ
+            // ==========================================
+            socket.on('new_reply', (reply) => {
+                // 重複チェック
+                if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
 
-            let adminBtns = '';
-            if (isAdminUser) {
-                adminBtns = `
-                    <div style="margin-left: auto; display: flex; gap: 4px;">
-                        <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');" style="margin:0;">
-                            <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
-                        </form>
-                        <form action="/ban_user/${threadId}/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
-                            <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
-                        </form>
+                // DOMにレスを追加
+                appendReply(reply);
+
+                if (currentMode === 'realtime') {
+                    smoothScrollToBottom();
+                    unreadCount = 0;
+                    updateBadge();
+                    updateButtonVisibility();
+                } else {
+                    // 閲覧モード中の場合はスクロールせずに未読数を加算
+                    unreadCount++;
+                    updateBadge();
+                    if (scrollBtn) scrollBtn.style.display = 'flex';
+                }
+            });
+
+            // 新規レス要素のDOM描画
+            function appendReply(reply) {
+                if (!container) return;
+                if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
+
+                const replyCount = Number(reply.post_num) || (container.querySelectorAll('.post-item').length + 1);
+
+                const replyDiv = document.createElement('div');
+                replyDiv.className = 'post-item';
+                replyDiv.id = `post-${replyCount}`;
+                replyDiv.setAttribute('data-reply-id', reply.id);
+
+                let roleCls = 'post-name';
+                if (reply.role === 'admin' || reply.is_admin) {
+                    roleCls = 'role-admin';
+                } else if (reply.role === 'sub_admin') {
+                    roleCls = 'role-sub-admin';
+                } else if (reply.role === 'moderator') {
+                    roleCls = 'role-moderator';
+                } else if (reply.role === 'pr') {
+                    roleCls = 'role-pr';
+                } else if (reply.role === 'proposal') {
+                    roleCls = 'role-proposal';
+                } else if (reply.role === 'log') {
+                    roleCls = 'role-log';
+                }
+
+                const starHtml = (reply.is_admin || ['admin', 'sub_admin', 'moderator'].includes(reply.role)) ? '★' : '';
+                const opHtml = reply.is_op ? `<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>` : '';
+
+                let imgHtml = '';
+                if (reply.image_url) {
+                    imgHtml = `
+                        <a href="${reply.image_url}" target="_blank">
+                            <img src="${reply.image_url}" class="post-image" loading="lazy">
+                        </a>
+                    `;
+                }
+
+                let adminBtns = '';
+                if (isAdminUser) {
+                    adminBtns = `
+                        <div style="margin-left: auto; display: flex; gap: 4px;">
+                            <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');" style="margin:0;">
+                                <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
+                            </form>
+                            <form action="/ban_user/${threadId}/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
+                                <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
+                            </form>
+                        </div>
+                    `;
+                }
+
+                replyDiv.innerHTML = `
+                    <div class="post-meta">
+                        <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
+                        <span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>
+                        ${opHtml}
+                        <span>${reply.date || ''}</span>
+                        <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
+                        ${adminBtns}
                     </div>
+                    <div class="post-content">${reply.content}</div>
+                    ${imgHtml}
                 `;
+
+                container.appendChild(replyDiv);
             }
 
-            replyDiv.innerHTML = `
-                <div class="post-meta">
-                    <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
-                    <span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>
-                    ${opHtml}
-                    <span>${reply.date || ''}</span>
-                    <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
-                    ${adminBtns}
-                </div>
-                <div class="post-content">${reply.content}</div>
-                ${imgHtml}
-            `;
+            // 過去レスの追加読み込み（300件ずつ）
+            const loadOlderBtn = document.getElementById('load-older-btn');
+            const loadOlderWrap = document.getElementById('load-older-wrap');
+            let loadingOlder = false;
 
-            container.appendChild(replyDiv);
-        }
-
-        // 過去レスの追加読み込み（300件ずつ）
-        const loadOlderBtn = document.getElementById('load-older-btn');
-        const loadOlderWrap = document.getElementById('load-older-wrap');
-        let loadingOlder = false;
-
-        if (loadOlderBtn && loadOlderWrap && container) {
-            loadOlderBtn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                if (loadingOlder) return;
-
-                const beforeId = parseInt(loadOlderWrap.getAttribute('data-oldest-loaded-id') || '0', 10);
-                if (!beforeId) return;
-
-                loadingOlder = true;
-                loadOlderBtn.disabled = true;
-                loadOlderBtn.style.opacity = '0.6';
-
-                // 追加前の位置を保存。過去レスを上に追加しても読んでいた場所を維持する。
-                const oldScrollHeight = container.scrollHeight;
-                const oldScrollTop = container.scrollTop;
-
-                try {
-                    const res = await fetch(
-                        `/thread/${threadId}/get_older_replies?before_id=${encodeURIComponent(beforeId)}`,
-                        { method: 'GET', cache: 'no-store' }
-                    );
-
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-                    const data = await res.json();
-                    const replies = Array.isArray(data.replies) ? data.replies : [];
-
-                    if (replies.length > 0) {
-                        // 先頭に追加するための要素を先に生成
-                        const newElements = [];
-                        for (const reply of replies) {
-                            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) continue;
-
-                            appendReply(reply);
-
-                            // appendReplyは末尾へ追加するので、追加した要素を取得して移動する
-                            const el = container.querySelector(`[data-reply-id="${reply.id}"]`);
-                            if (el) newElements.push(el);
-                        }
-
-                        const firstPost = container.querySelector('.post-item');
-
-                        if (firstPost && newElements.length) {
-                            // repliesは古い→新しい順なので、この順番のまま先頭へ挿入
-                            const frag = document.createDocumentFragment();
-                            newElements.forEach(el => frag.appendChild(el));
-                            container.insertBefore(frag, firstPost);
-                        }
-
-                        // 次回は今回追加した中で最も古いレスを基準にする
-                        const oldestReply = replies[0];
-                        if (oldestReply && oldestReply.id) {
-                            loadOlderWrap.setAttribute('data-oldest-loaded-id', String(oldestReply.id));
-                        }
-
-                        // 追加前と同じレスを画面上の位置に保つ
-                        container.scrollTop = oldScrollTop + (container.scrollHeight - oldScrollHeight);
-                    }
-
-                    // サーバーがまだ過去レスを持っている限り、ボタンは絶対に消さない
-                    if (!data.has_more) {
-                        loadOlderBtn.remove();
-                        loadOlderWrap.remove();
-                    }
-                } catch (err) {
-                    console.error('過去レス取得エラー:', err);
-                    // エラー時はボタンを残して再試行できるようにする
-                } finally {
-                    loadingOlder = false;
-                    if (document.body.contains(loadOlderBtn)) {
-                        loadOlderBtn.disabled = false;
-                        loadOlderBtn.style.opacity = '1';
-                    }
-                }
-            });
-        }
-
-        // フォーム投稿（非同期処理）
-        const bbsForm = document.getElementById('bbsForm');
-        if (bbsForm && !bbsForm.dataset.submitHandlerBound) {
-            bbsForm.dataset.submitHandlerBound = '1';
-            let isSubmitting = false;
-
-            bbsForm.addEventListener('submit', async (e) => {
-                if (isSubmitting) {
+            if (loadOlderBtn && loadOlderWrap && container) {
+                loadOlderBtn.addEventListener('click', async (e) => {
                     e.preventDefault();
-                    return;
-                }
-                isSubmitting = true;
-                e.preventDefault();
+                    if (loadingOlder) return;
 
-                const submitBtn = document.getElementById('submit-btn');
-                if (submitBtn) submitBtn.disabled = true;
+                    const beforeId = parseInt(loadOlderWrap.getAttribute('data-oldest-loaded-id') || '0', 10);
+                    if (!beforeId) return;
 
-                const formData = new FormData(bbsForm);
-                // 投稿時に名前を保存
-                localStorage.setItem('user_name', nameInput.value);
-                try {
-                    const res = await fetch(bbsForm.action, {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const data = await res.json();
+                    loadingOlder = true;
+                    loadOlderBtn.disabled = true;
+                    loadOlderBtn.style.opacity = '0.6';
 
-                    if (data.success && data.reply) {
-                        appendReply(data.reply);
+                    const oldScrollHeight = container.scrollHeight;
+                    const oldScrollTop = container.scrollTop;
 
-                        const contentInput = bbsForm.querySelector('textarea[name="content"]');
-                        if (contentInput) contentInput.value = '';
+                    try {
+                        const res = await fetch(
+                            `/thread/${threadId}/get_older_replies?before_id=${encodeURIComponent(beforeId)}`,
+                            { method: 'GET', cache: 'no-store' }
+                        );
 
-                        const fileInput = bbsForm.querySelector('input[type="file"]');
-                        if (fileInput) fileInput.value = '';
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-                        scrollToBottom();
-                    } else {
-                        alert(data.error || '投稿に失敗しました。');
+                        const data = await res.json();
+                        const replies = Array.isArray(data.replies) ? data.replies : [];
+
+                        if (replies.length > 0) {
+                            const newElements = [];
+                            for (const reply of replies) {
+                                if (document.querySelector(`[data-reply-id="${reply.id}"]`)) continue;
+
+                                appendReply(reply);
+
+                                const el = container.querySelector(`[data-reply-id="${reply.id}"]`);
+                                if (el) newElements.push(el);
+                            }
+
+                            const firstPost = container.querySelector('.post-item');
+
+                            if (firstPost && newElements.length) {
+                                const frag = document.createDocumentFragment();
+                                newElements.forEach(el => frag.appendChild(el));
+                                container.insertBefore(frag, firstPost);
+                            }
+
+                            const oldestReply = replies[0];
+                            if (oldestReply && oldestReply.id) {
+                                loadOlderWrap.setAttribute('data-oldest-loaded-id', String(oldestReply.id));
+                            }
+
+                            container.scrollTop = oldScrollTop + (container.scrollHeight - oldScrollHeight);
+                        }
+
+                        if (!data.has_more) {
+                            loadOlderBtn.remove();
+                            loadOlderWrap.remove();
+                        }
+                    } catch (err) {
+                        console.error('過去レス取得エラー:', err);
+                    } finally {
+                        loadingOlder = false;
+                        if (document.body.contains(loadOlderBtn)) {
+                            loadOlderBtn.disabled = false;
+                            loadOlderBtn.style.opacity = '1';
+                        }
                     }
-                } catch (err) {
-                    console.error('投稿エラー:', err);
-                    alert('投稿中にエラーが発生しました。');
-                } finally {
-                    isSubmitting = false;
-                    if (submitBtn) submitBtn.disabled = false;
-                }
-            });
-        }
+                });
+            }
 
-        // 初期表示時は常にリアルタイムモード
-        setMode('realtime');
-        if (window.location.hash) {
-            const target = document.querySelector(window.location.hash);
+            // フォーム投稿（非同期処理）
+            const bbsForm = document.getElementById('bbsForm');
+            if (bbsForm && !bbsForm.dataset.submitHandlerBound) {
+                bbsForm.dataset.submitHandlerBound = '1';
+                let isSubmitting = false;
+
+                bbsForm.addEventListener('submit', async (e) => {
+                    if (isSubmitting) {
+                        e.preventDefault();
+                        return;
+                    }
+                    isSubmitting = true;
+                    e.preventDefault();
+
+                    const submitBtn = document.getElementById('submit-btn');
+                    if (submitBtn) submitBtn.disabled = true;
+
+                    const formData = new FormData(bbsForm);
+                    if (nameInput) localStorage.setItem('user_name', nameInput.value);
+
+                    try {
+                        const res = await fetch(bbsForm.action, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await res.json();
+
+                        if (data.success) {
+                            // ※ WebSocket側で new_reply が届いて画面描画されるため、
+                            // ここでは入力フォームのクリアとスクロールのみを行います
+                            const contentInput = bbsForm.querySelector('textarea[name="content"]');
+                            if (contentInput) contentInput.value = '';
+
+                            const fileInput = bbsForm.querySelector('input[type="file"]');
+                            if (fileInput) fileInput.value = '';
+
+                            scrollToBottom();
+                        } else {
+                            alert(data.error || '投稿に失敗しました。');
+                        }
+                    } catch (err) {
+                        console.error('投稿エラー:', err);
+                        alert('投稿中にエラーが発生しました。');
+                    } finally {
+                        isSubmitting = false;
+                        if (submitBtn) submitBtn.disabled = false;
+                    }
+                });
+            }
+
+            // ページ離脱時にルームを退出する処理を追加
+            window.addEventListener('beforeunload', () => {
+                socket.emit('leave_thread', { thread_id: threadId });
+            });
+
+            // 初期表示時処理
+            setMode('realtime');
+            if (window.location.hash) {
+                const target = document.querySelector(window.location.hash);
+                if (target) {
+                    setTimeout(() => {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 150);
+                }
+            }
+            updateButtonVisibility();
+        });
+
+        // グローバル関数（アンカー移動と引用）
+        function scrollToPost(num) {
+            const target = document.getElementById(`post-${num}`);
             if (target) {
-                setTimeout(() => {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 150);
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.style.background = 'rgba(56, 189, 248, 0.2)';
+                setTimeout(() => { target.style.background = ''; }, 1500);
             }
         }
-        updateButtonVisibility();
-    });
 
-    // グローバル関数（アンカー移動と引用）
-    function scrollToPost(num) {
-        const target = document.getElementById(`post-${num}`);
-        if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            target.style.background = 'rgba(56, 189, 248, 0.2)';
-            setTimeout(() => { target.style.background = ''; }, 1500);
+        function quoteReply(num) {
+            const textarea = document.querySelector('textarea[name="content"]');
+            if (textarea) {
+                textarea.value += `>>${num}\n`;
+                textarea.focus();
+            }
         }
-    }
-
-    function quoteReply(num) {
-        const textarea = document.querySelector('textarea[name="content"]');
-        if (textarea) {
-            textarea.value += `>>${num}\n`;
-            textarea.focus();
-        }
-    }
     </script>
-
-    
 
 
 
