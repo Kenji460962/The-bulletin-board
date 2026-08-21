@@ -269,6 +269,7 @@ def staff_logout():
     return redirect(url_for('index'))
 
 NG_WORDS = {
+    '死': 'タヒ',
     '死​ね': '〇ね',
     '死ね': '〇ね',
     'しね': '〇ね',
