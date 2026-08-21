@@ -1586,11 +1586,8 @@ def ban_thread_owner(thread_id):
         print(f"スレッドオーナーBANエラー: {e}")
         return f"エラーが発生しました: {e}", 500
 
-@app.route('/server_metrics')
+@app.route('/api/server_stats')
 def server_metrics():
-    if not can_manage_board():
-        return "Unauthorized", 403
-
     mem_used, mem_limit = read_cgroup_memory()
     if mem_used is not None:
         if mem_limit and mem_limit > 0:
@@ -1619,9 +1616,10 @@ def server_metrics():
         "cpu_percent": cpu_percent,
         "memory_percent": memory_percent,
         "memory_used_mb": memory_used_mb,
-        "memory_limit_mb": memory_limit_mb,
-        "rx_kbps": rx_kbps,
-        "tx_kbps": tx_kbps
+        "memory_total_mb": memory_limit_mb,
+        "net_rx_kbps": rx_kbps,
+        "net_tx_kbps": tx_kbps,
+        "timestamp": time.time()
     }
 
 if __name__ == '__main__':
