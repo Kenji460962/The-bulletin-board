@@ -99,8 +99,40 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1180px;
             margin: 0 auto;
+        }
+
+        .layout-wrapper {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .layout-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .pc-sidebar-ad {
+            width: 300px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .pc-sidebar-ad .ad-banner-box {
+            margin: 0;
+            min-height: 280px;
+        }
+
+        @media (max-width: 959px) {
+            .pc-sidebar-ad {
+                display: none !important;
+            }
         }
 
         /* App Branding Header */
@@ -703,8 +735,11 @@
         </div>
     </nav>
 
-    <!-- 1. Lobby Tab -->
-    <main id="lobby-tab" class="content-section active">
+    <!-- Main Content Layout (PC 2-Column with Right Sidebar Ad, Mobile Streamlined) -->
+    <div class="layout-wrapper">
+        <div class="layout-main">
+            <!-- 1. Lobby Tab -->
+            <main id="lobby-tab" class="content-section active">
         <!-- Welcome Hero -->
         <section class="lobby-welcome">
             <h2 class="lobby-title">Welcome to talk-ch!</h2>
@@ -922,8 +957,24 @@
             </div>
         </section>
     </main>
+        </div><!-- /.layout-main -->
 
-</div>
+        <!-- PC Exclusive Right-Side Advertisement Area -->
+        <aside class="pc-sidebar-ad">
+            <div class="ad-banner-box">
+                <div class="ad-label">スポンサーリンク</div>
+                <div class="ad-content" id="ad-index-sidebar">
+                    <!-- 忍者AdMax / 広告タグ枠（PC右側） -->
+                    <div style="color: var(--text-muted); font-size: 12px; padding: 24px 8px; line-height: 1.6; text-align: center;">
+                        広告エリア<br>
+                        <span style="font-size: 11px; opacity: 0.8;">（PC右側・忍者AdMax等）</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div><!-- /.layout-wrapper -->
+
+</div><!-- /.container -->
 
 <div id="toast-box"></div>
 

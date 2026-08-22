@@ -526,8 +526,12 @@ export async function authenticateStaff(username, password) {
     } catch (_) {}
   }
   const fallbackUsers = [
-    { id: 1, username: 'admin', password: 'password123', role: 'admin', display_name: 'ペンギン★' },
-    { id: 2, username: 'mino', password: 'password123', role: 'sub_admin', display_name: 'Mino★' }
+    { id: 1, username: 'ペンギン', password: 'kenji1228s00460962', role: 'admin', display_name: 'ペンギン★' },
+    { id: 2, username: 'MINO', password: 'mino-haruhi', role: 'admin', display_name: 'MINO★' },
+    { id: 3, username: 'タウ', password: 'tau-from-gifu', role: 'pr', display_name: 'タウ' },
+    { id: 4, username: 'jukutaka', password: 'pr-jukutaka-job', role: 'pr', display_name: '🦅熟した鷹3an' },
+    { id: 5, username: '車えび', password: 'keijiban-ikenbako-job', role: 'proposal', display_name: '車えび' },
+    { id: 6, username: 'クラ急行', password: 'yokohamalinee233', role: 'log', display_name: 'クラ急行' }
   ];
   return fallbackUsers.find(u => u.username === username && u.password === password) || null;
 }

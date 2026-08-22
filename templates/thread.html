@@ -297,6 +297,8 @@
             font-weight: 700;
         }
 
+        .role-proposal,
+        .role-log,
         .role-box {
             color: #4570FF !important;
             background-color: rgba(69, 112, 255, 0.12) !important;
@@ -583,12 +585,92 @@
             align-items: center;
         }
 
+        /* PC Layout (Two Columns: Posts on Left, Ad Sidebar on Right) */
+        .thread-layout-inner {
+            max-width: 1160px;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+            justify-content: center;
+        }
+
+        .thread-posts-area {
+            flex: 1;
+            min-width: 0;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .pc-sidebar-ad {
+            width: 320px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .pc-sidebar-ad .ad-banner-box {
+            margin: 0;
+            min-height: 280px;
+            padding: 14px;
+            background: var(--bg-card);
+            border: 1px dashed var(--border);
+        }
+
+        /* Mobile Comment Input Ad */
+        .mobile-comment-ad-box {
+            display: none;
+            background: var(--bg-base);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius-sm);
+            padding: 4px 8px;
+            margin-bottom: 6px;
+            text-align: center;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .mobile-comment-ad-box .ad-label {
+            font-size: 10px;
+            margin-bottom: 2px;
+        }
+
+        /* Responsive Breakpoints */
+        @media (min-width: 960px) {
+            .mobile-comment-ad-box {
+                display: none !important;
+            }
+        }
+
+        @media (max-width: 959px) {
+            .pc-sidebar-ad {
+                display: none !important;
+            }
+            .mobile-comment-ad-box {
+                display: flex !important;
+            }
+            .posts-container {
+                bottom: 185px;
+                padding: 12px 10px 20px;
+            }
+            .footer-area {
+                height: 185px;
+                padding: 8px 10px;
+            }
+            #scroll-to-bottom-btn {
+                bottom: 195px;
+            }
+        }
+
         @media (max-width: 640px) {
             .header-area { padding: 0 10px; }
             .thread-title-main { font-size: 14px; }
             .btn-back { padding: 4px 8px; font-size: 12px; }
-            .posts-container { padding: 12px 10px 20px; }
-            .footer-area { height: 130px; padding: 8px 10px; }
         }
     </style>
 </head>
@@ -627,70 +709,93 @@
 
     <!-- Posts Scroll View -->
     <main class="posts-container" id="postsContainer">
-        <div class="posts-inner">
-            <!-- Top Advertisement Banner -->
-            <div class="ad-banner-box">
-                <div class="ad-label">スポンサーリンク</div>
-                <div class="ad-content" id="ad-thread-top">
-                    <!-- 忍者AdMax / 広告タグ枠 -->
-                    <div style="color: var(--text-muted); font-size: 12px; padding: 6px;">広告枠（忍者AdMax等）</div>
-                </div>
-            </div>
+        <div class="thread-layout-inner">
+            <!-- Left/Main Column: Posts -->
+            <div class="thread-posts-area">
+                <div class="posts-inner">
+                    <!-- Top Advertisement Banner -->
+                    <div class="ad-banner-box">
+                        <div class="ad-label">スポンサーリンク</div>
+                        <div class="ad-content" id="ad-thread-top">
+                            <!-- 忍者AdMax / 広告タグ枠 -->
+                            <div style="color: var(--text-muted); font-size: 12px; padding: 6px;">広告枠（忍者AdMax等）</div>
+                        </div>
+                    </div>
 
-            {% if thread.has_older %}
-            <div id="load-older-wrap" style="text-align: center; padding: 8px 0 16px 0;" data-oldest-loaded-id="{{ thread.replies[0].id if thread.replies else '' }}">
-                <button id="load-older-btn" type="button" style="background: rgba(255,255,255,0.08); color: var(--text-primary); border: 1px solid var(--border); padding: 8px 20px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer;">
-                    ▲ 過去のレスをさらに読み込む
-                </button>
-            </div>
-            {% endif %}
-
-            {% for r in thread.replies %}
-            <div class="post-item" id="post-{{ r.post_num }}" data-reply-id="{{ r.id }}">
-                <div class="post-meta">
-                    <span class="post-num" onclick="quoteReply({{ r.post_num }})">#{{ r.post_num }}</span>
-                    
-                    {% set role_cls = r.role_class %}
-                    {% if not role_cls %}
-                        {% if r.role == 'admin' or r.role == 'sub_admin' or r.is_admin %}
-                            {% set role_cls = 'role-admin' %}
-                        {% elif r.role == 'pr' %}
-                            {% set role_cls = 'role-pr' %}
-                        {% elif r.role == 'box' or r.role == 'moderator' %}
-                            {% set role_cls = 'role-box' %}
-                        {% endif %}
-                    {% endif %}
-
-                    <span class="post-author {{ role_cls }}">{{ r.author }}{% if (r.is_admin or role_cls == 'role-admin') and '★' not in r.author %}★{% endif %}</span>
-                    
-                    {% if r.is_op %}
-                    <span class="tag-op">スレ主</span>
-                    {% endif %}
-
-                    <span class="post-date">{{ r.date }}</span>
-                    <span class="post-userid">ID:{{ r.user_id }}</span>
-                    
-                    {% if is_admin_user %}
-                    <div class="admin-actions">
-                        <form action="/thread/{{ thread.id }}/delete/{{ r.id }}" method="POST" onsubmit="return confirm('このレスを削除しますか？');" style="margin: 0;">
-                            <button type="submit" class="btn-mini-danger">削除</button>
-                        </form>
-                        <form action="/ban_user/{{ r.id }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin: 0;">
-                            <button type="submit" class="btn-mini-danger">BAN</button>
-                        </form>
+                    {% if thread.has_older %}
+                    <div id="load-older-wrap" style="text-align: center; padding: 8px 0 16px 0;" data-oldest-loaded-id="{{ thread.replies[0].id if thread.replies else '' }}">
+                        <button id="load-older-btn" type="button" style="background: rgba(255,255,255,0.08); color: var(--text-primary); border: 1px solid var(--border); padding: 8px 20px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer;">
+                            ▲ 過去のレスをさらに読み込む
+                        </button>
                     </div>
                     {% endif %}
+
+                    {% for r in thread.replies %}
+                    <div class="post-item" id="post-{{ r.post_num }}" data-reply-id="{{ r.id }}">
+                        <div class="post-meta">
+                            <span class="post-num" onclick="quoteReply({{ r.post_num }})">#{{ r.post_num }}</span>
+                            
+                            {% set role_cls = r.role_class %}
+                            {% if not role_cls %}
+                                {% if r.role == 'admin' or r.is_admin %}
+                                    {% set role_cls = 'role-admin' %}
+                                {% elif r.role == 'pr' %}
+                                    {% set role_cls = 'role-pr' %}
+                                {% elif r.role == 'proposal' %}
+                                    {% set role_cls = 'role-proposal' %}
+                                {% elif r.role == 'log' %}
+                                    {% set role_cls = 'role-log' %}
+                                {% elif r.role == 'box' or r.role == 'moderator' %}
+                                    {% set role_cls = 'role-box' %}
+                                {% endif %}
+                            {% endif %}
+
+                            <span class="post-author {{ role_cls }}">{{ r.author }}{% if (r.is_admin or role_cls == 'role-admin') and '★' not in r.author %}★{% endif %}</span>
+                            
+                            {% if r.is_op %}
+                            <span class="tag-op">スレ主</span>
+                            {% endif %}
+
+                            <span class="post-date">{{ r.date }}</span>
+                            <span class="post-userid">ID:{{ r.user_id }}</span>
+                            
+                            {% if is_admin_user %}
+                            <div class="admin-actions">
+                                <form action="/thread/{{ thread.id }}/delete/{{ r.id }}" method="POST" onsubmit="return confirm('このレスを削除しますか？');" style="margin: 0;">
+                                    <button type="submit" class="btn-mini-danger">削除</button>
+                                </form>
+                                <form action="/ban_user/{{ r.id }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin: 0;">
+                                    <button type="submit" class="btn-mini-danger">BAN</button>
+                                </form>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="post-content">{{ r.content | safe }}</div>
+                        
+                        {% if r.image_url %}
+                        <a href="{{ r.image_url }}" target="_blank" rel="noopener noreferrer">
+                            <img src="{{ r.image_url }}" class="post-image" loading="lazy" alt="attached image">
+                        </a>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
                 </div>
-                
-                <div class="post-content">{{ r.content | safe }}</div>
-                
-                {% if r.image_url %}
-                <a href="{{ r.image_url }}" target="_blank" rel="noopener noreferrer">
-                    <img src="{{ r.image_url }}" class="post-image" loading="lazy" alt="attached image">
-                </a>
-                {% endif %}
             </div>
-            {% endfor %}
+
+            <!-- Right Column: PC Exclusive Sidebar Advertisement -->
+            <aside class="pc-sidebar-ad">
+                <div class="ad-banner-box">
+                    <div class="ad-label">スポンサーリンク</div>
+                    <div class="ad-content" id="ad-pc-sidebar">
+                        <!-- 忍者AdMax / 広告タグ枠（PC右側） -->
+                        <div style="color: var(--text-muted); font-size: 12px; padding: 24px 8px; line-height: 1.6;">
+                            広告エリア<br>
+                            <span style="font-size: 11px; opacity: 0.8;">（PC右側・忍者AdMax等）</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
         </div>
     </main>
 
@@ -703,6 +808,15 @@
     <!-- Fixed Bottom Reply Toolbar -->
     <footer class="footer-area">
         <form id="bbsForm" class="footer-inner" action="/thread/{{ thread.id }}" method="POST" enctype="multipart/form-data">
+            <!-- Mobile Comment Input Ad (Shown on smartphone above comment box) -->
+            <div class="mobile-comment-ad-box">
+                <div class="ad-label">スポンサーリンク</div>
+                <div class="ad-content" id="ad-mobile-comment">
+                    <!-- 忍者AdMax / 広告タグ枠 (スマホ入力欄上) -->
+                    <div style="color: var(--text-muted); font-size: 11px; padding: 4px 6px;">広告枠（忍者AdMax等）</div>
+                </div>
+            </div>
+
             <div class="footer-top-row">
                 <div class="author-input-wrap">
                     <span>名前:</span>
@@ -934,11 +1048,15 @@
                 const author = String(reply.author || '');
                 const role = String(reply.role || '').toLowerCase();
                 const isAdmin = Boolean(reply.is_admin);
-                if (role === 'admin' || role === 'sub_admin' || isAdmin || author.includes('ペンギン') || author.includes('Mino')) {
+                if (role === 'admin' || isAdmin || author.includes('ペンギン') || author.toUpperCase().includes('MINO')) {
                     roleCls = 'role-admin';
-                } else if (role === 'pr' || author.includes('鷹3an') || author.includes('タウ')) {
+                } else if (role === 'pr' || author.includes('鷹3an') || author.includes('タウ') || author.toLowerCase().includes('jukutaka')) {
                     roleCls = 'role-pr';
-                } else if (role === 'box' || role === 'moderator' || author.includes('車エビ') || author.includes('名有り') || author.includes('クラ急行')) {
+                } else if (role === 'proposal' || author.includes('車えび') || author.includes('車エビ')) {
+                    roleCls = 'role-proposal';
+                } else if (role === 'log' || author.includes('クラ急行')) {
+                    roleCls = 'role-log';
+                } else if (role === 'box' || role === 'moderator' || author.includes('名有り')) {
                     roleCls = 'role-box';
                 }
             }

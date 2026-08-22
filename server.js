@@ -180,16 +180,33 @@ function getClientIp(req) {
 }
 
 function resolveRoleClass(author = '', role = '', isAdmin = false) {
-  const name = String(author || '');
-  const r = String(role || '').toLowerCase();
-  if (r === 'admin' || r === 'sub_admin' || isAdmin || name.includes('ペンギン') || name.includes('Mino')) {
+  const r = String(role || '').toLowerCase().trim();
+  if (r === 'admin' || isAdmin) {
     return 'role-admin';
   }
-  if (r === 'pr' || name.includes('鷹3an') || name.includes('タウ')) {
+  if (r === 'pr') {
     return 'role-pr';
   }
-  if (r === 'box' || r === 'moderator' || name.includes('車エビ') || name.includes('名有り') || name.includes('クラ急行')) {
-    return 'role-box';
+  if (r === 'proposal') {
+    return 'role-proposal';
+  }
+  if (r === 'log') {
+    return 'role-log';
+  }
+
+  // Name-based fallback matching Cloudflare staff records
+  const name = String(author || '');
+  if (name.includes('ペンギン') || name.toUpperCase().includes('MINO')) {
+    return 'role-admin';
+  }
+  if (name.includes('鷹3an') || name.includes('タウ') || name.toLowerCase().includes('jukutaka')) {
+    return 'role-pr';
+  }
+  if (name.includes('車えび') || name.includes('車エビ')) {
+    return 'role-proposal';
+  }
+  if (name.includes('クラ急行')) {
+    return 'role-log';
   }
   return '';
 }
@@ -251,10 +268,14 @@ function ensureGameToken(req, res) {
   return token;
 }
 
-// Staff credentials
+// Staff credentials (Mirrored from Cloudflare D1 staff_users)
 const staffUsers = [
-  { id: 1, username: 'admin', password: 'password123', role: 'admin', display_name: 'ペンギン★' },
-  { id: 2, username: 'mino', password: 'password123', role: 'sub_admin', display_name: 'Mino★' }
+  { id: 1, username: 'ペンギン', password: 'kenji1228s00460962', role: 'admin', display_name: 'ペンギン★' },
+  { id: 2, username: 'MINO', password: 'mino-haruhi', role: 'admin', display_name: 'MINO★' },
+  { id: 3, username: 'タウ', password: 'tau-from-gifu', role: 'pr', display_name: 'タウ' },
+  { id: 4, username: 'jukutaka', password: 'pr-jukutaka-job', role: 'pr', display_name: '🦅熟した鷹3an' },
+  { id: 5, username: '車えび', password: 'keijiban-ikenbako-job', role: 'proposal', display_name: '車えび' },
+  { id: 6, username: 'クラ急行', password: 'yokohamalinee233', role: 'log', display_name: 'クラ急行' }
 ];
 
 // ==========================================
