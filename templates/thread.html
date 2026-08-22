@@ -282,24 +282,27 @@
         }
 
         .role-admin {
-            color: #f87171 !important;
-            background: rgba(239, 68, 68, 0.15);
+            color: #ff2233 !important;
+            background-color: rgba(255, 34, 51, 0.12) !important;
             padding: 2px 6px;
             border-radius: 4px;
+            font-weight: 700;
         }
 
-        .role-sub-admin {
-            color: #60a5fa !important;
-            background: rgba(96, 165, 250, 0.15);
+        .role-pr {
+            color: #28a745 !important;
+            background-color: rgba(40, 167, 69, 0.12) !important;
             padding: 2px 6px;
             border-radius: 4px;
+            font-weight: 700;
         }
 
-        .role-moderator {
-            color: #34d399 !important;
-            background: rgba(52, 211, 153, 0.15);
+        .role-box {
+            color: #4570FF !important;
+            background-color: rgba(69, 112, 255, 0.12) !important;
             padding: 2px 6px;
             border-radius: 4px;
+            font-weight: 700;
         }
 
         .tag-op {
@@ -550,6 +553,36 @@
             font-weight: 600;
         }
 
+        /* Ad Banner Section */
+        .ad-banner-box {
+            margin: 12px 0 16px;
+            padding: 10px;
+            background: var(--bg-card);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius-md);
+            text-align: center;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .ad-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .ad-content {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
         @media (max-width: 640px) {
             .header-area { padding: 0 10px; }
             .thread-title-main { font-size: 14px; }
@@ -595,6 +628,15 @@
     <!-- Posts Scroll View -->
     <main class="posts-container" id="postsContainer">
         <div class="posts-inner">
+            <!-- Top Advertisement Banner -->
+            <div class="ad-banner-box">
+                <div class="ad-label">スポンサーリンク</div>
+                <div class="ad-content" id="ad-thread-top">
+                    <!-- 忍者AdMax / 広告タグ枠 -->
+                    <div style="color: var(--text-muted); font-size: 12px; padding: 6px;">広告枠（忍者AdMax等）</div>
+                </div>
+            </div>
+
             {% if thread.has_older %}
             <div id="load-older-wrap" style="text-align: center; padding: 8px 0 16px 0;" data-oldest-loaded-id="{{ thread.replies[0].id if thread.replies else '' }}">
                 <button id="load-older-btn" type="button" style="background: rgba(255,255,255,0.08); color: var(--text-primary); border: 1px solid var(--border); padding: 8px 20px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer;">
@@ -608,16 +650,18 @@
                 <div class="post-meta">
                     <span class="post-num" onclick="quoteReply({{ r.post_num }})">#{{ r.post_num }}</span>
                     
-                    {% set role_cls = 'post-author' %}
-                    {% if r.role == 'admin' or r.is_admin %}
-                        {% set role_cls = 'post-author role-admin' %}
-                    {% elif r.role == 'sub_admin' %}
-                        {% set role_cls = 'post-author role-sub-admin' %}
-                    {% elif r.role == 'moderator' %}
-                        {% set role_cls = 'post-author role-moderator' %}
+                    {% set role_cls = r.role_class %}
+                    {% if not role_cls %}
+                        {% if r.role == 'admin' or r.role == 'sub_admin' or r.is_admin %}
+                            {% set role_cls = 'role-admin' %}
+                        {% elif r.role == 'pr' %}
+                            {% set role_cls = 'role-pr' %}
+                        {% elif r.role == 'box' or r.role == 'moderator' %}
+                            {% set role_cls = 'role-box' %}
+                        {% endif %}
                     {% endif %}
 
-                    <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                    <span class="post-author {{ role_cls }}">{{ r.author }}{% if (r.is_admin or role_cls == 'role-admin') and '★' not in r.author %}★{% endif %}</span>
                     
                     {% if r.is_op %}
                     <span class="tag-op">スレ主</span>
@@ -885,12 +929,22 @@
             replyDiv.id = `post-${replyCount}`;
             replyDiv.setAttribute('data-reply-id', reply.id);
 
-            let roleCls = 'post-author';
-            if (reply.role === 'admin' || reply.is_admin) roleCls = 'post-author role-admin';
-            else if (reply.role === 'sub_admin') roleCls = 'post-author role-sub-admin';
-            else if (reply.role === 'moderator') roleCls = 'post-author role-moderator';
+            let roleCls = reply.role_class || '';
+            if (!roleCls) {
+                const author = String(reply.author || '');
+                const role = String(reply.role || '').toLowerCase();
+                const isAdmin = Boolean(reply.is_admin);
+                if (role === 'admin' || role === 'sub_admin' || isAdmin || author.includes('ペンギン') || author.includes('Mino')) {
+                    roleCls = 'role-admin';
+                } else if (role === 'pr' || author.includes('鷹3an') || author.includes('タウ')) {
+                    roleCls = 'role-pr';
+                } else if (role === 'box' || role === 'moderator' || author.includes('車エビ') || author.includes('名有り') || author.includes('クラ急行')) {
+                    roleCls = 'role-box';
+                }
+            }
 
-            const starHtml = (reply.is_admin || ['admin', 'sub_admin', 'moderator'].includes(reply.role)) ? '★' : '';
+            const authorHtmlClass = roleCls ? `post-author ${roleCls}` : 'post-author';
+            const starHtml = ((roleCls === 'role-admin' || reply.is_admin) && !(reply.author || '').includes('★')) ? '★' : '';
             const opHtml = reply.is_op ? `<span class="tag-op">スレ主</span>` : '';
 
             let imgHtml = '';
@@ -919,7 +973,7 @@
             replyDiv.innerHTML = `
                 <div class="post-meta">
                     <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
-                    <span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>
+                    <span class="${authorHtmlClass}">${reply.author || '名無しさん'}${starHtml}</span>
                     ${opHtml}
                     <span class="post-date">${reply.date || ''}</span>
                     <span class="post-userid">ID:${reply.user_id || '???'}</span>

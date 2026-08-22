@@ -121,9 +121,13 @@ export async function initDb() {
         created_at TEXT NOT NULL
       );
     `);
-    try {
-      await queryD1(`ALTER TABLE threads ADD COLUMN is_pinned INTEGER DEFAULT 0;`);
-    } catch (_) {}
+    const threadInfo = await queryD1(`PRAGMA table_info(threads);`);
+    const hasPinnedCol = threadInfo && threadInfo.some(col => col.name === 'is_pinned');
+    if (!hasPinnedCol) {
+      try {
+        await queryD1(`ALTER TABLE threads ADD COLUMN is_pinned INTEGER DEFAULT 0;`);
+      } catch (_) {}
+    }
 
     await queryD1(`
       CREATE TABLE IF NOT EXISTS replies (

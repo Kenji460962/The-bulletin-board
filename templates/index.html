@@ -601,6 +601,36 @@
             line-height: 1.5;
         }
 
+        /* Ad Banner Section */
+        .ad-banner-box {
+            margin: 16px 0;
+            padding: 12px;
+            background: var(--bg-surface);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius-md);
+            text-align: center;
+            min-height: 100px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .ad-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .ad-content {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
         /* Toast Container */
         #toast-box {
             position: fixed;
@@ -689,6 +719,15 @@
             <h3 class="panel-title">📢 管理者からのお知らせ</h3>
             <div class="admin-box">{{ admin_message }}</div>
         </section>
+
+        <!-- Advertisement Banner -->
+        <div class="ad-banner-box">
+            <div class="ad-label">スポンサーリンク</div>
+            <div class="ad-content" id="ad-lobby-banner">
+                <!-- 忍者AdMax / 広告タグ枠 -->
+                <div style="color: var(--text-muted); font-size: 12px; padding: 10px;">広告枠（忍者AdMax等）</div>
+            </div>
+        </div>
 
         <!-- Server Telemetry & Real-Time Stats -->
         <section class="glass-panel">
@@ -813,6 +852,15 @@
                     まだスレッドがありません。上のフォームから新しいスレッドを立ててみましょう！
                 </div>
                 {% endfor %}
+            </div>
+
+            <!-- Advertisement Banner -->
+            <div class="ad-banner-box" style="margin-top: 20px;">
+                <div class="ad-label">スポンサーリンク</div>
+                <div class="ad-content" id="ad-threadlist-banner">
+                    <!-- 忍者AdMax / 広告タグ枠 -->
+                    <div style="color: var(--text-muted); font-size: 12px; padding: 10px;">広告枠（忍者AdMax等）</div>
+                </div>
             </div>
 
             <!-- Pagination -->

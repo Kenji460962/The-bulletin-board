@@ -17,7 +17,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Initialize database tables if connected to D1
 db.initDb().catch(err => console.warn('[DB Init Warning]:', err.message));
@@ -177,6 +177,21 @@ function getClientIp(req) {
   const forwarded = req.headers['x-forwarded-for'];
   if (forwarded) return String(forwarded).split(',')[0].trim();
   return req.socket.remoteAddress || '127.0.0.1';
+}
+
+function resolveRoleClass(author = '', role = '', isAdmin = false) {
+  const name = String(author || '');
+  const r = String(role || '').toLowerCase();
+  if (r === 'admin' || r === 'sub_admin' || isAdmin || name.includes('ペンギン') || name.includes('Mino')) {
+    return 'role-admin';
+  }
+  if (r === 'pr' || name.includes('鷹3an') || name.includes('タウ')) {
+    return 'role-pr';
+  }
+  if (r === 'box' || r === 'moderator' || name.includes('車エビ') || name.includes('名有り') || name.includes('クラ急行')) {
+    return 'role-box';
+  }
+  return '';
 }
 
 function canManageBoard(req) {
@@ -696,7 +711,8 @@ app.get('/thread/:id', async (req, res) => {
     post_num: startNum + i,
     date: formatJstDate(r.date),
     content: formatReplyContent(r.content),
-    is_op: Boolean(opUserId && r.user_id === opUserId)
+    is_op: Boolean(opUserId && r.user_id === opUserId),
+    role_class: resolveRoleClass(r.author, r.role, r.is_admin)
   }));
 
   const threadData = {
@@ -817,6 +833,7 @@ app.post('/thread/:id', upload.single('image'), async (req, res) => {
     date: formatJstDate(newReply.date),
     content: formatReplyContent(newReply.content),
     is_op: Boolean(opUserId && newReply.user_id === opUserId),
+    role_class: resolveRoleClass(newReply.author, newReply.role, newReply.is_admin),
     post_num: allReplies.length
   };
 
@@ -845,7 +862,8 @@ app.get('/thread/:id/get_new_replies', async (req, res) => {
     post_num: startNum + idx,
     date: formatJstDate(r.date),
     content: formatReplyContent(r.content),
-    is_op: Boolean(opUserId && r.user_id === opUserId)
+    is_op: Boolean(opUserId && r.user_id === opUserId),
+    role_class: resolveRoleClass(r.author, r.role, r.is_admin)
   }));
 
   res.json({ success: true, replies: formattedReplies });
@@ -878,7 +896,8 @@ app.get('/thread/:id/get_older_replies', async (req, res) => {
     post_num: startNum + i,
     date: formatJstDate(r.date),
     content: formatReplyContent(r.content),
-    is_op: Boolean(opUserId && r.user_id === opUserId)
+    is_op: Boolean(opUserId && r.user_id === opUserId),
+    role_class: resolveRoleClass(r.author, r.role, r.is_admin)
   }));
 
   res.json({
@@ -1002,9 +1021,16 @@ app.get('/archive/:id', async (req, res) => {
   if (!data) {
     return res.status(404).send('過去ログが見つかりません');
   }
+  const formattedReplies = (data.replies || []).map((r, i) => ({
+    ...r,
+    post_num: i + 1,
+    date: formatJstDate(r.date),
+    content: formatReplyContent(r.content),
+    role_class: resolveRoleClass(r.author, r.role, r.is_admin)
+  }));
   res.render('archive_view.html', {
     thread: data.thread,
-    replies: data.replies,
+    replies: formattedReplies,
     archived_at: data.archived_at
   });
 });

@@ -60,6 +60,31 @@
             gap: 8px;
             flex-wrap: wrap;
         }
+        .post-author {
+            font-weight: 700;
+            color: var(--text-color);
+        }
+        .role-admin {
+            background-color: rgba(255, 34, 51, 0.1);
+            color: #ff2233 !important;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+        .role-pr {
+            background-color: rgba(40, 167, 69, 0.1);
+            color: #28a745 !important;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+        }
+        .role-box {
+            background-color: rgba(69, 112, 255, 0.1);
+            color: #4570FF !important;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-weight: 700;
+        }
         .post-num { color: var(--accent-color); font-weight: 600; }
         .post-content { font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
         .post-image { max-width: 100%; border-radius: 6px; margin-top: 6px; }
@@ -84,7 +109,7 @@
             <div class="post-item">
                 <div class="post-meta">
                     <span class="post-num">#{{ loop.index }}</span>
-                    <span>{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                    <span class="post-author {{ r.role_class }}">{{ r.author }}{% if (r.is_admin or r.role_class == 'role-admin') and '★' not in r.author %}★{% endif %}</span>
                     <span>{{ r.date }}</span>
                     <span>ID:{{ r.user_id }}</span>
                 </div>
