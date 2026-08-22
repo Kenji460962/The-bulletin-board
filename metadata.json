@@ -1,0 +1,6 @@
+{
+  "name": "talk-ch トークちゃんねる",
+  "description": "匿名掲示板・オンラインオセロ/チェス対戦ゲーム・過去ログアーカイブを備えた掲示板Webアプリケーション",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
