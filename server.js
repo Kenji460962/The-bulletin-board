@@ -179,9 +179,9 @@ function getClientIp(req) {
   return req.socket.remoteAddress || '127.0.0.1';
 }
 
-function resolveRoleClass(author = '', role = '', isAdmin = false) {
+function resolveRoleClass(author = '', role = '') {
   const r = String(role || '').toLowerCase().trim();
-  if (r === 'admin' || isAdmin) {
+  if (r === 'admin') {
     return 'role-admin';
   }
   if (r === 'pr') {
@@ -194,8 +194,8 @@ function resolveRoleClass(author = '', role = '', isAdmin = false) {
     return 'role-log';
   }
 
-  // Name-based fallback matching Cloudflare staff records
-  const name = String(author || '');
+  // Name-based fallback strictly for known staff display_names/usernames in Cloudflare D1 staff_users
+  const name = String(author || '').trim();
   if (name.includes('ペンギン') || name.toUpperCase().includes('MINO')) {
     return 'role-admin';
   }
@@ -208,6 +208,7 @@ function resolveRoleClass(author = '', role = '', isAdmin = false) {
   if (name.includes('クラ急行')) {
     return 'role-log';
   }
+
   return '';
 }
 
@@ -840,7 +841,7 @@ app.post('/thread/:id', upload.single('image'), async (req, res) => {
     author: authorInput,
     content,
     userId,
-    isAdmin: isStaff,
+    isAdmin: staffRole === 'admin',
     role: roleToSave,
     imageUrl,
     ipAddress: clientIp

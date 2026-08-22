@@ -737,7 +737,7 @@
                             
                             {% set role_cls = r.role_class %}
                             {% if not role_cls %}
-                                {% if r.role == 'admin' or r.is_admin %}
+                                {% if r.role == 'admin' %}
                                     {% set role_cls = 'role-admin' %}
                                 {% elif r.role == 'pr' %}
                                     {% set role_cls = 'role-pr' %}
@@ -745,12 +745,10 @@
                                     {% set role_cls = 'role-proposal' %}
                                 {% elif r.role == 'log' %}
                                     {% set role_cls = 'role-log' %}
-                                {% elif r.role == 'box' or r.role == 'moderator' %}
-                                    {% set role_cls = 'role-box' %}
                                 {% endif %}
                             {% endif %}
 
-                            <span class="post-author {{ role_cls }}">{{ r.author }}{% if (r.is_admin or role_cls == 'role-admin') and '★' not in r.author %}★{% endif %}</span>
+                            <span class="post-author {{ role_cls }}">{{ r.author }}{% if role_cls == 'role-admin' and '★' not in r.author %}★{% endif %}</span>
                             
                             {% if r.is_op %}
                             <span class="tag-op">スレ主</span>
@@ -1045,10 +1043,9 @@
 
             let roleCls = reply.role_class || '';
             if (!roleCls) {
-                const author = String(reply.author || '');
-                const role = String(reply.role || '').toLowerCase();
-                const isAdmin = Boolean(reply.is_admin);
-                if (role === 'admin' || isAdmin || author.includes('ペンギン') || author.toUpperCase().includes('MINO')) {
+                const author = String(reply.author || '').trim();
+                const role = String(reply.role || '').toLowerCase().trim();
+                if (role === 'admin' || author.includes('ペンギン') || author.toUpperCase().includes('MINO')) {
                     roleCls = 'role-admin';
                 } else if (role === 'pr' || author.includes('鷹3an') || author.includes('タウ') || author.toLowerCase().includes('jukutaka')) {
                     roleCls = 'role-pr';
@@ -1056,13 +1053,11 @@
                     roleCls = 'role-proposal';
                 } else if (role === 'log' || author.includes('クラ急行')) {
                     roleCls = 'role-log';
-                } else if (role === 'box' || role === 'moderator' || author.includes('名有り')) {
-                    roleCls = 'role-box';
                 }
             }
 
             const authorHtmlClass = roleCls ? `post-author ${roleCls}` : 'post-author';
-            const starHtml = ((roleCls === 'role-admin' || reply.is_admin) && !(reply.author || '').includes('★')) ? '★' : '';
+            const starHtml = (roleCls === 'role-admin' && !(reply.author || '').includes('★')) ? '★' : '';
             const opHtml = reply.is_op ? `<span class="tag-op">スレ主</span>` : '';
 
             let imgHtml = '';

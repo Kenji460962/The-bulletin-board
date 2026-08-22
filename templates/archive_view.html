@@ -111,7 +111,7 @@
             <div class="post-item">
                 <div class="post-meta">
                     <span class="post-num">#{{ loop.index }}</span>
-                    <span class="post-author {{ r.role_class }}">{{ r.author }}{% if (r.is_admin or r.role_class == 'role-admin') and '★' not in r.author %}★{% endif %}</span>
+                    <span class="post-author {{ r.role_class }}">{{ r.author }}{% if r.role_class == 'role-admin' and '★' not in r.author %}★{% endif %}</span>
                     <span>{{ r.date }}</span>
                     <span>ID:{{ r.user_id }}</span>
                 </div>
