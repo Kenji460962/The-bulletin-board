@@ -1,31 +1,24 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <!-- WebPファビコン -->
+    <link rel="icon" href="/static/favicon.webp" type="image/webp">
 
-
-    <!-- 元からあったWebPファビコン（ブラウザのタブ用としてそのまま残す） -->
-    <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
-
-    <!-- iOS (iPhone) ホーム画面用アイコン（※180x180のPNG画像を1枚追加） -->
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+    <!-- iOS (iPhone) ホーム画面用アイコン -->
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 
     <!-- Android用 Web App Manifest -->
-    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <link rel="manifest" href="/static/site.webmanifest">
 
-
-    
     <meta charset="UTF-8">
-    
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125" crossorigin="anonymous"></script>
-    
-    <title>{{ thread.title }}</title>
+    <title><%= thread.title %></title>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <script>
-        // ページ描画前にテーマを適用(一瞬ダーク→ライトに切り替わるチラつきを防ぐ)
+        // ページ描画前にテーマを適用
         (function() {
             var saved = localStorage.getItem('talk_ch_theme');
             if (saved === 'light') {
@@ -75,9 +68,8 @@
             background-color: var(--bg-color); 
             color: var(--text-main);
             font-family: 'Inter', sans-serif; 
-
-
         }
+
         .header-area { 
             position: absolute !important;
             top: 0 !important;
@@ -86,7 +78,7 @@
             padding: 8px 16px !important; 
             background-color: var(--panel-bg); 
             border-bottom: 1px solid var(--border-color); 
-            min-height: 65px !important; /* height固定ではなくmin-heightに変更 */
+            min-height: 65px !important;
             box-sizing: border-box !important; 
             display: flex !important;
             flex-direction: column !important;
@@ -95,7 +87,6 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-/* タイトル行のレイアウト整列 */
         .header-title-row {
             display: flex;
             align-items: center;
@@ -110,7 +101,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            flex: 1; /* 長いタイトルは自動で「...」と省略 */
+            flex: 1;
             min-width: 0;
         }
 
@@ -120,10 +111,9 @@
             color: var(--text-muted);
             opacity: 0.7;
             white-space: nowrap;
-            flex-shrink: 0; /* スレ主IDが潰れないように保持 */
+            flex-shrink: 0;
         }
 
-/* 2行目のサブメニュー行 */
         .header-sub-row {
             font-size: 11px;
             color: var(--text-muted);
@@ -132,13 +122,10 @@
             align-items: center;
             margin-top: 4px;
             gap: 6px;
-            overflow-x: auto; /* 万が一横幅を超えても折り返さずに横スクロール可能に */
+            overflow-x: auto;
             white-space: nowrap;
         }
-        
-       
 
-        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：165pxに調整） */
         .posts-container { 
             position: absolute !important;
             top: 65px !important;
@@ -152,7 +139,6 @@
             scroll-behavior: smooth;
         }
 
-        /* スマホ用：入力欄と広告をまとめた固定フッターエリア（165px） */
         .footer-area { 
             position: absolute !important;
             bottom: 0 !important;
@@ -169,7 +155,6 @@
             justify-content: space-between;
         }
 
-        /* 入力欄のすぐ下に配置するスマホ用広告スペース（320x50） */
         .ad-item-sp {
             width: 100%;
             height: 50px;
@@ -183,12 +168,9 @@
         }
 
         .ad-space-pc {
-            display: none; /* スマホでは非表示 */
+            display: none;
         }
 
-        /* ----------------------------------------- */
-        /* PC画面（横幅768px以上）：右側に300x250広告を固定配置 */
-        /* ----------------------------------------- */
         @media (min-width: 768px) {
             .posts-container {
                 right: 330px !important;
@@ -211,7 +193,7 @@
             }
 
             .ad-item-sp {
-                display: none; /* PCではスマホ用広告を非表示 */
+                display: none;
             }
 
             .ad-space-pc {
@@ -242,7 +224,6 @@
         }
         .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         
-        /* 番号リンク（クリックで入力欄に引用） */
         .post-num { 
             font-weight: 700; 
             color: var(--accent-color); 
@@ -253,7 +234,6 @@
             text-decoration: underline; 
         }
 
-        /* >>アンカーのスタイル（色付き・ジャンプ用） */
         .post-anchor {
             color: #f43f5e;
             font-weight: 600;
@@ -266,7 +246,6 @@
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
-        /* 役職ごとの色設定 */
         .post-name { color: var(--text-main) !important; font-weight: 500; }
         .role-admin { color: #f87171 !important; font-weight: 700; }
         .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
@@ -307,16 +286,19 @@
 <body>
 
     <div class="header-area">
-        <div style="font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);">
-            {{ thread.title }}
-            {% if op_user_id %}
-            <span style="font-size: 11px; font-weight: 400; color: var(--text-muted); opacity: 0.7;">スレ主 ID:{{ op_user_id }}</span>
-            {% endif %}
+        <div style="font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+            <span style="background: rgba(56, 189, 248, 0.15); color: var(--accent-color); border: 1px solid var(--border-color); padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; flex-shrink: 0;">
+                <%= thread.category_icon || '💬' %> <%= thread.category_name || '雑談' %>
+            </span>
+            <span style="overflow: hidden; text-overflow: ellipsis;"><%= thread.title %></span>
+            <% if (op_user_id) { %>
+            <span style="font-size: 11px; font-weight: 400; color: var(--text-muted); opacity: 0.7; flex-shrink: 0;">スレ主 ID:<%= op_user_id %></span>
+            <% } %>
         </div>
-        <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px; flex-wrap: wrap; gap: 6px;">
+        <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 4px; flex-wrap: wrap; gap: 6px;">
             <div>
-                <a href="{{ back_to_board }}">← 掲示板に戻る</a>
-                <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
+                <a href="<%= back_to_board %>" style="font-weight: 600;">← 掲示板に戻る</a>
+                <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);"><%= active_count %></strong>人</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
                 <button type="button" id="theme-toggle-btn" class="theme-toggle-btn">🌙</button>
@@ -325,75 +307,79 @@
                     <button type="button" id="mode-btn-realtime" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">⚡ リアルタイム</button>
                 </div>
             </div>
-            {% if is_admin_user %}
-            <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
-                <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 11px;">スレッド削除</button>
+            <% if (is_admin_user) { %>
+            <form action="/thread/<%= thread.id %>/delete_thread" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
+                <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 11px; border-radius: 4px;">スレッド削除</button>
             </form>
-            {% endif %}
+            <% } %>
         </div>
     </div>
 
     <div class="ad-space-pc">
-        <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">スポンサーリンク</div>
-        <div style="width: 300px; height: 250px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); border-radius: 4px; overflow: hidden;">
-            <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+        <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 6px;">talk-ch</div>
+        <div style="width: 300px; height: 250px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.2); border-radius: 4px; overflow: hidden; color: var(--text-muted); font-size: 13px;">
+            トークちゃんねる
         </div>
     </div>
 
     <div class="posts-container" id="postsContainer">
-        {% if thread.has_older %}
-        <div id="load-older-wrap" style="text-align: center; padding: 8px 0 16px 0;" data-oldest-loaded-id="{{ thread.replies[0].id if thread.replies else '' }}">
+        <% if (thread.has_older) { %>
+        <div id="load-older-wrap" style="text-align: center; padding: 8px 0 16px 0;" data-oldest-loaded-id="<%= thread.replies && thread.replies.length > 0 ? thread.replies[0].id : '' %>">
             <button id="load-older-btn" type="button" style="background: rgba(255,255,255,0.1); color: var(--text-main); border: 1px solid var(--border-color); padding: 6px 16px; border-radius: 4px; font-size: 13px; cursor: pointer;">
                 ▲ もっと見る（過去のレス）
             </button>
         </div>
-        {% endif %}
-        {% for r in thread.replies %}
-        <div class="post-item" id="post-{{ r.post_num }}" data-reply-id="{{ r.id }}">
+        <% } %>
+        <% if (thread.replies) { %>
+        <% thread.replies.forEach(function(r) { %>
+        <div class="post-item" id="post-<%= r.post_num %>" data-reply-id="<%= r.id %>">
             <div class="post-meta">
-                <span class="post-num" onclick="quoteReply({{ r.post_num }})">#{{ r.post_num }}</span>
+                <span class="post-num" onclick="quoteReply(<%= r.post_num %>)">#<%= r.post_num %></span>
                 
-                {% set role_cls = 'post-name' %}
-                {% if r.role == 'admin' or r.is_admin %}
-                    {% set role_cls = 'role-admin' %}
-                {% elif r.role == 'sub_admin' %}
-                    {% set role_cls = 'role-sub-admin' %}
-                {% elif r.role == 'moderator' %}
-                    {% set role_cls = 'role-moderator' %}
-                {% elif r.role == 'pr' %}
-                    {% set role_cls = 'role-pr' %}
-                {% elif r.role == 'proposal' %}
-                    {% set role_cls = 'role-proposal' %}
-                {% elif r.role == 'log' %}
-                    {% set role_cls = 'role-log' %}
-                {% endif %}
+                <% 
+                let roleCls = 'post-name';
+                if (r.role === 'admin' || r.is_admin) {
+                    roleCls = 'role-admin';
+                } else if (r.role === 'sub_admin') {
+                    roleCls = 'role-sub-admin';
+                } else if (r.role === 'moderator') {
+                    roleCls = 'role-moderator';
+                } else if (r.role === 'pr') {
+                    roleCls = 'role-pr';
+                } else if (r.role === 'proposal') {
+                    roleCls = 'role-proposal';
+                } else if (r.role === 'log') {
+                    roleCls = 'role-log';
+                }
+                %>
 
-                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
-                {% if r.is_op %}
+                <span class="<%= roleCls %>"><%= r.author %><% if (r.is_admin || ['admin', 'sub_admin', 'moderator'].includes(r.role)) { %>★<% } %></span>
+                <% if (r.is_op) { %>
                 <span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>
-                {% endif %}
-                <span>{{ r.date }}</span>
-                <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
+                <% } %>
+                <span><%= r.date %></span>
+                <span style="color: var(--text-muted);">ID:<%= r.user_id %></span>
                 
-                {% if is_admin_user %}
+                <% if (is_admin_user) { %>
                 <div style="margin-left: auto; display: flex; gap: 4px;">
-                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
+                    <form action="/thread/<%= thread.id %>/delete/<%= r.id %>" method="POST" onsubmit="return confirm('削除しますか？');">
                         <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
                     </form>
-                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                    <form action="/ban_user/<%= thread.id %>/<%= r.id %>" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
                         <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
                     </form>
                 </div>
-                {% endif %}
+                <% } %>
             </div>
-            <div class="post-content">{{ r.content | safe }}</div>
-            {% if r.image_url %}
-            <a href="{{ r.image_url }}" target="_blank">
-                <img src="{{ r.image_url }}" class="post-image" loading="lazy">
+            <div class="post-content"><%- r.content %></div>
+            <% if (r.image_url) { %>
+            <a href="<%= r.image_url %>" target="_blank">
+                <img src="<%= r.image_url %>" class="post-image" loading="lazy">
             </a>
-            {% endif %}
+            <% } %>
         </div>
-        {% endfor %}
+        <% }); %>
+        <% } %>
     </div>
 
     <button id="scroll-to-bottom-btn" style="
@@ -435,7 +421,7 @@
     </button>
 
     <div class="footer-area">
-        <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
+        <form id="bbsForm" action="/thread/<%= thread.id %>" method="POST" enctype="multipart/form-data" style="margin: 0;">
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
                 <label style="font-size: 11px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 11px;" value="名無しさん"></label>
                 <label style="font-size: 11px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
@@ -447,30 +433,26 @@
         </form>
 
         <div class="ad-item-sp">
-            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                <script src="https://adm.shinobi.jp/o/2e3162b378edec08cdd9b5445456cf81"></script>
+            <div style="width: 320px; height: 50px; display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--text-muted); font-size: 12px;">
+                talk-ch トークちゃんねる
             </div>
         </div>
     </div>
 
-
-
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-
-        // 名前をローカルストレージから復元
         const nameInput = document.querySelector('input[name="author"]');
         const savedName = localStorage.getItem('user_name');
-        if (savedName) {
+        if (savedName && nameInput) {
             nameInput.value = savedName;
         }
-        const threadId = {{ thread.id }};
-        const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
+        const threadId = <%= thread.id %>;
+        const isAdminUser = <%= is_admin_user ? 'true' : 'false' %>;
 
-        let currentMode = 'realtime'; // 初期状態: リアルタイム
+        let currentMode = 'realtime';
         let pollingTimer = null;
-        let unreadCount = 0; // 未読件数
-        let lastCheckedReplyId = 0; // 新着確認済みの最新ID
+        let unreadCount = 0;
+        let lastCheckedReplyId = 0;
         let realtimeFetchBusy = false;
 
         const btnView = document.getElementById('mode-btn-view');
@@ -479,7 +461,6 @@
         const scrollBtn = document.getElementById('scroll-to-bottom-btn');
         const scrollBadge = document.getElementById('scroll-to-bottom-badge');
 
-        // ---- ライト/ダークモード切り替え ----
         const themeToggleBtn = document.getElementById('theme-toggle-btn');
         function applyThemeButtonLabel() {
             const isLight = document.documentElement.getAttribute('data-theme') === 'light';
@@ -500,13 +481,11 @@
             });
         }
 
-        // 一番下にいるかどうかの判定（誤差20px許容）
         function isAtBottom() {
             if (!container) return true;
             return container.scrollHeight - container.scrollTop - container.clientHeight < 20;
         }
 
-        // ボタンとバッジの表示制御
         function updateButtonVisibility() {
             if (!scrollBtn) return;
             if (isAtBottom()) {
@@ -518,7 +497,6 @@
             }
         }
 
-        // 未読バッジの更新
         function updateBadge() {
             if (!scrollBadge) return;
             if (unreadCount > 0) {
@@ -529,13 +507,11 @@
             }
         }
 
-        // 新着レスを滑らかに最下部へ移動
         function smoothScrollToBottom() {
             if (!container) return;
             container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
         }
 
-        // 強制的に一番下へスクロールする関数
         function scrollToBottom() {
             if (!container) return;
             const scrollAction = () => {
@@ -549,21 +525,18 @@
             updateButtonVisibility();
         }
 
-        // ボタンクリック時の動作
         if (scrollBtn) {
             scrollBtn.addEventListener('click', () => {
                 scrollToBottom();
             });
         }
 
-        // スクロール時のイベント監視
         if (container) {
             container.addEventListener('scroll', () => {
                 updateButtonVisibility();
             });
         }
 
-        // モード切り替えとボタン表示の制御
         function getDomMaxReplyId() {
             let maxId = 0;
             document.querySelectorAll('.post-item').forEach(el => {
@@ -586,9 +559,7 @@
                     btnView.style.color = 'var(--text-main)';
                     btnView.style.fontWeight = 'normal';
                 }
-                // 開いた直後も最下部から開始
                 scrollToBottom();
-                // 表示モード中に溜まった新着もまとめて取得して最下部へ
                 fetchNewReplies(true);
                 startPolling();
             } else {
@@ -603,7 +574,6 @@
                     btnRealtime.style.fontWeight = 'normal';
                 }
                 stopPolling();
-                // 表示モードに入った時点の最新IDから監視を開始
                 lastCheckedReplyId = Math.max(lastCheckedReplyId, getDomMaxReplyId());
                 startPolling();
             }
@@ -612,7 +582,6 @@
         if (btnView) btnView.addEventListener('click', () => setMode('view'));
         if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
 
-        // 2秒ごとの定期取得（ポーリング）
         function startPolling() {
             stopPolling();
             pollingTimer = setInterval(fetchNewReplies, 2000);
@@ -625,13 +594,10 @@
             }
         }
 
-        // 新着レスを取得
         async function fetchNewReplies(forceRealtime = false) {
             if (realtimeFetchBusy) return;
             realtimeFetchBusy = true;
 
-            // リアルタイム時はDOMに表示済みの最新IDから取得。
-            // 閲覧時は「確認済みID」から取得して件数だけ通知する。
             const afterId = (currentMode === 'realtime' || forceRealtime)
                 ? getDomMaxReplyId()
                 : lastCheckedReplyId;
@@ -656,15 +622,12 @@
                     });
 
                     if (addedCount > 0) {
-                        // リアルタイムモードでは新着を滑らかに最下部へ表示
                         smoothScrollToBottom();
                         unreadCount = 0;
                         updateBadge();
                         updateButtonVisibility();
                     }
                 } else {
-                    // 閲覧モードでも新着レス自体は画面に追加する。
-                    // ただしスクロール位置は一切動かさず、現在読んでいる場所を維持する。
                     let addedCount = 0;
                     newReplies.forEach(reply => {
                         if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
@@ -674,8 +637,6 @@
                     });
 
                     if (addedCount > 0) {
-                        // 新着件数だけ右上のバッジに表示。
-                        // scrollToBottom / smoothScrollToBottom はここでは呼ばない。
                         unreadCount += addedCount;
                         updateBadge();
                         if (scrollBtn) scrollBtn.style.display = 'flex';
@@ -688,7 +649,6 @@
             }
         }
 
-        // 新規レス要素のDOM描画
         function appendReply(reply) {
             if (!container) return;
             if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
@@ -757,7 +717,6 @@
             container.appendChild(replyDiv);
         }
 
-        // 過去レスの追加読み込み（300件ずつ）
         const loadOlderBtn = document.getElementById('load-older-btn');
         const loadOlderWrap = document.getElementById('load-older-wrap');
         let loadingOlder = false;
@@ -774,7 +733,6 @@
                 loadOlderBtn.disabled = true;
                 loadOlderBtn.style.opacity = '0.6';
 
-                // 追加前の位置を保存。過去レスを上に追加しても読んでいた場所を維持する。
                 const oldScrollHeight = container.scrollHeight;
                 const oldScrollTop = container.scrollTop;
 
@@ -790,14 +748,10 @@
                     const replies = Array.isArray(data.replies) ? data.replies : [];
 
                     if (replies.length > 0) {
-                        // 先頭に追加するための要素を先に生成
                         const newElements = [];
                         for (const reply of replies) {
                             if (document.querySelector(`[data-reply-id="${reply.id}"]`)) continue;
-
                             appendReply(reply);
-
-                            // appendReplyは末尾へ追加するので、追加した要素を取得して移動する
                             const el = container.querySelector(`[data-reply-id="${reply.id}"]`);
                             if (el) newElements.push(el);
                         }
@@ -805,30 +759,25 @@
                         const firstPost = container.querySelector('.post-item');
 
                         if (firstPost && newElements.length) {
-                            // repliesは古い→新しい順なので、この順番のまま先頭へ挿入
                             const frag = document.createDocumentFragment();
                             newElements.forEach(el => frag.appendChild(el));
                             container.insertBefore(frag, firstPost);
                         }
 
-                        // 次回は今回追加した中で最も古いレスを基準にする
                         const oldestReply = replies[0];
                         if (oldestReply && oldestReply.id) {
                             loadOlderWrap.setAttribute('data-oldest-loaded-id', String(oldestReply.id));
                         }
 
-                        // 追加前と同じレスを画面上の位置に保つ
                         container.scrollTop = oldScrollTop + (container.scrollHeight - oldScrollHeight);
                     }
 
-                    // サーバーがまだ過去レスを持っている限り、ボタンは絶対に消さない
                     if (!data.has_more) {
                         loadOlderBtn.remove();
                         loadOlderWrap.remove();
                     }
                 } catch (err) {
                     console.error('過去レス取得エラー:', err);
-                    // エラー時はボタンを残して再試行できるようにする
                 } finally {
                     loadingOlder = false;
                     if (document.body.contains(loadOlderBtn)) {
@@ -839,7 +788,6 @@
             });
         }
 
-        // フォーム投稿（非同期処理）
         const bbsForm = document.getElementById('bbsForm');
         if (bbsForm && !bbsForm.dataset.submitHandlerBound) {
             bbsForm.dataset.submitHandlerBound = '1';
@@ -857,8 +805,9 @@
                 if (submitBtn) submitBtn.disabled = true;
 
                 const formData = new FormData(bbsForm);
-                // 投稿時に名前を保存
-                localStorage.setItem('user_name', nameInput.value);
+                if (nameInput) {
+                    localStorage.setItem('user_name', nameInput.value);
+                }
                 try {
                     const res = await fetch(bbsForm.action, {
                         method: 'POST',
@@ -889,7 +838,6 @@
             });
         }
 
-        // 初期表示時は常にリアルタイムモード
         setMode('realtime');
         if (window.location.hash) {
             const target = document.querySelector(window.location.hash);
@@ -902,7 +850,6 @@
         updateButtonVisibility();
     });
 
-    // グローバル関数（アンカー移動と引用）
     function scrollToPost(num) {
         const target = document.getElementById(`post-${num}`);
         if (target) {
@@ -920,11 +867,5 @@
         }
     }
     </script>
-
-    
-
-
-
-   
 </body>
 </html>

@@ -1,0 +1,6 @@
+{
+  "name": "talk-ch トークちゃんねる",
+  "description": "talk-ch トークちゃんねる - 完全匿名・登録不要の掲示板＆オンライン対戦ゲーム",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,2085 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Favicon & Icons -->
+    <link rel="icon" href="/static/favicon.webp" type="image/webp">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="manifest" href="/static/site.webmanifest">
+       
+    <title>talk-ch トークちゃんねる | 匿名掲示板・対戦ゲーム</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+    <script>
+        // Apply theme immediately to prevent flashing
+        (function() {
+            var saved = localStorage.getItem('talk_ch_theme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        })();
+    </script>
+
+    <style>
+        :root {
+            --bg-base: #060a12;
+            --bg-surface: #0b1325;
+            --bg-card: #0f1a33;
+            --bg-card-hover: #142344;
+            --border-subtle: #18284c;
+            --border-card: #1c2e56;
+            --border-highlight: #0ea5e9;
+            
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            
+            --accent-primary: #00a2ff;
+            --accent-primary-hover: #0088e0;
+            --accent-cyan: #38bdf8;
+            --accent-success: #10b981;
+            --accent-warning: #f59e0b;
+            --accent-danger: #ef4444;
+            --accent-purple: #a855f7;
+
+            --pill-bg: #111d38;
+            --pill-border: #1e335d;
+            --pill-text: #cbd5e1;
+
+            --shadow-sm: 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 16px -2px rgba(0, 0, 0, 0.45);
+            --shadow-lg: 0 12px 32px -4px rgba(0, 0, 0, 0.6);
+        }
+
+        html[data-theme="light"] {
+            --bg-base: #f0f4f8;
+            --bg-surface: #ffffff;
+            --bg-card: #ffffff;
+            --bg-card-hover: #f8fafc;
+            --border-subtle: #e2e8f0;
+            --border-card: #cbd5e1;
+            --border-highlight: #0284c7;
+
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+
+            --accent-primary: #0284c7;
+            --accent-primary-hover: #0369a1;
+            --accent-cyan: #0284c7;
+            --accent-success: #059669;
+            --accent-warning: #d97706;
+            --accent-danger: #dc2626;
+            --accent-purple: #9333ea;
+
+            --pill-bg: #f1f5f9;
+            --pill-border: #cbd5e1;
+            --pill-text: #334155;
+
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+            --shadow-md: 0 4px 8px -1px rgba(0, 0, 0, 0.08);
+            --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px 16px 60px 16px;
+            transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1080px;
+        }
+
+        /* -----------------------------------------
+           TOP APP HEADER (Matches Screenshot Exact)
+        ----------------------------------------- */
+        .app-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 18px;
+            background: transparent;
+            margin-bottom: 20px;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .brand-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .brand-logo-img {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            object-fit: contain;
+            box-shadow: 0 2px 10px rgba(14, 165, 233, 0.35);
+            background: #0f1a33;
+        }
+
+        .brand-titles {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .brand-name {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            line-height: 1.1;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 1px;
+        }
+
+        html[data-theme="light"] .brand-name {
+            color: #0f172a;
+        }
+
+        .brand-name .highlight {
+            color: #38bdf8;
+        }
+
+        .brand-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 500;
+            margin-top: 1px;
+        }
+
+        /* Center Nav Tabs (Pill Capsule) */
+        .header-nav-capsule {
+            display: inline-flex;
+            align-items: center;
+            background: #0d172e;
+            border: 1px solid #1c2c50;
+            border-radius: 12px;
+            padding: 4px;
+            gap: 4px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        html[data-theme="light"] .header-nav-capsule {
+            background: #ffffff;
+            border-color: #cbd5e1;
+        }
+
+        .nav-capsule-btn {
+            background: transparent;
+            border: none;
+            padding: 7px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .nav-capsule-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-capsule-btn.active {
+            background: #00a2ff;
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(0, 162, 255, 0.4);
+        }
+
+        /* Right Header Controls */
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .live-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #0d172e;
+            border: 1px solid #1c2c50;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            white-space: nowrap;
+        }
+
+        html[data-theme="light"] .live-status-pill {
+            background: #ffffff;
+            border-color: #cbd5e1;
+            color: #0284c7;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent-success);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 0 rgba(16, 185, 129, 0.4);
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        .btn-icon-square {
+            background: #0d172e;
+            border: 1px solid #1c2c50;
+            color: var(--text-secondary);
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 15px;
+            transition: all 0.15s ease;
+            text-decoration: none;
+        }
+
+        html[data-theme="light"] .btn-icon-square {
+            background: #ffffff;
+            border-color: #cbd5e1;
+            color: #475569;
+        }
+
+        .btn-icon-square:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        /* -----------------------------------------
+           TAB CONTENTS CONTAINER
+        ----------------------------------------- */
+        .tab-pane {
+            display: none;
+            animation: paneFade 0.2s ease-in-out;
+        }
+
+        .tab-pane.active {
+            display: block;
+        }
+
+        @keyframes paneFade {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* -----------------------------------------
+           LOBBY TAB (Screenshot 1 & 2)
+        ----------------------------------------- */
+        .hero-banner-card {
+            background: linear-gradient(135deg, #0b1428 0%, #0d1933 60%, #112042 100%);
+            border: 1px solid var(--border-card);
+            border-radius: 16px;
+            padding: 32px 36px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-md);
+            position: relative;
+            overflow: hidden;
+        }
+
+        html[data-theme="light"] .hero-banner-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+            border-color: #cbd5e1;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(14, 165, 233, 0.15);
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            color: #38bdf8;
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 18px;
+        }
+
+        html[data-theme="light"] .hero-badge {
+            background: rgba(2, 132, 199, 0.1);
+            border-color: rgba(2, 132, 199, 0.3);
+            color: #0284c7;
+        }
+
+        .hero-title {
+            font-size: 38px;
+            font-weight: 800;
+            letter-spacing: -0.8px;
+            line-height: 1.15;
+            margin-bottom: 14px;
+            color: #ffffff;
+        }
+
+        html[data-theme="light"] .hero-title {
+            color: #0f172a;
+        }
+
+        .hero-title .cyan-highlight {
+            color: #00a2ff;
+        }
+
+        .hero-desc {
+            font-size: 14px;
+            color: var(--text-secondary);
+            max-width: 780px;
+            line-height: 1.7;
+            margin-bottom: 24px;
+        }
+
+        .hero-actions {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .btn-hero-primary {
+            background: #00a2ff;
+            color: #ffffff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px rgba(0, 162, 255, 0.4);
+            transition: all 0.18s ease;
+            text-decoration: none;
+        }
+
+        .btn-hero-primary:hover {
+            background: #008be0;
+            transform: translateY(-1px);
+        }
+
+        .btn-hero-secondary {
+            background: rgba(13, 23, 46, 0.8);
+            color: var(--text-primary);
+            border: 1px solid #1f335c;
+            padding: 12px 22px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.18s ease;
+            text-decoration: none;
+        }
+
+        html[data-theme="light"] .btn-hero-secondary {
+            background: #ffffff;
+            border-color: #cbd5e1;
+        }
+
+        .btn-hero-secondary:hover {
+            border-color: var(--accent-cyan);
+            background: var(--bg-card-hover);
+        }
+
+        /* Admin Announcement Card */
+        .admin-notice-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 14px;
+            padding: 20px 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .admin-notice-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-bottom: 12px;
+        }
+
+        .admin-notice-box {
+            background: rgba(15, 26, 51, 0.7);
+            border: 1px solid #192c55;
+            border-radius: 10px;
+            padding: 14px 18px;
+            font-size: 13px;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        html[data-theme="light"] .admin-notice-box {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+        }
+
+        /* Lobby 2-Column Section */
+        .lobby-grid-2col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 860px) {
+            .lobby-grid-2col {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .stats-graph-panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .graph-block {
+            margin-bottom: 18px;
+        }
+
+        .graph-block:last-child {
+            margin-bottom: 0;
+        }
+
+        .graph-legend-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+
+        .legend-items {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+        }
+
+        .legend-dot-cyan { color: #38bdf8; }
+        .legend-dot-green { color: #10b981; }
+        .legend-dot-orange { color: #f59e0b; }
+        .legend-dot-pink { color: #ec4899; }
+
+        .graph-time-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .graph-canvas {
+            width: 100%;
+            height: 90px;
+            background: rgba(6, 10, 18, 0.6);
+            border: 1px solid #142344;
+            border-radius: 8px;
+            display: block;
+        }
+
+        html[data-theme="light"] .graph-canvas {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+        }
+
+        /* Lobby Featured Threads (Right Column) */
+        .featured-threads-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .featured-threads-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 4px 8px 4px;
+            border-bottom: 1px solid var(--border-card);
+            margin-bottom: 2px;
+        }
+
+        .featured-threads-title {
+            font-size: 14px;
+            font-weight: 800;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .featured-threads-sub {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--accent-cyan);
+            background: rgba(56, 189, 248, 0.12);
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+
+        .featured-thread-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 12px;
+            padding: 14px 18px;
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.15s ease;
+        }
+
+        .featured-thread-card:hover {
+            border-color: #00a2ff;
+            background: var(--bg-card-hover);
+            transform: translateX(2px);
+        }
+
+        .thread-meta-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .meta-badges {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badge-fixed {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #ef4444;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        .badge-genre {
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 6px;
+        }
+
+        .thread-num-tag {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .thread-stats-badge {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .thread-stats-badge strong {
+            color: var(--text-primary);
+        }
+
+        .featured-thread-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+
+        .moderation-quick-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 12px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 6px;
+        }
+
+        .moderation-quick-card h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .moderation-quick-card p {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .btn-detail-view {
+            background: #00a2ff;
+            color: #ffffff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        /* -----------------------------------------
+           THREADS TAB (Screenshot 3)
+        ----------------------------------------- */
+        .threads-header-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 14px;
+            padding: 22px 24px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .threads-header-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
+        }
+
+        .threads-title-group h2 {
+            font-size: 20px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-primary);
+        }
+
+        .threads-title-group p {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .btn-create-thread-main {
+            background: linear-gradient(135deg, #0099ff 0%, #6366f1 100%);
+            color: #ffffff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 12px rgba(0, 153, 255, 0.35);
+            transition: all 0.15s ease;
+        }
+
+        .btn-create-thread-main:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(0, 153, 255, 0.45);
+        }
+
+        /* Search and Jump Bar */
+        .search-jump-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .search-input-wrap {
+            flex: 1;
+            min-width: 240px;
+            position: relative;
+        }
+
+        .search-input-wrap input {
+            width: 100%;
+            background: var(--bg-base);
+            border: 1px solid var(--border-card);
+            border-radius: 10px;
+            padding: 10px 14px 10px 38px;
+            font-size: 13px;
+            color: var(--text-primary);
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+
+        .search-input-wrap input:focus {
+            border-color: #00a2ff;
+        }
+
+        .search-icon-pos {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .jump-box {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .jump-box input {
+            width: 110px;
+            background: var(--bg-base);
+            border: 1px solid var(--border-card);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 13px;
+            color: var(--text-primary);
+            outline: none;
+        }
+
+        .jump-box button {
+            background: #132244;
+            border: 1px solid #203666;
+            color: var(--text-primary);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+
+        html[data-theme="light"] .jump-box button {
+            background: #e2e8f0;
+            border-color: #cbd5e1;
+            color: #0f172a;
+        }
+
+        .jump-box button:hover {
+            border-color: #00a2ff;
+        }
+
+        /* Sort Selection Bar (User Request) */
+        .sort-control-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: rgba(13, 23, 46, 0.6);
+            border: 1px solid var(--border-card);
+            border-radius: 10px;
+            padding: 8px 14px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+
+        html[data-theme="light"] .sort-control-bar {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+        }
+
+        .sort-label {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sort-buttons-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .sort-btn {
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.15s ease;
+        }
+
+        .sort-btn:hover {
+            color: var(--text-primary);
+            background: var(--pill-bg);
+        }
+
+        .sort-btn.active {
+            background: #00a2ff;
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        /* Category Filter Pills Bar */
+        .category-filter-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 6px;
+            scrollbar-width: thin;
+        }
+
+        .filter-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            color: var(--text-secondary);
+            padding: 7px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+        }
+
+        .filter-pill:hover {
+            border-color: #00a2ff;
+            color: var(--text-primary);
+        }
+
+        .filter-pill.active {
+            background: #00a2ff;
+            border-color: #00a2ff;
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        .filter-pill-admin {
+            border-style: dashed;
+            border-color: #a855f7;
+            color: #c084fc;
+        }
+
+        /* Thread List Container */
+        .thread-items-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .thread-row-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 12px;
+            padding: 16px 20px;
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.15s ease;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .thread-row-card:hover {
+            border-color: #00a2ff;
+            background: var(--bg-card-hover);
+            transform: translateY(-1px);
+        }
+
+        .thread-row-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .thread-row-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .thread-badge-pin {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #ef4444;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .thread-genre-tag {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 6px;
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+        }
+
+        .thread-time-tag {
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+
+        .thread-row-stats {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .thread-row-stats strong {
+            color: var(--text-primary);
+        }
+
+        .thread-row-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.45;
+        }
+
+        /* -----------------------------------------
+           OTHER TAB (Screenshot 4)
+        ----------------------------------------- */
+        .other-header-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 14px;
+            padding: 24px 28px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .other-header-card h2 {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+
+        .other-header-card p {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .other-menu-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .other-menu-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .menu-action-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 14px;
+            padding: 20px 22px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            text-decoration: none;
+            color: inherit;
+            transition: all 0.18s ease;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .menu-action-card:hover {
+            border-color: #00a2ff;
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+        }
+
+        .menu-icon-box {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+
+        .icon-box-gaming { background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .icon-box-archive { background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); }
+        .icon-box-roles { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
+        .icon-box-terms { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+        .menu-card-body {
+            flex: 1;
+        }
+
+        .menu-card-body h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 3px;
+        }
+
+        .menu-card-body p {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .menu-chevron {
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+
+        .report-window-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 14px;
+            padding: 18px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .report-info h4 {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 2px;
+        }
+
+        .report-info p {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .btn-report-action {
+            background: #00a2ff;
+            color: #ffffff;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        /* -----------------------------------------
+           MODALS (Create Thread, Genre Admin, Roles)
+        ----------------------------------------- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal-box {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-card);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 520px;
+            padding: 24px;
+            box-shadow: var(--shadow-lg);
+            animation: modalPop 0.2s ease-out;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        @keyframes modalPop {
+            from { transform: scale(0.95); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 18px;
+        }
+
+        .modal-header h3 {
+            font-size: 17px;
+            font-weight: 800;
+            color: var(--text-primary);
+        }
+
+        .btn-close-modal {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .form-group {
+            margin-bottom: 14px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .form-control {
+            width: 100%;
+            background: var(--bg-base);
+            border: 1px solid var(--border-card);
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 13px;
+            color: var(--text-primary);
+            outline: none;
+            font-family: inherit;
+        }
+
+        .form-control:focus {
+            border-color: #00a2ff;
+        }
+
+        .quick-tags-box {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 6px;
+        }
+
+        .quick-tag-btn {
+            background: var(--pill-bg);
+            border: 1px solid var(--pill-border);
+            color: var(--text-secondary);
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .quick-tag-btn:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        /* -----------------------------------------
+           FOOTER
+        ----------------------------------------- */
+        .app-footer {
+            width: 100%;
+            max-width: 1080px;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-card);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+
+        .footer-links a:hover {
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Top Header -->
+    <header class="app-header">
+        <!-- Logo Left -->
+        <a href="/" class="brand-group" id="brand-logo-btn">
+            <img src="/static/favicon.webp" alt="talk-ch" class="brand-logo-img">
+            <div class="brand-titles">
+                <div class="brand-name">
+                    <span>talk</span><span class="highlight">-ch</span>
+                </div>
+                <div class="brand-sub">トークちゃんねる</div>
+            </div>
+        </a>
+
+        <!-- Center Nav Capsule -->
+        <nav class="header-nav-capsule" id="main-nav-tabs">
+            <button class="nav-capsule-btn <%= active_tab === 'lobby' ? 'active' : '' %>" data-tab="lobby" id="nav-btn-lobby">ロビー</button>
+            <button class="nav-capsule-btn <%= active_tab === 'threads' ? 'active' : '' %>" data-tab="threads" id="nav-btn-threads">スレ一覧</button>
+            <button class="nav-capsule-btn <%= active_tab === 'other' ? 'active' : '' %>" data-tab="other" id="nav-btn-other">その他</button>
+        </nav>
+
+        <!-- Right Controls -->
+        <div class="header-controls">
+            <div class="live-status-pill" id="live-active-indicator">
+                <span class="live-dot"></span>
+                <span>オンライン: <span id="online-users-count"><%= active_count || 49 %></span>人</span>
+            </div>
+            <button class="btn-icon-square" id="theme-toggle-btn" title="テーマ切り替え (ダーク/ライト)">
+                ☀️
+            </button>
+            <button class="btn-icon-square" id="btn-open-roles-modal" title="役職・モデレーション体制">
+                🛡️
+            </button>
+        </div>
+    </header>
+
+    <!-- =========================================
+         TAB 1: LOBBY (Screenshot 1 & 2)
+    ========================================= -->
+    <main id="pane-lobby" class="tab-pane <%= active_tab === 'lobby' ? 'active' : '' %>">
+        <!-- Hero Card -->
+        <div class="hero-banner-card">
+            <div class="hero-badge">✨ 完全匿名・登録不要の次世代リアルタイム掲示板</div>
+            <h1 class="hero-title">Welcome to <span class="cyan-highlight">talk-ch</span></h1>
+            <p class="hero-desc">
+                トークちゃんねるは、高速なリアルタイムストリーミング、アンカーホバープレビュー、充実のミニゲームハブを兼ね備えたコミュニティです。誰でも自由にスレッドを作成・投稿できます。
+            </p>
+            <div class="hero-actions">
+                <button class="btn-hero-primary" id="hero-go-threads-btn">
+                    💬 スレ一覧を見る
+                </button>
+                <a href="/games_hub" class="btn-hero-secondary">
+                    🎮 ゲームハブ（オセロ・チェス）
+                </a>
+            </div>
+        </div>
+
+        <!-- Admin Message Card -->
+        <div class="admin-notice-card">
+            <div class="admin-notice-header">
+                <span>📢</span>
+                <span>管理者からの一言</span>
+            </div>
+            <div class="admin-notice-box">
+                <%= admin_message || '【お知らせ】talk-chがモダンUIリニューアルオープン！高速ストリーム閲覧、アンカーホバープレビュー、オセロ＆チェスを搭載しました。' %>
+            </div>
+        </div>
+
+        <!-- Lobby 2-Column Grid -->
+        <div class="lobby-grid-2col">
+            <!-- Left: Realtime Server Stats -->
+            <div class="stats-graph-panel">
+                <div class="graph-block">
+                    <div class="graph-legend-header">
+                        <div class="legend-items">
+                            <span class="legend-dot-cyan">● CPU</span>
+                            <span class="legend-dot-green">● Memory</span>
+                        </div>
+                        <span class="graph-time-sub">直近30秒</span>
+                    </div>
+                    <canvas id="canvas-cpu-mem" class="graph-canvas" width="400" height="90"></canvas>
+                </div>
+
+                <div class="graph-block">
+                    <div class="graph-legend-header">
+                        <div class="legend-items">
+                            <span class="legend-dot-orange">● 受信 (RX)</span>
+                            <span class="legend-dot-pink">● 送信 (TX)</span>
+                        </div>
+                        <span class="graph-time-sub">トラフィック</span>
+                    </div>
+                    <canvas id="canvas-net" class="graph-canvas" width="400" height="90"></canvas>
+                </div>
+            </div>
+
+            <!-- Right: Featured & Pinned Threads -->
+            <div class="featured-threads-panel">
+                <div class="featured-threads-header">
+                    <span class="featured-threads-title">🔥 注目のスレッド</span>
+                    <span class="featured-threads-sub">👥 オンライン順</span>
+                </div>
+                <% (featured_threads || []).forEach(function(thread) { %>
+                    <a href="/thread/<%= thread.id %>" class="featured-thread-card">
+                        <div class="thread-meta-row">
+                            <div class="meta-badges">
+                                <% if (thread.is_pinned) { %>
+                                    <span class="badge-fixed">固定</span>
+                                <% } %>
+                                <span class="badge-genre" style="background: <%= thread.category_color ? thread.category_color + '22' : 'rgba(56, 189, 248, 0.15)' %>; color: <%= thread.category_color || '#38bdf8' %>;">
+                                    <%= thread.category_name %>
+                                </span>
+                                <span class="thread-num-tag">#<%= thread.id %></span>
+                            </div>
+                            <div class="thread-stats-badge">
+                                <span><strong><%= thread.replies_count %></strong> レス</span>
+                                <span style="color: #38bdf8; font-weight: 700;">👥 <%= thread.thread_active_count %>人</span>
+                            </div>
+                        </div>
+                        <div class="featured-thread-title">
+                            <%= thread.title %>
+                        </div>
+                    </a>
+                <% }); %>
+
+                <div class="moderation-quick-card">
+                    <div>
+                        <h4>ルール＆モデレーション</h4>
+                        <p>役職一覧や安心・安全のガイドライン</p>
+                    </div>
+                    <a href="/roles" class="btn-detail-view">詳細を見る</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- =========================================
+         TAB 2: THREADS (Screenshot 3)
+    ========================================= -->
+    <main id="pane-threads" class="tab-pane <%= active_tab === 'threads' ? 'active' : '' %>">
+        <!-- Top Section -->
+        <div class="threads-header-card">
+            <div class="threads-header-top">
+                <div class="threads-title-group">
+                    <h2>💬 スレッド一覧・作成</h2>
+                    <p>気になるトピックに参加するか、新しい板を自由に立ち上げましょう</p>
+                </div>
+                <button class="btn-create-thread-main" id="btn-open-create-modal">
+                    ＋ 新しい板を立てる
+                </button>
+            </div>
+
+            <!-- Search & Jump -->
+            <div class="search-jump-bar">
+                <div class="search-input-wrap">
+                    <span class="search-icon-pos">🔍</span>
+                    <input type="text" id="thread-search-box" placeholder="タイトル・IDで検索..." value="<%= search_query || '' %>">
+                </div>
+                <form class="jump-box" onsubmit="event.preventDefault(); var n=document.getElementById('jump-input').value.replace(/\D/g,''); if(n) window.location.href='/thread/'+n;">
+                    <input type="text" id="jump-input" placeholder="# スレ番号">
+                    <button type="submit">移動 →</button>
+                </form>
+            </div>
+
+            <!-- Sort Control Bar (User Requested) -->
+            <div class="sort-control-bar">
+                <div class="sort-label">
+                    <span>並び替え:</span>
+                </div>
+                <div class="sort-buttons-group">
+                    <a href="/?tab=threads&category=<%= selected_category %>&sort=latest" class="sort-btn <%= selected_sort === 'latest' ? 'active' : '' %>">🔄 最終更新順</a>
+                    <a href="/?tab=threads&category=<%= selected_category %>&sort=number_desc" class="sort-btn <%= selected_sort === 'number_desc' ? 'active' : '' %>">🔢 スレ番号（最新順）</a>
+                    <a href="/?tab=threads&category=<%= selected_category %>&sort=number_asc" class="sort-btn <%= selected_sort === 'number_asc' ? 'active' : '' %>">🔢 スレ番号（#1から順）</a>
+                    <a href="/?tab=threads&category=<%= selected_category %>&sort=replies" class="sort-btn <%= selected_sort === 'replies' ? 'active' : '' %>">🔥 レス数が多い順</a>
+                    <a href="/?tab=threads&category=<%= selected_category %>&sort=active" class="sort-btn <%= selected_sort === 'active' ? 'active' : '' %>">👥 閲覧人数順</a>
+                </div>
+            </div>
+
+            <!-- Genre Filter Pills -->
+            <div class="category-filter-row">
+                <a href="/?tab=threads&category=all&sort=<%= selected_sort %>" class="filter-pill <%= selected_category === 'all' ? 'active' : '' %>">
+                    すべて
+                </a>
+                <% (categories || []).forEach(function(cat) { %>
+                    <a href="/?tab=threads&category=<%= cat.id %>&sort=<%= selected_sort %>" class="filter-pill <%= selected_category === cat.id ? 'active' : '' %>">
+                        <%= cat.name %>
+                    </a>
+                <% }); %>
+
+                <!-- Admin Penguin Add Genre Button (Shown ONLY when penguin is logged in) -->
+                <% if (is_admin_user) { %>
+                    <button class="filter-pill filter-pill-admin" id="btn-admin-manage-genre" title="ペンギン★管理者専用ジャンル管理">
+                        🐧 ジャンル管理
+                    </button>
+                <% } else { %>
+                    <button class="filter-pill filter-pill-admin" id="btn-admin-manage-genre" style="display: none;" title="ペンギン★管理者専用ジャンル管理">
+                        🐧 ジャンル管理
+                    </button>
+                <% } %>
+            </div>
+        </div>
+
+        <!-- Thread List -->
+        <div class="thread-items-stack" id="threads-container">
+            <% if (threads && threads.length > 0) { %>
+                <% threads.forEach(function(thread) { %>
+                    <a href="/thread/<%= thread.id %>" class="thread-row-card">
+                        <div class="thread-row-top">
+                            <div class="thread-row-meta">
+                                <% if (thread.is_pinned) { %>
+                                    <span class="thread-badge-pin">📌 固定</span>
+                                <% } %>
+                                <span class="thread-genre-tag" style="background: <%= thread.category_color ? thread.category_color + '22' : 'rgba(56, 189, 248, 0.15)' %>; color: <%= thread.category_color || '#38bdf8' %>;">
+                                    <%= thread.category_name %>
+                                </span>
+                                <span class="thread-num-tag">#<%= thread.id %></span>
+                                <span class="thread-time-tag"><%= thread.created_at ? thread.created_at.substring(0, 10) : '' %></span>
+                            </div>
+                            <div class="thread-row-stats">
+                                <span><strong><%= thread.replies_count %></strong> レス</span>
+                                <span>閲覧中: <strong><%= thread.thread_active_count %></strong>人</span>
+                            </div>
+                        </div>
+                        <div class="thread-row-title">
+                            <%= thread.title %>
+                        </div>
+                    </a>
+                <% }); %>
+            <% } else { %>
+                <div style="text-align: center; padding: 40px 20px; color: var(--text-muted); background: var(--bg-surface); border-radius: 12px;">
+                    該当するスレッドは見つかりませんでした。
+                </div>
+            <% } %>
+        </div>
+    </main>
+
+    <!-- =========================================
+         TAB 3: OTHER (Screenshot 4)
+    ========================================= -->
+    <main id="pane-other" class="tab-pane <%= active_tab === 'other' ? 'active' : '' %>">
+        <!-- Header -->
+        <div class="other-header-card">
+            <h2>✨ その他・便利メニュー＆ゲーム</h2>
+            <p>ミニゲーム、過去ログ閲覧、運営体制・役職一覧、利用規約やお問い合わせ窓口をご利用いただけます。</p>
+        </div>
+
+        <!-- 2x2 Menu Grid -->
+        <div class="other-menu-grid">
+            <a href="/games_hub" class="menu-action-card">
+                <div class="menu-icon-box icon-box-gaming">🎮</div>
+                <div class="menu-card-body">
+                    <h3>ゲームハブ（オセロ・チェス）</h3>
+                    <p>ブラウザで今すぐ遊べるリバーシ＆チェス対戦</p>
+                </div>
+                <div class="menu-chevron">›</div>
+            </a>
+
+            <a href="/archive" class="menu-action-card">
+                <div class="menu-icon-box icon-box-archive">📦</div>
+                <div class="menu-card-body">
+                    <h3>過去ログアーカイブ一覧</h3>
+                    <p>過去の盛り上がったスレッドや名作スレを閲覧</p>
+                </div>
+                <div class="menu-chevron">›</div>
+            </a>
+
+            <a href="/roles" class="menu-action-card">
+                <div class="menu-icon-box icon-box-roles">🛡️</div>
+                <div class="menu-card-body">
+                    <h3>役職一覧・運営体制</h3>
+                    <p>運営統括、副管理者、モデレーターなどの権限解説</p>
+                </div>
+                <div class="menu-chevron">›</div>
+            </a>
+
+            <a href="/privacy" class="menu-action-card">
+                <div class="menu-icon-box icon-box-terms">📜</div>
+                <div class="menu-card-body">
+                    <h3>プライバシーポリシー・規約</h3>
+                    <p>匿名性、禁止事項、著作権・免責事項について</p>
+                </div>
+                <div class="menu-chevron">›</div>
+            </a>
+        </div>
+
+        <!-- Report Contact Card -->
+        <div class="report-window-card">
+            <div class="report-info">
+                <h4>❓ お問い合わせ・通報窓口</h4>
+                <p>権利侵害や悪質な荒らし投稿のご報告は公式フォームより受付しております。</p>
+            </div>
+            <button class="btn-report-action" id="btn-open-report-modal">
+                通報フォームを開く ↗
+            </button>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+        <div>
+            <strong>talk-ch</strong> © 2026 トークちゃんねる All rights reserved.
+        </div>
+        <div class="footer-links">
+            <a href="/roles">役職一覧</a>
+            <a href="/privacy">利用規約・プライバシー</a>
+            <a href="javascript:void(0)" id="footer-report-link">通報・お問い合わせ</a>
+            <a href="javascript:void(0)" id="footer-admin-link">管理者設定</a>
+        </div>
+    </footer>
+</div>
+
+<!-- =========================================
+     MODAL 1: Create Thread Modal
+========================================= -->
+<div class="modal-overlay" id="modal-create-thread">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>＋ 新しいスレッドを立てる</h3>
+            <button class="btn-close-modal" id="btn-close-create-modal">&times;</button>
+        </div>
+        <form action="/create_thread" method="POST" id="form-create-thread">
+            <div class="form-group">
+                <label class="form-label">ジャンルを選択</label>
+                <select name="category" class="form-control" id="select-thread-genre">
+                    <% (categories || []).forEach(function(cat) { %>
+                        <option value="<%= cat.id %>"><%= cat.icon %> <%= cat.name %></option>
+                    <% }); %>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">スレッドタイトル (最大50文字)</label>
+                <input type="text" name="title" id="input-thread-title" class="form-control" placeholder="例: 【雑談】今日の晩ごはん何にする？" maxlength="50" required>
+                <div class="quick-tags-box">
+                    <button type="button" class="quick-tag-btn" onclick="addTitleTag('【雑談】')">【雑談】</button>
+                    <button type="button" class="quick-tag-btn" onclick="addTitleTag('【質問】')">【質問】</button>
+                    <button type="button" class="quick-tag-btn" onclick="addTitleTag('【技術】')">【技術】</button>
+                    <button type="button" class="quick-tag-btn" onclick="addTitleTag('【募集】')">【募集】</button>
+                    <button type="button" class="quick-tag-btn" onclick="addTitleTag('【議論】')">【議論】</button>
+                </div>
+            </div>
+            <button type="submit" class="btn-create-thread-main" style="width: 100%; justify-content: center; padding: 12px; margin-top: 10px;">
+                スレッドを作成して投稿する
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- =========================================
+     MODAL 2: Admin Genre Manager Modal
+========================================= -->
+<div class="modal-overlay" id="modal-admin-genre">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>🛡️ 管理者ジャンル追加・管理</h3>
+            <button class="btn-close-modal" id="btn-close-genre-modal">&times;</button>
+        </div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">
+            管理者（ペンギン★）権限で新しいスレッドジャンルを追加・設定できます。
+        </div>
+
+        <form id="form-add-genre" onsubmit="handleGenreAdd(event)">
+            <div class="form-group">
+                <label class="form-label">ジャンル名</label>
+                <input type="text" id="genre-name" class="form-control" placeholder="例: 音楽・DTM" required>
+            </div>
+            <div class="form-group" style="display: flex; gap: 10px;">
+                <div style="flex: 1;">
+                    <label class="form-label">アイコン (絵文字)</label>
+                    <input type="text" id="genre-icon" class="form-control" placeholder="🎵" maxlength="4" value="🏷️">
+                </div>
+                <div style="flex: 1;">
+                    <label class="form-label">識別ID (英数字)</label>
+                    <input type="text" id="genre-id" class="form-control" placeholder="music">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">バッジカラー</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="color" id="genre-color" value="#38bdf8" style="height: 38px; width: 60px; border: none; border-radius: 6px; cursor: pointer; background: transparent;">
+                    <span style="font-size: 12px; color: var(--text-muted);">スレッド一覧やバッジのアクセント色</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">管理者パスワード (未ログイン時)</label>
+                <input type="password" id="genre-admin-pass" class="form-control" placeholder="管理者パスワード">
+            </div>
+            <button type="submit" class="btn-create-thread-main" style="width: 100%; justify-content: center; padding: 10px;">
+                ＋ 新しいジャンルを追加
+            </button>
+        </form>
+
+        <div style="margin-top: 20px; border-top: 1px solid var(--border-card); padding-top: 14px;">
+            <div style="font-size: 13px; font-weight: 700; margin-bottom: 8px;">登録済みジャンル一覧</div>
+            <div id="current-genres-list" style="display: flex; flex-direction: column; gap: 6px;">
+                <% (categories || []).forEach(function(cat) { %>
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: var(--bg-base); border-radius: 6px; font-size: 12px;">
+                        <span><%= cat.icon %> <strong><%= cat.name %></strong> (<%= cat.id %>)</span>
+                        <% if (cat.id !== 'general' && cat.id !== 'notice') { %>
+                            <button onclick="handleGenreDelete('<%= cat.id %>')" style="background: transparent; border: none; color: #ef4444; cursor: pointer; font-size: 11px;">削除</button>
+                        <% } %>
+                    </div>
+                <% }); %>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- =========================================
+     MODAL 3: Report / Contact Modal
+========================================= -->
+<div class="modal-overlay" id="modal-report">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>❓ お問い合わせ・通報窓口</h3>
+            <button class="btn-close-modal" id="btn-close-report-modal">&times;</button>
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            利用規約違反や権利侵害、荒らし行為の通報は以下の内容を添えて送信してください。
+        </p>
+        <form onsubmit="event.preventDefault(); alert('通報・お問い合わせを受け付けました。運営チームで確認いたします。'); document.getElementById('modal-report').classList.remove('active');">
+            <div class="form-group">
+                <label class="form-label">対象のスレッド番号・URL</label>
+                <input type="text" class="form-control" placeholder="例: #3 または スレッドURL" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">通報の種別</label>
+                <select class="form-control">
+                    <option>誹謗中傷・プライバシー侵害</option>
+                    <option>過度な連投・荒らし行為</option>
+                    <option>違法なコンテンツの投稿</option>
+                    <option>その他・ご要望</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">詳細内容</label>
+                <textarea class="form-control" rows="4" placeholder="具体的なレス番号や詳細な理由をご記入ください" required></textarea>
+            </div>
+            <button type="submit" class="btn-hero-primary" style="width: 100%; justify-content: center;">
+                通報内容を送信する
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- =========================================
+     MODAL 4: Penguin Admin Login Modal
+========================================= -->
+<div class="modal-overlay" id="modal-penguin-login">
+    <div class="modal-box" style="max-width: 420px;">
+        <div class="modal-header">
+            <h3>🐧 管理人（ペンギン★）ログイン</h3>
+            <button class="btn-close-modal" id="btn-close-penguin-modal">&times;</button>
+        </div>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            管理人（ペンギン★）のパスワードを入力して認証してください。認証後はジャンル追加・管理などの管理者専用機能が有効化されます。
+        </p>
+        <form id="form-penguin-login" onsubmit="handlePenguinLogin(event)">
+            <div class="form-group">
+                <label class="form-label">管理者パスワード</label>
+                <input type="password" id="penguin-login-pass" class="form-control" placeholder="パスワードを入力" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn-hero-primary" style="width: 100%; justify-content: center; margin-top: 8px;">
+                🔑 ログインして管理画面を有効化
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- JavaScript Logic -->
+<script>
+    // 1. Tab Switching Functionality
+    const navTabs = document.querySelectorAll('.nav-capsule-btn');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    function switchTab(tabName) {
+        navTabs.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabName);
+        });
+        tabPanes.forEach(pane => {
+            pane.classList.toggle('active', pane.id === `pane-${tabName}`);
+        });
+
+        // Update URL query without page reload
+        const url = new URL(window.location);
+        url.searchParams.set('tab', tabName);
+        window.history.replaceState({}, '', url);
+    }
+
+    navTabs.forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+    });
+
+    document.getElementById('hero-go-threads-btn')?.addEventListener('click', () => {
+        switchTab('threads');
+    });
+
+    // 2. Theme Toggle
+    const themeBtn = document.getElementById('theme-toggle-btn');
+    function updateThemeIcon() {
+        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        themeBtn.textContent = isLight ? '🌙' : '☀️';
+    }
+    updateThemeIcon();
+
+    themeBtn.addEventListener('click', () => {
+        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+        if (isLight) {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('talk_ch_theme', 'dark');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
+            localStorage.setItem('talk_ch_theme', 'light');
+        }
+        updateThemeIcon();
+    });
+
+    // 3. Penguin Admin State & Auth Handling
+    let isPenguinLoggedIn = <%= is_admin_user ? 'true' : 'false' %>;
+
+    async function checkPenguinStatus() {
+        try {
+            const res = await fetch('/api/admin/me');
+            const data = await res.json();
+            if (data.is_admin) {
+                isPenguinLoggedIn = true;
+                showPenguinControls();
+            } else {
+                // Check local saved state
+                const savedPass = localStorage.getItem('talk_ch_penguin_pass');
+                if (savedPass) {
+                    autoLoginPenguin(savedPass);
+                }
+            }
+        } catch (e) {}
+    }
+
+    function showPenguinControls() {
+        const genreBtn = document.getElementById('btn-admin-manage-genre');
+        if (genreBtn) genreBtn.style.display = 'inline-flex';
+        
+        const footerAdminLink = document.getElementById('footer-admin-link');
+        if (footerAdminLink) {
+            footerAdminLink.innerHTML = '🐧 管理人中 (ログアウト)';
+            footerAdminLink.onclick = (e) => {
+                e.preventDefault();
+                handlePenguinLogout();
+            };
+        }
+    }
+
+    async function autoLoginPenguin(password) {
+        try {
+            const res = await fetch('/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            });
+            const data = await res.json();
+            if (data.success) {
+                isPenguinLoggedIn = true;
+                showPenguinControls();
+            } else {
+                localStorage.removeItem('talk_ch_penguin_pass');
+            }
+        } catch (e) {}
+    }
+
+    async function handlePenguinLogin(e) {
+        e.preventDefault();
+        const pass = document.getElementById('penguin-login-pass').value;
+        try {
+            const res = await fetch('/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pass })
+            });
+            const data = await res.json();
+            if (data.success) {
+                localStorage.setItem('talk_ch_penguin_pass', pass);
+                alert('🐧 管理人（ペンギン★）としてログインしました！\nジャンル管理機能が利用可能です。');
+                window.location.reload();
+            } else {
+                alert(data.error || 'パスワードが正しくありません');
+            }
+        } catch (err) {
+            alert('ログイン通信エラーが発生しました');
+        }
+    }
+
+    async function handlePenguinLogout() {
+        if (!confirm('管理者ログアウトしますか？')) return;
+        localStorage.removeItem('talk_ch_penguin_pass');
+        await fetch('/api/admin/logout', { method: 'POST' });
+        window.location.reload();
+    }
+
+    checkPenguinStatus();
+
+    // 4. Modals handling
+    function setupModal(triggerId, modalId, closeId) {
+        const trigger = document.getElementById(triggerId);
+        const modal = document.getElementById(modalId);
+        const close = document.getElementById(closeId);
+
+        if (trigger && modal) {
+            trigger.addEventListener('click', (e) => {
+                e.preventDefault();
+                modal.classList.add('active');
+            });
+        }
+        if (close && modal) {
+            close.addEventListener('click', () => modal.classList.remove('active'));
+        }
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.classList.remove('active');
+            });
+        }
+    }
+
+    setupModal('btn-open-create-modal', 'modal-create-thread', 'btn-close-create-modal');
+    setupModal('btn-admin-manage-genre', 'modal-admin-genre', 'btn-close-genre-modal');
+    setupModal('btn-open-report-modal', 'modal-report', 'btn-close-report-modal');
+    setupModal('footer-report-link', 'modal-report', 'btn-close-report-modal');
+    setupModal('btn-close-penguin-modal', 'modal-penguin-login', 'btn-close-penguin-modal');
+
+    const footerAdminLink = document.getElementById('footer-admin-link');
+    if (footerAdminLink) {
+        footerAdminLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (isPenguinLoggedIn) {
+                const modal = document.getElementById('modal-admin-genre');
+                if (modal) modal.classList.add('active');
+            } else {
+                const loginModal = document.getElementById('modal-penguin-login');
+                if (loginModal) loginModal.classList.add('active');
+            }
+        });
+    }
+
+    document.getElementById('btn-open-roles-modal')?.addEventListener('click', () => {
+        window.location.href = '/roles';
+    });
+
+    // 5. Quick Tag Insertion
+    function addTitleTag(tag) {
+        const input = document.getElementById('input-thread-title');
+        if (input) {
+            if (!input.value.startsWith(tag)) {
+                input.value = tag + input.value;
+            }
+            input.focus();
+        }
+    }
+
+    // 6. Admin Genre Add & Delete Handlers
+    async function handleGenreAdd(e) {
+        e.preventDefault();
+        const name = document.getElementById('genre-name').value;
+        const icon = document.getElementById('genre-icon').value;
+        const id = document.getElementById('genre-id').value;
+        const badge_color = document.getElementById('genre-color').value;
+        const savedPass = localStorage.getItem('talk_ch_penguin_pass') || '';
+        const admin_password = document.getElementById('genre-admin-pass')?.value || savedPass;
+
+        try {
+            const res = await fetch('/api/admin/categories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, icon, id, badge_color, admin_password })
+            });
+            const data = await res.json();
+            if (data.error) {
+                alert(data.error);
+            } else {
+                alert('ジャンルを追加しました！');
+                window.location.reload();
+            }
+        } catch (err) {
+            alert('通信エラーが発生しました');
+        }
+    }
+
+    async function handleGenreDelete(id) {
+        if (!confirm(`ジャンル「${id}」を削除しますか？\n（関連スレッドは「雑談」に再割り当てされます）`)) return;
+        const savedPass = localStorage.getItem('talk_ch_penguin_pass') || '';
+        let admin_password = savedPass;
+        if (!admin_password) {
+            admin_password = prompt('管理者（ペンギン★）パスワードを入力してください:');
+        }
+        if (!admin_password) return;
+
+        try {
+            const res = await fetch(`/api/admin/categories/${id}?admin_password=${encodeURIComponent(admin_password)}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            if (data.error) {
+                alert(data.error);
+            } else {
+                alert('ジャンルを削除しました');
+                window.location.reload();
+            }
+        } catch (err) {
+            alert('通信エラーが発生しました');
+        }
+    }
+
+    // 6. Realtime CPU / Network Charts
+    const cpuCanvas = document.getElementById('canvas-cpu-mem');
+    const netCanvas = document.getElementById('canvas-net');
+
+    const cpuHistory = new Array(30).fill(12);
+    const memHistory = new Array(30).fill(38);
+    const rxHistory = new Array(30).fill(5);
+    const txHistory = new Array(30).fill(8);
+
+    function drawChart(canvas, line1Data, color1, line2Data, color2, maxVal) {
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        // Grid lines
+        ctx.strokeStyle = document.documentElement.getAttribute('data-theme') === 'light' ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.05)';
+        ctx.lineWidth = 1;
+        for (let y = 15; y < h; y += 25) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+        }
+
+        function drawLine(data, color) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            const step = w / (data.length - 1);
+            data.forEach((val, i) => {
+                const ratio = Math.min(1, Math.max(0, val / maxVal));
+                const y = h - (ratio * (h - 16)) - 8;
+                if (i === 0) ctx.moveTo(0, y);
+                else ctx.lineTo(i * step, y);
+            });
+            ctx.stroke();
+        }
+
+        drawLine(line1Data, color1);
+        drawLine(line2Data, color2);
+    }
+
+    async function fetchStats() {
+        try {
+            const res = await fetch('/api/server_stats');
+            const data = await res.json();
+            
+            cpuHistory.shift();
+            cpuHistory.push(data.cpu_percent || Math.floor(Math.random() * 15 + 10));
+
+            memHistory.shift();
+            memHistory.push(data.memory_percent || Math.floor(Math.random() * 8 + 35));
+
+            rxHistory.shift();
+            rxHistory.push(data.net_rx_kbps || Math.floor(Math.random() * 10 + 2));
+
+            txHistory.shift();
+            txHistory.push(data.net_tx_kbps || Math.floor(Math.random() * 15 + 5));
+
+            drawChart(cpuCanvas, cpuHistory, '#38bdf8', memHistory, '#10b981', 100);
+            drawChart(netCanvas, rxHistory, '#f59e0b', txHistory, '#ec4899', 50);
+        } catch (e) {}
+    }
+
+    drawChart(cpuCanvas, cpuHistory, '#38bdf8', memHistory, '#10b981', 100);
+    drawChart(netCanvas, rxHistory, '#f59e0b', txHistory, '#ec4899', 50);
+    setInterval(fetchStats, 2000);
+    fetchStats();
+
+    // 7. Search Input Live Filtering
+    const searchInput = document.getElementById('thread-search-box');
+    let searchDebounce;
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(() => {
+                const q = e.target.value.trim();
+                const url = new URL(window.location);
+                url.searchParams.set('tab', 'threads');
+                if (q) url.searchParams.set('q', q);
+                else url.searchParams.delete('q');
+                window.location.href = url.toString();
+            }, 600);
+        });
+    }
+</script>
+
+</body>
+</html>

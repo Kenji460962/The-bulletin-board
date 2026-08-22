@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <link rel="icon" href="/static/favicon.webp" type="image/webp">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="manifest" href="/static/site.webmanifest">
+    
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>プライバシーポリシー・利用規約 - talk-ch</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <script>
+        (function() {
+            var saved = localStorage.getItem('talk_ch_theme');
+            if (saved === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        })();
+    </script>
+
+    <style>
+        :root {
+            --bg-base: #0b0f19;
+            --bg-surface: #111827;
+            --border-subtle: #243046;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-primary: #38bdf8;
+        }
+
+        html[data-theme="light"] {
+            --bg-base: #f1f5f9;
+            --bg-surface: #ffffff;
+            --border-subtle: #e2e8f0;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #94a3b8;
+            --accent-primary: #0284c7;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', 'Noto Sans JP', sans-serif;
+            background: var(--bg-base);
+            color: var(--text-primary);
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            line-height: 1.7;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 760px;
+        }
+
+        .top-nav {
+            margin-bottom: 16px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .top-nav a {
+            color: var(--accent-primary);
+            text-decoration: none;
+        }
+
+        .panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 14px;
+            padding: 28px;
+        }
+
+        h1 {
+            font-size: 22px;
+            font-weight: 800;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        h2 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-top: 24px;
+            margin-bottom: 8px;
+            color: var(--accent-primary);
+        }
+
+        p {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        footer {
+            margin-top: 30px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-subtle);
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="top-nav">
+            <a href="/">← talk-ch掲示板に戻る</a>
+        </div>
+
+        <div class="panel">
+            <h1>プライバシーポリシー・利用規約</h1>
+
+            <h2>1. 個人情報の取得について</h2>
+            <p>当掲示板は、ユーザーの皆様が匿名のままで自由に投稿できるサービスです。氏名、住所、電話番号、メールアドレスなどの個人情報を意図的に取得・収集することはいたしません。</p>
+
+            <h2>2. IPアドレスの収集と利用目的について</h2>
+            <p>当サイトでは、悪質な書き込み、荒らし行為、スパム投稿への対策、および健全なサイト運営（アクセス禁止処分等の対応）を目的として、投稿時およびアクセス時にユーザーのIPアドレスを自動的に記録しています。このデータは、法令に基づく正当な開示請求があった場合、または利用規約に違反した不正行為への対応を除き、第三者に公開・提供されることはありません。</p>
+
+            <h2>3. クッキー（Cookie）の使用について</h2>
+            <p>当サイトでは、ユーザーの利便性向上や、適切な広告配信、アクセス解析のためにクッキー（Cookie）を使用しています。Cookieに個人を特定できる情報は一切含まれません。ブラウザの設定によりCookieを無効にすることも可能です。</p>
+
+            <h2>4. 広告の配信について</h2>
+            <p>当サイトでは、第三者配信の広告サービスを利用する場合があります。広告配信事業者は、ユーザーの興味に応じた広告を表示するためにCookieを使用することがあります。</p>
+
+            <h2>5. 免責事項</h2>
+            <p>当サイトの書き込みはユーザー自身によって行われるものであり、その内容の正確性、合法性、安全性について管理者は一切の保証をいたしません。利用によって生じた損害やトラブル等について、管理者は一切の責任を負いかねます。また、ポリシー違反の書き込みは、管理者の裁量により予告なく削除します。</p>
+
+            <footer>
+                <p>策定日：2026年7月15日<br>talk-ch 運営事務局</p>
+            </footer>
+        </div>
+    </div>
+
+</body>
+</html>

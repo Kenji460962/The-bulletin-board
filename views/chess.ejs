@@ -1,14 +1,9 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <!-- 元からあったWebPファビコン（ブラウザのタブ用としてそのまま残す） -->
-    <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
-
-    <!-- iOS (iPhone) ホーム画面用アイコン（※180x180のPNG画像を1枚追加） -->
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-
-    <!-- Android用 Web App Manifest -->
-    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <link rel="icon" href="/static/favicon.webp" type="image/webp">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="manifest" href="/static/site.webmanifest">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>オンラインチェス - talk-ch</title>
@@ -22,32 +17,48 @@
             --text-muted: #94a3b8;
             --accent-color: #38bdf8;
             --accent-hover: #0ea5e9;
+            --board-light: #f0d9b5;
+            --board-dark: #b58863;
+            --board-border: #7c5835;
         }
+
         * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
         body {
             font-family: 'Inter', sans-serif;
             background: var(--bg-color);
             color: var(--text-main);
-            margin: 0;
+            min-height: 100vh;
             padding: 16px;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
+
         a { color: var(--accent-color); text-decoration: none; }
         a:hover { text-decoration: underline; }
-        .top-nav { width: 100%; max-width: 480px; margin-bottom: 12px; font-size: 13px; }
+
+        .top-nav {
+            width: 100%;
+            max-width: 480px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
         .panel {
+            width: 100%;
+            max-width: 480px;
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
             border-radius: 10px;
             padding: 20px;
-            width: 100%;
-            max-width: 480px;
             margin-bottom: 16px;
         }
+
         h1 { font-size: 20px; margin: 0 0 4px 0; }
         h2 { font-size: 16px; margin: 0 0 12px 0; color: var(--text-muted); font-weight: 600; }
+
         input[type="text"] {
             background: var(--bg-color);
             border: 1px solid var(--border-color);
@@ -55,7 +66,10 @@
             padding: 8px 10px;
             border-radius: 6px;
             font-size: 14px;
+            outline: none;
         }
+        input[type="text"]:focus { border-color: var(--accent-color); }
+
         button {
             background: var(--accent-color);
             color: #06202e;
@@ -65,37 +79,59 @@
             font-weight: 600;
             cursor: pointer;
             font-size: 14px;
+            transition: background 0.15s ease;
         }
         button:hover { background: var(--accent-hover); }
         button:disabled { background: #475569; color: var(--text-muted); cursor: not-allowed; }
+
         .lobby-actions { display: flex; flex-direction: column; gap: 16px; }
         .lobby-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-        .players-box { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
-        .status-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 14px; }
+        .lobby-row input { flex: 1; min-width: 160px; }
+
+        .players-box {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 14px;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
         .turn-indicator { font-weight: 700; }
+
         .board {
             display: grid;
             grid-template-columns: repeat(8, 1fr);
+            gap: 0;
+            border: 3px solid var(--board-border);
+            border-radius: 4px;
+            aspect-ratio: 1 / 1;
             width: 100%;
             max-width: 440px;
-            aspect-ratio: 1 / 1;
-            border: 3px solid #3f2a14;
-            border-radius: 4px;
+            margin: 0 auto;
             overflow: hidden;
         }
+
         .cell {
+            aspect-ratio: 1 / 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            aspect-ratio: 1 / 1;
-            cursor: pointer;
             position: relative;
-            font-size: min(7vw, 32px);
             user-select: none;
+            cursor: pointer;
         }
-        .cell.light { background: #ebd7b0; }
-        .cell.dark { background: #b58863; }
-        .piece-glyph {
+        .cell.light { background: var(--board-light); }
+        .cell.dark { background: var(--board-dark); }
+        .cell .piece-glyph {
             width: 78%;
             height: 78%;
             display: flex;
@@ -159,10 +195,10 @@
     <div class="top-nav">
         <a href="/">← talk-chに戻る</a>
         <span style="color: var(--text-muted); margin: 0 6px;">|</span>
-        <a href="{{ url_for('chess_lobby') }}">♟️ チェスロビーへ</a>
+        <a href="/chess">♟️ チェスロビーへ</a>
     </div>
 
-    {% if not room %}
+    <% if (!room) { %>
     <div class="panel">
         <h1>オンラインチェス</h1>
         <h2>友達と対戦しよう（登録不要・匿名）</h2>
@@ -256,17 +292,15 @@
         });
     </script>
 
-    {% else %}
+    <% } else { %>
     <div class="panel">
         <div class="room-code-box">
-            <span>部屋コード: <strong>{{ room.room_code }}</strong></span>
+            <span>部屋コード: <strong><%= room.room_code %></strong></span>
             <button id="copy-link-btn" style="font-size: 12px; padding: 5px 10px;">リンクをコピー</button>
         </div>
 
         <div class="players-box" id="players-box"></div>
-
         <div id="result-banner-area"></div>
-
         <div class="status-bar">
             <div class="turn-indicator" id="turn-indicator">読み込み中...</div>
         </div>
@@ -276,12 +310,11 @@
     </div>
 
     <script>
-        const roomCode = {{ room.room_code | tojson }};
-        let myColor = {{ my_color | tojson }};
-        let selected = null; // [r, c]
+        const roomCode = <%- JSON.stringify(room.room_code) %>;
+        let myColor = <%- JSON.stringify(my_color) %>;
+        let selected = null;
         let legalTargetsForSelected = [];
         
-        // Unicodeのチェス駒マップ
         const PIECE_SYMBOLS = {
             'K': '♚',
             'Q': '♛',
@@ -306,7 +339,6 @@
             return color === 'w' ? '白' : '黒';
         }
 
-        // 簡易な自前の合法手判定
         const KNIGHT_MOVES = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
         const ROOK_DIRS = [[-1,0],[1,0],[0,-1],[0,1]];
         const BISHOP_DIRS = [[-1,-1],[-1,1],[1,-1],[1,1]];
@@ -370,7 +402,6 @@
                         if (!t || t[0]!==color) targets.push([tr,tc]);
                     }
                 }
-                // キャスリング(見た目のヒントのみ。実際の可否はサーバー側が最終判定)
                 const homeRow = color==='w' ? 7 : 0;
                 if (r===homeRow && c===4) {
                     const kFlag = color==='w' ? 'K' : 'k';
@@ -388,6 +419,7 @@
 
         function renderBoard(board, statusData) {
             const boardEl = document.getElementById('board');
+            if (!boardEl) return;
             boardEl.innerHTML = '';
             for (let r = 0; r < 8; r++) {
                 for (let c = 0; c < 8; c++) {
@@ -400,7 +432,7 @@
                     cell.dataset.col = c;
                     
                     if (piece) {
-                        const pieceColor = piece[0]; // 'w' or 'b'
+                        const pieceColor = piece[0];
                         const pieceType = piece[1];
                         const wrapper = document.createElement('div');
                         wrapper.className = 'piece-glyph';
@@ -440,7 +472,6 @@
                     await makeMove(fr, fc, r, c);
                     return;
                 }
-                // 選び直し
                 if (piece && piece[0] === myColor) {
                     selected = [r, c];
                     legalTargetsForSelected = pseudoTargets(board, r, c, statusData);
@@ -483,6 +514,7 @@
 
         function updatePlayersBox(data) {
             const box = document.getElementById('players-box');
+            if (!box) return;
             const whiteYou = (myColor === 'w') ? ' (あなた)' : '';
             const blackYou = (myColor === 'b') ? ' (あなた)' : '';
             let html = `<div>⚪ ${escapeHtml(data.white_name)} <span style="opacity:0.7;">(ID:${data.white_id || '----'})</span>${whiteYou}</div>`;
@@ -497,6 +529,7 @@
         function updateStatusBar(data) {
             const indicator = document.getElementById('turn-indicator');
             const bannerArea = document.getElementById('result-banner-area');
+            if (!indicator || !bannerArea) return;
             bannerArea.innerHTML = '';
 
             if (data.status === 'waiting') {
@@ -522,7 +555,7 @@
                 backBtn.style.width = '100%';
                 backBtn.style.marginBottom = '12px';
                 backBtn.addEventListener('click', () => {
-                    window.location.href = "{{ url_for('chess_lobby') }}";
+                    window.location.href = "/chess";
                 });
                 bannerArea.appendChild(backBtn);
             } else {
@@ -540,7 +573,6 @@
             }
         }
 
-        
         async function fetchState() {
             try {
                 const res = await fetch(`/api/chess/${roomCode}/state`);
@@ -548,7 +580,6 @@
                 const data = await res.json();
                 if (data.my_color) myColor = data.my_color;
 
-                // boardが文字列で届いた場合に安全に配列へパースする処理を追加
                 let board = data.board;
                 if (typeof board === 'string') {
                     try { board = JSON.parse(board); } catch(e) {}
@@ -562,9 +593,6 @@
             }
         }
 
-
-        
-
         document.getElementById('copy-link-btn').addEventListener('click', () => {
             navigator.clipboard.writeText(window.location.href).then(() => {
                 const btn = document.getElementById('copy-link-btn');
@@ -574,10 +602,8 @@
             });
         });
 
-        // 初回読み込み
         fetchState();
 
-        // Cloudflare D1: Supabase Realtime の代わりに軽量ポーリング
         let statePollBusy = false;
         async function pollGameState() {
             if (statePollBusy) return;
@@ -586,7 +612,6 @@
         }
         setInterval(pollGameState, 1500);
     </script>
-    {% endif %}
-
+    <% } %>
 </body>
 </html>

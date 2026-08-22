@@ -1,0 +1,70 @@
+{
+  "threads": [
+    {
+      "id": 1,
+      "title": "talk-chへようこそ！総合雑談スレッド",
+      "category": "general",
+      "op_user_id": "ADMIN001",
+      "created_at": "2026-08-22T03:30:51.316Z",
+      "updated_at": "2026-08-22T03:30:51.317Z",
+      "replies": [
+        {
+          "id": 1,
+          "thread_id": 1,
+          "post_num": 1,
+          "author": "talk-ch管理人",
+          "content": "トークちゃんねるへようこそ！\n完全匿名、登録不要で気軽に会話やゲームを楽しめる掲示板です。\nマナーを守って楽しく利用しましょう！",
+          "image_url": null,
+          "user_id": "ADMIN001",
+          "is_admin": true,
+          "is_op": true,
+          "role": "admin",
+          "created_at": "2026-08-22T03:30:51.317Z",
+          "date": "2026/08/22 03:30:51"
+        },
+        {
+          "id": 2,
+          "thread_id": 1,
+          "post_num": 2,
+          "author": "名無しさん",
+          "content": ">>1\nオープンおめでとうございます！\nスマホからも軽快に動いて快適ですね。",
+          "image_url": null,
+          "user_id": "8a9f2b1c",
+          "is_admin": false,
+          "is_op": false,
+          "role": null,
+          "created_at": "2026-08-22T03:30:51.317Z",
+          "date": "2026/08/22 03:30:51"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "🎮 オセロ・チェス対戦募集スレ",
+      "category": "gaming",
+      "op_user_id": "Gamer001",
+      "created_at": "2026-08-22T03:30:51.317Z",
+      "updated_at": "2026-08-22T03:30:51.317Z",
+      "replies": [
+        {
+          "id": 3,
+          "thread_id": 2,
+          "post_num": 1,
+          "author": "対戦好き名無し",
+          "content": "オンラインオセロやチェスの部屋コードを貼って対戦相手を募集するスレです。\n気軽にコードを共有してください！",
+          "image_url": null,
+          "user_id": "Gamer001",
+          "is_admin": false,
+          "is_op": true,
+          "role": null,
+          "created_at": "2026-08-22T03:30:51.317Z",
+          "date": "2026/08/22 03:30:51"
+        }
+      ]
+    }
+  ],
+  "admin_message": "talk-chへようこそ！快適な匿名コミュニケーション空間をお届けします。",
+  "othello_rooms": {},
+  "chess_rooms": {},
+  "banned_users": []
+}

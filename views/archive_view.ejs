@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ thread.title }}（過去ログ） - talk-ch</title>
+    <title><%= thread.title %>（過去ログ） - talk-ch</title>
+    <link rel="icon" href="/static/favicon.webp" type="image/webp">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+    <link rel="manifest" href="/static/site.webmanifest">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -70,33 +73,33 @@
 
     <div class="top-nav">
         <a href="/">← talk-chに戻る</a>
-        <a href="{{ url_for('archive_list') }}">過去ログ一覧へ</a>
+        <a href="/archive">過去ログ一覧へ</a>
     </div>
 
     <div class="panel">
         <div class="archive-badge">📦 過去ログ（アーカイブ済み・書き込み不可）</div>
-        <h1>{{ thread.title }}</h1>
+        <h1><%= thread.title %></h1>
     </div>
 
     <div class="panel">
-        {% if replies %}
-            {% for r in replies %}
+        <% if (replies && replies.length > 0) { %>
+            <% replies.forEach(function(r, idx) { %>
             <div class="post-item">
                 <div class="post-meta">
-                    <span class="post-num">#{{ loop.index }}</span>
-                    <span>{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
-                    <span>{{ r.date }}</span>
-                    <span>ID:{{ r.user_id }}</span>
+                    <span class="post-num">#<%= idx + 1 %></span>
+                    <span><%= r.author %><% if (r.is_admin || ['admin', 'sub_admin', 'moderator'].includes(r.role)) { %>★<% } %></span>
+                    <span><%= r.date %></span>
+                    <span>ID:<%= r.user_id %></span>
                 </div>
-                <div class="post-content">{{ r.content | safe }}</div>
-                {% if r.image_url %}
-                <a href="{{ r.image_url }}" target="_blank"><img src="{{ r.image_url }}" class="post-image" loading="lazy"></a>
-                {% endif %}
+                <div class="post-content"><%- r.content %></div>
+                <% if (r.image_url) { %>
+                <a href="<%= r.image_url %>" target="_blank"><img src="<%= r.image_url %>" class="post-image" loading="lazy"></a>
+                <% } %>
             </div>
-            {% endfor %}
-        {% else %}
+            <% }); %>
+        <% } else { %>
         <div class="empty">レスがありませんでした</div>
-        {% endif %}
+        <% } %>
     </div>
 
 </body>
