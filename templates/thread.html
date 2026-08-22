@@ -1042,16 +1042,15 @@
             replyDiv.setAttribute('data-reply-id', reply.id);
 
             let roleCls = reply.role_class || '';
-            if (!roleCls) {
-                const author = String(reply.author || '').trim();
-                const role = String(reply.role || '').toLowerCase().trim();
-                if (role === 'admin' || author.includes('ペンギン') || author.toUpperCase().includes('MINO')) {
+            if (!roleCls && reply.role) {
+                const role = String(reply.role).toLowerCase().trim();
+                if (role === 'admin') {
                     roleCls = 'role-admin';
-                } else if (role === 'pr' || author.includes('鷹3an') || author.includes('タウ') || author.toLowerCase().includes('jukutaka')) {
+                } else if (role === 'pr') {
                     roleCls = 'role-pr';
-                } else if (role === 'proposal' || author.includes('車えび') || author.includes('車エビ')) {
+                } else if (role === 'proposal') {
                     roleCls = 'role-proposal';
-                } else if (role === 'log' || author.includes('クラ急行')) {
+                } else if (role === 'log') {
                     roleCls = 'role-log';
                 }
             }

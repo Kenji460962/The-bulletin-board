@@ -179,7 +179,7 @@ function getClientIp(req) {
   return req.socket.remoteAddress || '127.0.0.1';
 }
 
-function resolveRoleClass(author = '', role = '') {
+function resolveRoleClass(role = '') {
   const r = String(role || '').toLowerCase().trim();
   if (r === 'admin') {
     return 'role-admin';
@@ -193,22 +193,6 @@ function resolveRoleClass(author = '', role = '') {
   if (r === 'log') {
     return 'role-log';
   }
-
-  // Name-based fallback strictly for known staff display_names/usernames in Cloudflare D1 staff_users
-  const name = String(author || '').trim();
-  if (name.includes('ペンギン') || name.toUpperCase().includes('MINO')) {
-    return 'role-admin';
-  }
-  if (name.includes('鷹3an') || name.includes('タウ') || name.toLowerCase().includes('jukutaka')) {
-    return 'role-pr';
-  }
-  if (name.includes('車えび') || name.includes('車エビ')) {
-    return 'role-proposal';
-  }
-  if (name.includes('クラ急行')) {
-    return 'role-log';
-  }
-
   return '';
 }
 
@@ -734,7 +718,7 @@ app.get('/thread/:id', async (req, res) => {
     date: formatJstDate(r.date),
     content: formatReplyContent(r.content),
     is_op: Boolean(opUserId && r.user_id === opUserId),
-    role_class: resolveRoleClass(r.author, r.role, r.is_admin)
+    role_class: resolveRoleClass(r.role)
   }));
 
   const threadData = {
@@ -802,6 +786,8 @@ app.post('/thread/:id', upload.single('image'), async (req, res) => {
     } else {
       authorInput = escapeHtml(authorInput);
     }
+    // Prevent unauthenticated users from using staff star '★'
+    authorInput = authorInput.replace(/★/g, '☆');
     userId = getDailyUserId(clientIp);
   }
 
@@ -855,7 +841,7 @@ app.post('/thread/:id', upload.single('image'), async (req, res) => {
     date: formatJstDate(newReply.date),
     content: formatReplyContent(newReply.content),
     is_op: Boolean(opUserId && newReply.user_id === opUserId),
-    role_class: resolveRoleClass(newReply.author, newReply.role, newReply.is_admin),
+    role_class: resolveRoleClass(newReply.role),
     post_num: allReplies.length
   };
 
@@ -885,7 +871,7 @@ app.get('/thread/:id/get_new_replies', async (req, res) => {
     date: formatJstDate(r.date),
     content: formatReplyContent(r.content),
     is_op: Boolean(opUserId && r.user_id === opUserId),
-    role_class: resolveRoleClass(r.author, r.role, r.is_admin)
+    role_class: resolveRoleClass(r.role)
   }));
 
   res.json({ success: true, replies: formattedReplies });
@@ -919,7 +905,7 @@ app.get('/thread/:id/get_older_replies', async (req, res) => {
     date: formatJstDate(r.date),
     content: formatReplyContent(r.content),
     is_op: Boolean(opUserId && r.user_id === opUserId),
-    role_class: resolveRoleClass(r.author, r.role, r.is_admin)
+    role_class: resolveRoleClass(r.role)
   }));
 
   res.json({
@@ -1048,7 +1034,7 @@ app.get('/archive/:id', async (req, res) => {
     post_num: i + 1,
     date: formatJstDate(r.date),
     content: formatReplyContent(r.content),
-    role_class: resolveRoleClass(r.author, r.role, r.is_admin)
+    role_class: resolveRoleClass(r.role)
   }));
   res.render('archive_view.html', {
     thread: data.thread,

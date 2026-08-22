@@ -65,7 +65,7 @@ const mem = {
   ],
   replies: [
     { id: 1, thread_id: 1, author: 'ペンギン★', content: 'トークちゃんねるをご利用いただきありがとうございます。\n公序良俗に反する投稿、他者への誹謗中傷、荒らし行為は禁止です。\nマナーを守って楽しく交流しましょう！', user_id: 'STAFF', is_admin: 1, role: 'admin', image_url: '', ip_address: '127.0.0.1', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7).toISOString() },
-    { id: 2, thread_id: 1, author: 'Mino★', content: '健全で楽しいコミュニティづくりにご協力をお願いします✨', user_id: 'STAFF', is_admin: 1, role: 'sub_admin', image_url: '', ip_address: '127.0.0.1', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 6).toISOString() },
+    { id: 2, thread_id: 1, author: 'MINO★', content: '健全で楽しいコミュニティづくりにご協力をお願いします✨', user_id: 'STAFF', is_admin: 1, role: 'admin', image_url: '', ip_address: '127.0.0.1', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 6).toISOString() },
     { id: 3, thread_id: 2, author: '名無しさん', content: '雑談スレ立てました！なんでも自由にどうぞー', user_id: 'a1b2c3d4', is_admin: 0, role: null, image_url: '', ip_address: '127.0.0.1', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString() },
     { id: 4, thread_id: 2, author: '名無しさん', content: '>>1 乙です！\nよろしくね〜', user_id: 'e5f6g7h8', is_admin: 0, role: null, image_url: '', ip_address: '127.0.0.2', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 4).toISOString() },
     { id: 5, thread_id: 3, author: '名無しさん', content: '機能要望やバグ報告はこちらへどうぞ。', user_id: 'op_user_3', is_admin: 0, role: null, image_url: '', ip_address: '127.0.0.1', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 4).toISOString() },
