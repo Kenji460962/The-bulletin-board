@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <!-- 元からあったWebPファビコン（ブラウザのタブ用としてそのまま残す） -->
+    <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
+
+    <!-- iOS (iPhone) ホーム画面用アイコン（※180x180のPNG画像を1枚追加） -->
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+
+    <!-- Android用 Web App Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ゲーム - talk-ch</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-color: #38bdf8;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        a { color: var(--accent-color); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .top-nav { width: 100%; max-width: 480px; margin-bottom: 12px; font-size: 13px; }
+        h1 { font-size: 20px; margin: 0 0 4px 0; }
+        .sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+        .game-list {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .game-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            text-decoration: none;
+            color: var(--text-main);
+            transition: border-color 0.15s;
+        }
+        .game-card:hover { border-color: var(--accent-color); text-decoration: none; }
+        .game-icon { font-size: 36px; line-height: 1; }
+        .game-info h2 { font-size: 17px; margin: 0 0 4px 0; }
+        .game-info p { font-size: 13px; color: var(--text-muted); margin: 0; }
+    </style>
+</head>
+<body>
+
+    <div class="top-nav">
+        <a href="/">← talk-chに戻る</a>
+    </div>
+
+    <h1>🎮 ゲーム</h1>
+    <div class="sub">友達と部屋コードで対戦できます（登録不要・匿名）</div>
+
+    <div class="game-list">
+        <a class="game-card" href="{{ url_for('game_lobby') }}">
+            <div class="game-icon">⚫⚪</div>
+            <div class="game-info">
+                <h2>オンラインオセロ</h2>
+                <p>部屋を作って、リンクを共有して対戦しよう</p>
+            </div>
+        </a>
+        <a class="game-card" href="{{ url_for('chess_lobby') }}">
+            <div class="game-icon">♟️</div>
+            <div class="game-info">
+                <h2>オンラインチェス</h2>
+                <p>王手・キャスリングにも対応した本格対戦</p>
+            </div>
+        </a>
+    </div>
+
+</body>
+</html>

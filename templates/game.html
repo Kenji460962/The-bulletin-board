@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <!-- 元からあったWebPファビコン（ブラウザのタブ用としてそのまま残す） -->
+    <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
+
+    <!-- iOS (iPhone) ホーム画面用アイコン（※180x180のPNG画像を1枚追加） -->
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+
+    <!-- Android用 Web App Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>オンラインオセロ - talk-ch</title>
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet"
+    >
+
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+
+            --black-piece: #0f0f0f;
+            --white-piece: #f5f5f5;
+
+            --board-dark: #14532d;
+            --board-light: #166534;
+            --board-hover: #15803d;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+
+            min-height: 100vh;
+
+            padding: 16px;
+
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        /* =========================
+           上部ナビ
+        ========================= */
+
+        .top-nav {
+            width: 100%;
+            max-width: 480px;
+
+            margin-bottom: 12px;
+
+            font-size: 13px;
+
+            line-height: 1.8;
+        }
+
+        /* =========================
+           パネル
+        ========================= */
+
+        .panel {
+            width: 100%;
+            max-width: 480px;
+
+            background: var(--panel-bg);
+
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+
+            padding: 20px;
+
+            margin-bottom: 16px;
+        }
+
+        h1 {
+            font-size: 20px;
+            margin: 0 0 4px 0;
+        }
+
+        h2 {
+            font-size: 16px;
+
+            margin: 0 0 12px 0;
+
+            color: var(--text-muted);
+
+            font-weight: 600;
+        }
+
+        /* =========================
+           入力
+        ========================= */
+
+        input[type="text"] {
+            background: var(--bg-color);
+
+            border: 1px solid var(--border-color);
+
+            color: var(--text-main);
+
+            padding: 8px 10px;
+
+            border-radius: 6px;
+
+            font-size: 14px;
+
+            outline: none;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent-color);
+        }
+
+        button {
+            background: var(--accent-color);
+
+            color: #06202e;
+
+            border: none;
+
+            padding: 8px 16px;
+
+            border-radius: 6px;
+
+            font-weight: 600;
+
+            cursor: pointer;
+
+            font-size: 14px;
+
+            transition: background 0.15s ease;
+        }
+
+        button:hover {
+            background: var(--accent-hover);
+        }
+
+        button:disabled {
+            background: #475569;
+            color: var(--text-muted);
+
+            cursor: not-allowed;
+        }
+
+        /* =========================
+           ロビー
+        ========================= */
+
+        .lobby-actions {
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 16px;
+        }
+
+        .lobby-row {
+            display: flex;
+
+            gap: 8px;
+
+            align-items: center;
+
+            flex-wrap: wrap;
+        }
+
+        .lobby-row input {
+            flex: 1;
+            min-width: 160px;
+        }
+
+        /* =========================
+           部屋コード
+        ========================= */
+
+        .room-code-box {
+            background: var(--bg-color);
+
+            border: 1px dashed var(--border-color);
+
+            border-radius: 6px;
+
+            padding: 10px 14px;
+
+            font-size: 14px;
+
+            margin-bottom: 12px;
+
+            display: flex;
+
+            justify-content: space-between;
+
+            align-items: center;
+
+            gap: 8px;
+
+            flex-wrap: wrap;
+        }
+
+        .room-code-box strong {
+            font-size: 18px;
+
+            letter-spacing: 2px;
+
+            color: var(--accent-color);
+        }
+
+        /* =========================
+           プレイヤー
+        ========================= */
+
+        .players-box {
+            font-size: 13px;
+
+            color: var(--text-muted);
+
+            margin-bottom: 10px;
+
+            display: flex;
+
+            flex-direction: column;
+
+            gap: 4px;
+        }
+
+        .player-row {
+            display: flex;
+
+            align-items: center;
+
+            gap: 4px;
+
+            min-height: 20px;
+        }
+
+        /* =========================
+           ステータス
+        ========================= */
+
+        .status-bar {
+            display: flex;
+
+            justify-content: space-between;
+
+            align-items: center;
+
+            margin-bottom: 12px;
+
+            font-size: 14px;
+
+            gap: 8px;
+
+            flex-wrap: wrap;
+        }
+
+        .turn-indicator {
+            font-weight: 700;
+        }
+
+        .piece-count {
+            display: flex;
+
+            gap: 12px;
+
+            font-size: 13px;
+
+            color: var(--text-muted);
+        }
+
+        .piece-count span.dot {
+            display: inline-block;
+
+            width: 10px;
+            height: 10px;
+
+            border-radius: 50%;
+
+            margin-right: 4px;
+
+            vertical-align: middle;
+        }
+
+        /* =========================
+           オセロ盤
+        ========================= */
+
+        .board {
+            display: grid;
+
+            grid-template-columns: repeat(8, 1fr);
+
+            gap: 2px;
+
+            background: var(--board-dark);
+
+            border: 3px solid var(--board-dark);
+
+            border-radius: 4px;
+
+            aspect-ratio: 1 / 1;
+
+            width: 100%;
+
+            max-width: 440px;
+
+            margin: 0 auto;
+        }
+
+        .cell {
+            background: var(--board-light);
+
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+
+            aspect-ratio: 1 / 1;
+
+            cursor: pointer;
+
+            position: relative;
+
+            user-select: none;
+
+            transition: background 0.1s ease;
+        }
+
+        .cell:hover {
+            background: var(--board-hover);
+        }
+
+        .cell.disabled {
+            cursor: default;
+        }
+
+        .cell.disabled:hover {
+            background: var(--board-light);
+        }
+
+        /* =========================
+           駒
+        ========================= */
+
+        .piece {
+            width: 82%;
+            height: 82%;
+
+            border-radius: 50%;
+
+            box-shadow:
+                1px 2px 3px rgba(0, 0, 0, 0.4);
+
+            pointer-events: none;
+        }
+
+        .piece.B {
+            background: var(--black-piece);
+        }
+
+        .piece.W {
+            background: var(--white-piece);
+        }
+
+        /* =========================
+           着手可能マーク
+        ========================= */
+
+        .hint-dot {
+            width: 22%;
+            height: 22%;
+
+            border-radius: 50%;
+
+            background: rgba(255, 255, 255, 0.35);
+
+            pointer-events: none;
+        }
+
+        .cell.valid {
+            cursor: pointer;
+        }
+
+        .cell.valid:hover {
+            background: var(--board-hover);
+        }
+
+        /* =========================
+           メッセージ
+        ========================= */
+
+        .msg {
+            font-size: 13px;
+
+            color: var(--text-muted);
+
+            margin-top: 8px;
+
+            min-height: 18px;
+        }
+
+        .msg.error {
+            color: #f87171;
+        }
+
+        /* =========================
+           結果
+        ========================= */
+
+        .result-banner {
+            text-align: center;
+
+            font-size: 18px;
+
+            font-weight: 700;
+
+            padding: 12px;
+
+            margin-bottom: 12px;
+
+            border-radius: 8px;
+
+            background: rgba(56, 189, 248, 0.15);
+        }
+
+        /* =========================
+           レスポンシブ
+        ========================= */
+
+        @media (max-width: 500px) {
+            body {
+                padding: 10px;
+            }
+
+            .panel {
+                padding: 14px;
+            }
+
+            .status-bar {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .piece-count {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .room-code-box {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .room-code-box button {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- =========================================
+         上部ナビゲーション
+    ========================================== -->
+
+    <div class="top-nav">
+
+        <a href="/">
+            ← talk-chに戻る
+        </a>
+
+        <span style="color: var(--text-muted); margin: 0 6px;">
+            |
+        </span>
+
+        <a href="{{ url_for('game_lobby') }}">
+            🎮 オセロロビーへ
+        </a>
+
+        <span style="color: var(--text-muted); margin: 0 6px;">
+            |
+        </span>
+
+        <a href="{{ url_for('chess_lobby') }}">
+            ♟️ チェスで遊ぶ
+        </a>
+
+    </div>
+
+
+    <!-- =========================================
+         ロビー
+         room が存在しない場合
+    ========================================== -->
+
+    {% if not room %}
+
+    <div class="panel">
+
+        <h1>
+            オンラインオセロ
+        </h1>
+
+        <h2>
+            友達と対戦しよう（登録不要・匿名）
+        </h2>
+
+        <div class="lobby-actions">
+
+            <!-- 名前 -->
+
+            <div>
+
+                <div
+                    style="
+                        font-size: 13px;
+                        color: var(--text-muted);
+                        margin-bottom: 6px;
+                    "
+                >
+                    表示する名前（省略可）
+                </div>
+
+                <input
+                    type="text"
+                    id="player-name-input"
+                    placeholder="名無しさん"
+                    maxlength="20"
+                    style="width: 100%;"
+                >
+
+            </div>
+
+
+            <!-- 部屋作成 -->
+
+            <div>
+
+                <button id="create-room-btn">
+                    新しい部屋を作る
+                </button>
+
+            </div>
+
+
+            <!-- 部屋参加 -->
+
+            <div>
+
+                <div
+                    style="
+                        font-size: 13px;
+                        color: var(--text-muted);
+                        margin-bottom: 6px;
+                    "
+                >
+                    部屋コードを持っている場合
+                </div>
+
+                <div class="lobby-row">
+
+                    <input
+                        type="text"
+                        id="join-code-input"
+                        placeholder="例: AB12CD"
+                        maxlength="6"
+                        style="text-transform: uppercase;"
+                    >
+
+                    <button id="join-room-btn">
+                        参加する
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <div
+            class="msg"
+            id="lobby-msg"
+        ></div>
+
+    </div>
+
+
+    <script>
+
+        /* =========================================
+           Cookie
+        ========================================== */
+
+        function getCookie(name) {
+
+            const value = `; ${document.cookie}`;
+
+            const parts = value.split(`; ${name}=`);
+
+            if (parts.length === 2) {
+
+                return decodeURIComponent(
+                    parts.pop().split(';').shift()
+                );
+
+            }
+
+            return '';
+
+        }
+
+
+        /* =========================================
+           保存済み名前
+        ========================================== */
+
+        const savedAuthor = getCookie('bbs_saved_author');
+
+        if (savedAuthor) {
+
+            const input =
+                document.getElementById('player-name-input');
+
+            if (input) {
+                input.value = savedAuthor;
+            }
+
+        }
+
+
+        /* =========================================
+           部屋作成
+        ========================================== */
+
+        document
+            .getElementById('create-room-btn')
+            .addEventListener('click', async () => {
+
+                const btn =
+                    document.getElementById('create-room-btn');
+
+                const name =
+                    document
+                        .getElementById('player-name-input')
+                        .value
+                        .trim();
+
+                btn.disabled = true;
+
+                try {
+
+                    const formData =
+                        new URLSearchParams();
+
+                    formData.append('name', name);
+
+                    const res =
+                        await fetch(
+                            '/game/create',
+                            {
+                                method: 'POST',
+                                body: formData
+                            }
+                        );
+
+                    if (res.redirected) {
+
+                        window.location.href = res.url;
+
+                    } else {
+
+                        const msg =
+                            document.getElementById('lobby-msg');
+
+                        msg.textContent =
+                            '部屋の作成に失敗しました';
+
+                        msg.classList.add('error');
+
+                        btn.disabled = false;
+
+                    }
+
+                } catch (e) {
+
+                    console.error(e);
+
+                    const msg =
+                        document.getElementById('lobby-msg');
+
+                    msg.textContent =
+                        '通信エラーが発生しました';
+
+                    msg.classList.add('error');
+
+                    btn.disabled = false;
+
+                }
+
+            });
+
+
+        /* =========================================
+           部屋参加
+        ========================================== */
+
+        document
+            .getElementById('join-room-btn')
+            .addEventListener('click', async () => {
+
+                const input =
+                    document.getElementById('join-code-input');
+
+                const code =
+                    input.value
+                        .trim()
+                        .toUpperCase();
+
+                const name =
+                    document
+                        .getElementById('player-name-input')
+                        .value
+                        .trim();
+
+                const msgEl =
+                    document.getElementById('lobby-msg');
+
+                msgEl.classList.remove('error');
+                msgEl.textContent = '';
+
+                if (!code) {
+
+                    msgEl.textContent =
+                        '部屋コードを入力してください';
+
+                    msgEl.classList.add('error');
+
+                    return;
+                }
+
+                try {
+
+                    const res =
+                        await fetch(
+                            `/game/${encodeURIComponent(code)}/join`,
+                            {
+                                method: 'POST',
+
+                                headers: {
+                                    'Content-Type':
+                                        'application/json'
+                                },
+
+                                body: JSON.stringify({
+                                    name: name
+                                })
+                            }
+                        );
+
+                    const data =
+                        await res.json();
+
+                    if (data.success) {
+
+                        window.location.href =
+                            `/game/${encodeURIComponent(code)}`;
+
+                    } else {
+
+                        msgEl.textContent =
+                            data.error ||
+                            '参加に失敗しました';
+
+                        msgEl.classList.add('error');
+
+                    }
+
+                } catch (e) {
+
+                    console.error(e);
+
+                    msgEl.textContent =
+                        '通信エラーが発生しました';
+
+                    msgEl.classList.add('error');
+
+                }
+
+            });
+
+
+        /* =========================================
+           Enterで参加
+        ========================================== */
+
+        document
+            .getElementById('join-code-input')
+            .addEventListener('keydown', (e) => {
+
+                if (e.key === 'Enter') {
+
+                    document
+                        .getElementById('join-room-btn')
+                        .click();
+
+                }
+
+            });
+
+    </script>
+
+
+    {% else %}
+
+
+    <!-- =========================================
+         対局画面
+    ========================================== -->
+
+    <div class="panel">
+
+
+        <!-- 部屋コード -->
+
+        <div class="room-code-box">
+
+            <span>
+                部屋コード:
+
+                <strong>
+                    {{ room.room_code }}
+                </strong>
+            </span>
+
+            <button
+                id="copy-link-btn"
+                style="
+                    font-size: 12px;
+                    padding: 5px 10px;
+                "
+            >
+                リンクをコピー
+            </button>
+
+        </div>
+
+
+        <!-- 結果 -->
+
+        <div id="result-banner-area"></div>
+
+
+        <!-- プレイヤー -->
+
+        <div
+            class="players-box"
+            id="players-box"
+        >
+
+            <div>
+                読み込み中...
+            </div>
+
+        </div>
+
+
+        <!-- ターン・駒数 -->
+
+        <div class="status-bar">
+
+            <div
+                class="turn-indicator"
+                id="turn-indicator"
+            >
+                読み込み中...
+            </div>
+
+
+            <div class="piece-count">
+
+                <span>
+
+                    <span
+                        class="dot"
+                        style="
+                            background:
+                                var(--black-piece);
+                        "
+                    ></span>
+
+                    黒:
+
+                    <strong id="black-count">
+                        2
+                    </strong>
+
+                </span>
+
+
+                <span>
+
+                    <span
+                        class="dot"
+                        style="
+                            background:
+                                var(--white-piece);
+                            border: 1px solid #666;
+                        "
+                    ></span>
+
+                    白:
+
+                    <strong id="white-count">
+                        2
+                    </strong>
+
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- オセロ盤 -->
+
+        <div
+            class="board"
+            id="board"
+        ></div>
+
+
+        <!-- メッセージ -->
+
+        <div
+            class="msg"
+            id="game-msg"
+        ></div>
+
+    </div>
+
+
+    <script>
+
+        /* ==================================================
+           基本状態
+        ================================================== */
+
+        const roomCode =
+            {{ room.room_code | tojson }};
+
+        let myColor =
+            {{ my_color | tojson }};
+
+        let currentBoard = null;
+        let currentTurn = null;
+        let currentStatus = null;
+
+        let statePollBusy = false;
+
+        let realtimeChannel = null;
+
+
+        /* ==================================================
+           HTMLエスケープ
+        ================================================== */
+
+        function escapeHtml(str) {
+
+            if (!str) {
+                return '';
+            }
+
+            const div =
+                document.createElement('div');
+
+            div.textContent = str;
+
+            return div.innerHTML;
+        }
+
+
+        /* ==================================================
+           色 → 日本語
+        ================================================== */
+
+        function pieceLabel(color) {
+
+            if (color === 'B') {
+                return '黒';
+            }
+
+            if (color === 'W') {
+                return '白';
+            }
+
+            return '';
+        }
+
+
+        /* ==================================================
+           有効手計算
+        ================================================== */
+
+        function computeValidMoves(
+            boardStr,
+            player
+        ) {
+
+            const dirs = [
+                [-1, -1],
+                [-1,  0],
+                [-1,  1],
+                [ 0, -1],
+                [ 0,  1],
+                [ 1, -1],
+                [ 1,  0],
+                [ 1,  1]
+            ];
+
+            const opp =
+                player === 'B'
+                    ? 'W'
+                    : 'B';
+
+            const moves = [];
+
+
+            for (let r = 0; r < 8; r++) {
+
+                for (let c = 0; c < 8; c++) {
+
+                    if (
+                        boardStr[r * 8 + c] !== '.'
+                    ) {
+                        continue;
+                    }
+
+
+                    let found = false;
+
+
+                    for (const [dr, dc] of dirs) {
+
+                        let rr = r + dr;
+                        let cc = c + dc;
+
+                        let line = [];
+
+
+                        while (
+                            rr >= 0 &&
+                            rr < 8 &&
+                            cc >= 0 &&
+                            cc < 8 &&
+                            boardStr[
+                                rr * 8 + cc
+                            ] === opp
+                        ) {
+
+                            line.push([rr, cc]);
+
+                            rr += dr;
+                            cc += dc;
+
+                        }
+
+
+                        if (
+                            line.length > 0 &&
+                            rr >= 0 &&
+                            rr < 8 &&
+                            cc >= 0 &&
+                            cc < 8 &&
+                            boardStr[
+                                rr * 8 + cc
+                            ] === player
+                        ) {
+
+                            found = true;
+
+                            break;
+
+                        }
+
+                    }
+
+
+                    if (found) {
+
+                        moves.push([r, c]);
+
+                    }
+
+                }
+
+            }
+
+            return moves;
+
+        }
+
+
+        /* ==================================================
+           盤面描画
+        ================================================== */
+
+        function renderBoard(
+            boardStr,
+            validMoves
+        ) {
+
+            const boardEl =
+                document.getElementById('board');
+
+            boardEl.innerHTML = '';
+
+
+            for (let r = 0; r < 8; r++) {
+
+                for (let c = 0; c < 8; c++) {
+
+                    const idx =
+                        r * 8 + c;
+
+                    const val =
+                        boardStr[idx];
+
+
+                    const cell =
+                        document.createElement('div');
+
+                    cell.className = 'cell';
+
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+
+
+                    /* 駒 */
+
+                    if (
+                        val === 'B' ||
+                        val === 'W'
+                    ) {
+
+                        const piece =
+                            document.createElement('div');
+
+                        piece.className =
+                            'piece ' + val;
+
+                        cell.appendChild(piece);
+
+                        cell.classList.add(
+                            'disabled'
+                        );
+
+                    }
+
+
+                    /* 空きマス */
+
+                    else {
+
+                        const isHint =
+                            validMoves.some(
+                                ([mr, mc]) =>
+                                    mr === r &&
+                                    mc === c
+                            );
+
+
+                        if (isHint) {
+
+                            cell.classList.add(
+                                'valid'
+                            );
+
+
+                            const dot =
+                                document.createElement('div');
+
+                            dot.className =
+                                'hint-dot';
+
+                            cell.appendChild(dot);
+
+
+                            cell.addEventListener(
+                                'click',
+                                () => {
+                                    makeMove(r, c);
+                                }
+                            );
+
+                        } else {
+
+                            cell.classList.add(
+                                'disabled'
+                            );
+
+                        }
+
+                    }
+
+
+                    boardEl.appendChild(cell);
+
+                }
+
+            }
+
+        }
+
+
+        /* ==================================================
+           着手
+        ================================================== */
+
+        async function makeMove(r, c) {
+
+            const msgEl =
+                document.getElementById(
+                    'game-msg'
+                );
+
+            msgEl.textContent = '';
+            msgEl.classList.remove('error');
+
+
+            try {
+
+                const res =
+                    await fetch(
+                        `/game/${encodeURIComponent(roomCode)}/move`,
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Content-Type':
+                                    'application/json'
+                            },
+
+                            body: JSON.stringify({
+                                row: r,
+                                col: c
+                            })
+                        }
+                    );
+
+
+                const data =
+                    await res.json();
+
+
+                if (data.success) {
+
+                    msgEl.textContent = '';
+
+                    await fetchState();
+
+                } else {
+
+                    msgEl.textContent =
+                        data.error ||
+                        '着手に失敗しました';
+
+                    msgEl.classList.add(
+                        'error'
+                    );
+
+                    await fetchState();
+
+                }
+
+            } catch (e) {
+
+                console.error(
+                    '着手エラー:',
+                    e
+                );
+
+                msgEl.textContent =
+                    '通信エラーが発生しました';
+
+                msgEl.classList.add(
+                    'error'
+                );
+
+            }
+
+        }
+
+
+        /* ==================================================
+           ステータス表示
+        ================================================== */
+
+        function updateStatusBar(data) {
+
+            /* 駒数 */
+
+            document.getElementById(
+                'black-count'
+            ).textContent =
+                data.black_count ?? 0;
+
+
+            document.getElementById(
+                'white-count'
+            ).textContent =
+                data.white_count ?? 0;
+
+
+            /* プレイヤー */
+
+            const playersBox =
+                document.getElementById(
+                    'players-box'
+                );
+
+
+            const blackYou =
+                myColor === 'B'
+                    ? '（あなた）'
+                    : '';
+
+
+            const whiteYou =
+                myColor === 'W'
+                    ? '（あなた）'
+                    : '';
+
+
+            let playersHtml = '';
+
+
+            playersHtml += `
+                <div class="player-row">
+                    ⚫
+                    ${escapeHtml(
+                        data.black_name ||
+                        '名無しさん'
+                    )}
+                    <span style="opacity:0.7;">
+                        (ID:${escapeHtml(
+                            data.black_id ||
+                            '----'
+                        )})
+                    </span>
+                    ${blackYou}
+                </div>
+            `;
+
+
+            if (data.has_white) {
+
+                playersHtml += `
+                    <div class="player-row">
+                        ⚪
+                        ${escapeHtml(
+                            data.white_name ||
+                            '名無しさん'
+                        )}
+                        <span style="opacity:0.7;">
+                            (ID:${escapeHtml(
+                                data.white_id ||
+                                '----'
+                            )})
+                        </span>
+                        ${whiteYou}
+                    </div>
+                `;
+
+            } else {
+
+                playersHtml += `
+                    <div
+                        class="player-row"
+                        style="opacity:0.7;"
+                    >
+                        ⚪
+                        対戦相手を待っています…
+                    </div>
+                `;
+
+            }
+
+
+            playersBox.innerHTML =
+                playersHtml;
+
+
+            /* ターン */
+
+            const indicator =
+                document.getElementById(
+                    'turn-indicator'
+                );
+
+
+            const bannerArea =
+                document.getElementById(
+                    'result-banner-area'
+                );
+
+
+            bannerArea.innerHTML = '';
+
+
+            /* 待機 */
+
+            if (data.status === 'waiting') {
+
+                indicator.textContent =
+                    '対戦相手を待っています…';
+
+                indicator.style.color =
+                    'var(--text-muted)';
+
+                return;
+
+            }
+
+
+            /* 終了 */
+
+            if (data.status === 'finished') {
+
+                indicator.textContent =
+                    '対局終了';
+
+                indicator.style.color =
+                    'var(--text-muted)';
+
+
+                const banner =
+                    document.createElement(
+                        'div'
+                    );
+
+                banner.className =
+                    'result-banner';
+
+
+                if (data.winner === 'draw') {
+
+                    banner.textContent =
+                        '引き分けでした';
+
+                }
+
+                else if (
+                    data.winner === myColor
+                ) {
+
+                    banner.textContent =
+                        'あなたの勝ちです！🎉';
+
+                }
+
+                else if (myColor) {
+
+                    banner.textContent =
+                        'あなたの負けです';
+
+                }
+
+                else {
+
+                    banner.textContent =
+                        `${pieceLabel(
+                            data.winner
+                        )}の勝ちです`;
+
+                }
+
+
+                bannerArea.appendChild(
+                    banner
+                );
+
+
+                const backBtn =
+                    document.createElement(
+                        'button'
+                    );
+
+
+                backBtn.textContent =
+                    '🎮 ゲームロビーに戻る';
+
+
+                backBtn.style.width =
+                    '100%';
+
+                backBtn.style.marginBottom =
+                    '12px';
+
+
+                backBtn.addEventListener(
+                    'click',
+                    () => {
+
+                        window.location.href =
+                            "{{ url_for('game_lobby') }}";
+
+                    }
+                );
+
+
+                bannerArea.appendChild(
+                    backBtn
+                );
+
+
+                return;
+
+            }
+
+
+            /* 対局中 */
+
+            if (!myColor) {
+
+                indicator.textContent =
+                    `観戦中（現在: ${pieceLabel(
+                        data.turn
+                    )}のターン）`;
+
+                indicator.style.color =
+                    'var(--text-muted)';
+
+            }
+
+            else if (
+                data.turn === myColor
+            ) {
+
+                indicator.textContent =
+                    'あなたのターンです';
+
+                indicator.style.color =
+                    'var(--accent-color)';
+
+            }
+
+            else {
+
+                indicator.textContent =
+                    '相手のターンです';
+
+                indicator.style.color =
+                    'var(--text-muted)';
+
+            }
+
+        }
+
+
+        /* ==================================================
+           現在状態取得
+        ================================================== */
+
+        async function fetchState() {
+
+            try {
+
+                const res =
+                    await fetch(
+                        `/api/game/${encodeURIComponent(
+                            roomCode
+                        )}/state`,
+                        {
+                            method: 'GET',
+
+                            cache: 'no-store'
+                        }
+                    );
+
+
+                if (!res.ok) {
+
+                    console.error(
+                        '状態取得失敗:',
+                        res.status
+                    );
+
+                    return;
+
+                }
+
+
+                const data =
+                    await res.json();
+
+
+                currentBoard =
+                    data.board;
+
+                currentTurn =
+                    data.turn;
+
+                currentStatus =
+                    data.status;
+
+
+                if (data.my_color) {
+
+                    myColor =
+                        data.my_color;
+
+                }
+
+
+                updateStatusBar(data);
+
+
+                let validMoves = [];
+
+
+                if (
+                    data.status === 'playing' &&
+                    myColor &&
+                    myColor === data.turn
+                ) {
+
+                    validMoves =
+                        computeValidMoves(
+                            data.board,
+                            myColor
+                        );
+
+                }
+
+
+                renderBoard(
+                    data.board,
+                    validMoves
+                );
+
+
+            } catch (e) {
+
+                console.error(
+                    '状態取得エラー:',
+                    e
+                );
+
+            }
+
+        }
+
+
+        /* ==================================================
+           コピー
+        ================================================== */
+
+        document
+            .getElementById('copy-link-btn')
+            .addEventListener(
+                'click',
+                async () => {
+
+                    const btn =
+                        document.getElementById(
+                            'copy-link-btn'
+                        );
+
+                    const original =
+                        btn.textContent;
+
+
+                    try {
+
+                        await navigator
+                            .clipboard
+                            .writeText(
+                                window.location.href
+                            );
+
+                        btn.textContent =
+                            'コピーしました';
+
+
+                    } catch (e) {
+
+                        console.error(
+                            'コピー失敗:',
+                            e
+                        );
+
+                        btn.textContent =
+                            'コピーできませんでした';
+
+                    }
+
+
+                    setTimeout(
+                        () => {
+
+                            btn.textContent =
+                                original;
+
+                        },
+                        1500
+                    );
+
+                }
+            );
+
+
+        /* ==================================================
+           Supabase Realtime
+        ================================================== */
+
+        function setupRealtime() {
+
+            /*
+             * Flask側などで
+             *
+             * window.supabaseClient
+             *
+             * が用意されている場合だけ
+             * Realtimeを有効化する。
+             */
+
+            if (
+                typeof window.supabaseClient ===
+                'undefined' ||
+                !window.supabaseClient
+            ) {
+
+                console.warn(
+                    'Supabase Client が見つからないため、Realtimeは無効です。'
+                );
+
+                return;
+
+            }
+
+
+            try {
+
+                realtimeChannel =
+                    window.supabaseClient
+                        .channel(
+                            'othello-room-' +
+                            roomCode
+                        );
+
+
+                realtimeChannel
+                    .on(
+                        'postgres_changes',
+                        {
+                            event: 'UPDATE',
+
+                            schema: 'public',
+
+                            table: 'othello_rooms',
+
+                            filter:
+                                `room_code=eq.${roomCode}`
+                        },
+
+                        async () => {
+
+                            console.log(
+                                'オセロ部屋の更新を検知:',
+                                roomCode
+                            );
+
+                            await fetchState();
+
+                        }
+                    )
+                    .subscribe(
+                        (status) => {
+
+                            console.log(
+                                'Supabase Realtime:',
+                                status
+                            );
+
+                        }
+                    );
+
+
+            } catch (e) {
+
+                console.error(
+                    'Realtime設定エラー:',
+                    e
+                );
+
+            }
+
+        }
+
+
+        /* ==================================================
+           フォールバック用ポーリング
+        ================================================== */
+
+        async function pollGameState() {
+
+            if (statePollBusy) {
+                return;
+            }
+
+            statePollBusy = true;
+
+
+            try {
+
+                await fetchState();
+
+            }
+
+            finally {
+
+                statePollBusy = false;
+
+            }
+
+        }
+
+
+        /* ==================================================
+           初期化
+        ================================================== */
+
+        async function initializeGame() {
+
+            /* 最初に状態取得 */
+
+            await fetchState();
+
+
+            /* Realtime */
+
+            setupRealtime();
+
+
+            /*
+             * Realtimeが届かない場合でも
+             * 対局が止まらないようにする。
+             *
+             * 1.5秒ごと。
+             */
+
+            setInterval(
+                pollGameState,
+                1500
+            );
+
+        }
+
+
+        /* ==================================================
+           ページ終了時
+        ================================================== */
+
+        window.addEventListener(
+            'beforeunload',
+            () => {
+
+                if (
+                    realtimeChannel &&
+                    typeof realtimeChannel.unsubscribe ===
+                        'function'
+                ) {
+
+                    realtimeChannel.unsubscribe();
+
+                }
+
+            }
+        );
+
+
+        /* ==================================================
+           ゲーム開始
+        ================================================== */
+
+        initializeGame();
+
+    </script>
+
+    {% endif %}
+
+</body>
+</html>
