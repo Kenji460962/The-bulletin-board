@@ -1063,7 +1063,6 @@ def chess_move(room_code):
     )
     return {'success':True}
 
-@app.route('/', methods=['GET', 'HEAD'])
 def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
     """threads を、レス数・最終更新日時・現在の閲覧人数つきで取得する共通ヘルパー"""
     active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
@@ -1091,6 +1090,7 @@ def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, of
     return query_d1(sql, params)
 
 
+@app.route('/', methods=['GET', 'HEAD'])
 def index():
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
