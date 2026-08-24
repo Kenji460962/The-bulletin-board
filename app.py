@@ -19,6 +19,35 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
 
 psutil.cpu_percent(interval=None)
 
+# --- スレッドのカテゴリ定義（value, 表示ラベル, バッジ配色キー） ---
+THREAD_CATEGORIES = [
+    ('announcement', 'お知らせ', 'red'),
+    ('chat',         '雑談',      'blue'),
+    ('tech',         '技術・学問', 'purple'),
+    ('ops',          '運営・要望', 'slate'),
+    ('anime',        'アニメ・漫画', 'pink'),
+    ('gadget',       'ガジェット', 'teal'),
+    ('ai_it',        'AI・IT',    'indigo'),
+    ('game',         'ゲーム',    'amber'),
+    ('other',        'その他',    'gray'),
+]
+THREAD_CATEGORY_VALUES = {c[0] for c in THREAD_CATEGORIES}
+THREAD_CATEGORY_LABELS = {c[0]: c[1] for c in THREAD_CATEGORIES}
+THREAD_CATEGORY_COLORS = {c[0]: c[2] for c in THREAD_CATEGORIES}
+DEFAULT_THREAD_CATEGORY = 'other'
+
+# --- スレッド並び替えの定義（value, 表示ラベル, ORDER BY句） ---
+# ORDER BY句はホワイトリストの定数のみを使うため、SQLインジェクションの心配はない
+THREAD_SORT_OPTIONS = [
+    ('latest_activity', '最終更新順',              'last_activity DESC'),
+    ('id_desc',          'スレ番号（最新順）',       't.id DESC'),
+    ('id_asc',            'スレ番号（#1から順）',    't.id ASC'),
+    ('replies_desc',      'レス数が多い順',          'replies_count DESC'),
+    ('viewers_desc',      '閲覧人数順',              'thread_active_count DESC'),
+]
+THREAD_SORT_SQL = {s[0]: s[2] for s in THREAD_SORT_OPTIONS}
+DEFAULT_THREAD_SORT = 'latest_activity'
+
 # --- Cloudflare D1 接続設定 ---
 CF_D1_ACCOUNT_ID = os.environ.get('CF_D1_ACCOUNT_ID')
 CF_D1_DATABASE_ID = os.environ.get('CF_D1_DATABASE_ID')
@@ -1035,6 +1064,33 @@ def chess_move(room_code):
     return {'success':True}
 
 @app.route('/', methods=['GET', 'HEAD'])
+def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
+    """threads を、レス数・最終更新日時・現在の閲覧人数つきで取得する共通ヘルパー"""
+    active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
+
+    sql = f"""
+        SELECT
+            t.*,
+            (SELECT COUNT(*) FROM replies r WHERE r.thread_id = t.id) AS replies_count,
+            COALESCE(
+                (SELECT MAX(r2.date) FROM replies r2 WHERE r2.thread_id = t.id),
+                t.created_at
+            ) AS last_activity,
+            (SELECT COUNT(*) FROM active_users au
+                WHERE au.location = ('thread_' || t.id) AND au.last_seen >= ?) AS thread_active_count
+        FROM threads t
+        {where_sql}
+        ORDER BY {order_sql}
+    """
+    params = [active_cutoff] + list(where_params)
+
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        params += [limit, offset or 0]
+
+    return query_d1(sql, params)
+
+
 def index():
     client_ip = get_client_ip()
     if is_banned_ip(client_ip):
@@ -1049,24 +1105,37 @@ def index():
 
     search_query = request.args.get('q', default='', type=str).strip()
 
+    category = request.args.get('category', default='', type=str).strip()
+    if category not in THREAD_CATEGORY_VALUES:
+        category = ''
+
+    sort = request.args.get('sort', default=DEFAULT_THREAD_SORT, type=str).strip()
+    if sort not in THREAD_SORT_SQL:
+        sort = DEFAULT_THREAD_SORT
+    order_sql = THREAD_SORT_SQL[sort]
+
     try:
+        where_clauses = []
+        where_params = []
         if search_query:
-            threads = query_d1(
-                "SELECT * FROM threads WHERE title LIKE ? ORDER BY id DESC LIMIT ? OFFSET ?",
-                [f"%{search_query}%", per_page, start_index]
-            )
-        else:
-            threads = query_d1(
-                "SELECT * FROM threads ORDER BY id DESC LIMIT ? OFFSET ?",
-                [per_page, start_index]
-            )
-        
+            where_clauses.append("t.title LIKE ?")
+            where_params.append(f"%{search_query}%")
+        if category:
+            where_clauses.append("t.category = ?")
+            where_params.append(category)
+        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+
+        threads = _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=per_page, offset=start_index)
+
         has_next = len(threads) == per_page
 
         pinned_ids = [4, 3, 2, 1]
         pinned_threads = []
 
-        if not search_query:
+        # 固定表示は「検索・カテゴリ絞り込み・並び替えなし」かつ1ページ目の時だけ行う
+        show_pinned = (not search_query) and (not category) and sort == DEFAULT_THREAD_SORT and page == 1
+
+        if show_pinned:
             for pid in pinned_ids:
                 for i, t in enumerate(threads):
                     if int(t['id']) == pid:
@@ -1077,49 +1146,21 @@ def index():
                 if any(int(pt['id']) == pid for pt in pinned_threads):
                     continue
                 try:
-                    pinned_res = query_d1("SELECT * FROM threads WHERE id = ?", [pid])
+                    pinned_res = _fetch_threads_with_stats("WHERE t.id = ?", [pid], order_sql)
                     if pinned_res:
                         pinned_threads.append(pinned_res[0])
                 except Exception as pe:
                     print(f"固定スレッド取得エラー: {pe}")
 
             for pt in pinned_threads:
-                pt['is_pinned'] = True  
-                pt['replies_count'] = None  
+                pt['is_pinned'] = True
                 threads.insert(0, pt)
-
-        all_thread_ids = [int(t['id']) for t in threads]
-        reply_counts = {}
-        if all_thread_ids:
-            try:
-                placeholders = ','.join(['?'] * len(all_thread_ids))
-                counts_res = query_d1(
-                    f"SELECT thread_id, COUNT(*) as reply_count FROM replies WHERE thread_id IN ({placeholders}) GROUP BY thread_id",
-                    all_thread_ids
-                )
-                for row in (counts_res or []):
-                    reply_counts[row['thread_id']] = row['reply_count']
-            except Exception as re:
-                print(f"レス数取得エラー: {re}")
 
         for t in threads:
             if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
                 t['is_pinned'] = True
-            t['replies_count'] = reply_counts.get(int(t['id']), 0)
-
-        try:
-            active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
-            active_res = query_d1("SELECT location FROM active_users WHERE last_seen >= ?", [active_cutoff])
-            thread_active_counts = {}
-            for row in (active_res or []):
-                loc = row.get('location', '')
-                thread_active_counts[loc] = thread_active_counts.get(loc, 0) + 1
-        except Exception as ace:
-            print(f"スレ別アクセス数取得エラー: {ace}")
-            thread_active_counts = {}
-
-        for t in threads:
-            t['thread_active_count'] = thread_active_counts.get(f"thread_{t['id']}", 0)
+            if not t.get('category'):
+                t['category'] = DEFAULT_THREAD_CATEGORY
 
         try:
             admin_res = query_d1("SELECT message FROM admin_messages WHERE id = ?", [1])
@@ -1131,6 +1172,7 @@ def index():
         print(f"スレッド一覧取得エラー: {e}")
         threads = []
         has_next = False
+        admin_message = "管理者の一言の取得に失敗しました。"
 
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
@@ -1149,7 +1191,17 @@ def index():
         active_count=active_count,
         current_page=page,      
         has_next=has_next,
-        search_query=search_query
+        search_query=search_query,
+        thread_categories=THREAD_CATEGORIES,
+        thread_category_labels=THREAD_CATEGORY_LABELS,
+        thread_category_colors=THREAD_CATEGORY_COLORS,
+        current_category=category,
+        thread_sort_options=THREAD_SORT_OPTIONS,
+        current_sort=sort,
+        category_meta_json=json.dumps(
+            {key: {'label': label, 'color': color} for key, label, color in THREAD_CATEGORIES},
+            ensure_ascii=False
+        ),
     ))
     
     if is_new_user:
@@ -1184,6 +1236,10 @@ def create_thread():
     
     if len(title) > 30:
         return {"error": "スレッド名は30文字以内で入力してください"}, 400
+
+    category = request.form.get('category', default=DEFAULT_THREAD_CATEGORY, type=str)
+    if category not in THREAD_CATEGORY_VALUES:
+        category = DEFAULT_THREAD_CATEGORY
     
     is_admin = can_manage_board()
     now = time.time()
@@ -1203,11 +1259,13 @@ def create_thread():
     
     try:
         query_d1(
-            "INSERT INTO threads (title, ip_address) VALUES (?, ?)",
-            [title, client_ip]
+            "INSERT INTO threads (title, ip_address, category) VALUES (?, ?, ?)",
+            [title, client_ip, category]
         )
         res = query_d1("SELECT * FROM threads ORDER BY id DESC LIMIT 1")
         new_thread = res[0] if res else None
+        if new_thread and not new_thread.get('category'):
+            new_thread['category'] = category
     except Exception as e:
         print(f"スレッド作成エラー: {e}")
         return {"error": "データベースエラーが発生しました"}, 500
