@@ -465,10 +465,10 @@
 
         /* ---- フッター ---- */
         .site-footer {
-            margin-top: 30px;
-            background: var(--navy);
-            border-radius: var(--radius-lg);
-            padding: 16px 24px;
+            margin-top: 24px;
+            background: transparent;
+            border-top: 1px solid var(--card-border);
+            padding: 20px 6px 8px;
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -476,21 +476,20 @@
             flex-wrap: wrap;
         }
         .site-footer-copy {
-            color: #A8B0C8;
+            color: var(--text-faint);
             font-size: 13px;
         }
-        .site-footer-copy strong { color: #fff; font-weight: 800; }
+        .site-footer-copy strong { color: var(--text-muted); font-weight: 800; }
         .site-footer-links {
             display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
         }
         .site-footer-links a {
-            color: #A8B0C8;
+            color: var(--text-muted);
             font-size: 13px;
             font-weight: 600;
-            text-decoration: underline;
-            text-underline-offset: 3px;
+            text-decoration: none;
         }
-        .site-footer-links a:hover { color: #fff; }
+        .site-footer-links a:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 
         @media (max-width: 640px) {
             .site-footer { flex-direction: column; align-items: flex-start; }
