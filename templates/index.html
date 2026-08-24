@@ -463,6 +463,39 @@
         .menu-list-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
         .menu-list-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 18px; }
 
+        /* ---- フッター ---- */
+        .site-footer {
+            margin-top: 30px;
+            background: var(--navy);
+            border-radius: var(--radius-lg);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .site-footer-copy {
+            color: #A8B0C8;
+            font-size: 13px;
+        }
+        .site-footer-copy strong { color: #fff; font-weight: 800; }
+        .site-footer-links {
+            display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+        }
+        .site-footer-links a {
+            color: #A8B0C8;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+        }
+        .site-footer-links a:hover { color: #fff; }
+
+        @media (max-width: 640px) {
+            .site-footer { flex-direction: column; align-items: flex-start; }
+        }
+
         /* ---- 管理者フォーム ---- */
         .admin-form-note { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; }
 
@@ -745,6 +778,16 @@
             </div>
         </div>
 
+        <!-- フッター -->
+        <div class="site-footer">
+            <div class="site-footer-copy"><strong>talk-ch</strong> © {{ current_year }} トークちゃんねる All rights reserved.</div>
+            <div class="site-footer-links">
+                <a href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
+                <a href="{{ url_for('privacy') }}" target="_blank">利用規約・プライバシー</a>
+                <a href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報・お問い合わせ</a>
+            </div>
+        </div>
+
 
 
         <script>
@@ -757,7 +800,7 @@
         const btn = document.getElementById('theme-toggle-btn');
         function applyLabel() {
             const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-            if (btn) btn.textContent = isDark ? '🌙' : '☀️';
+            if (btn) btn.textContent = isDark ? '☀️' : '🌙';
         }
         applyLabel();
         if (btn) {
