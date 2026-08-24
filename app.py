@@ -1198,6 +1198,7 @@ def index():
         current_category=category,
         thread_sort_options=THREAD_SORT_OPTIONS,
         current_sort=sort,
+        current_year=datetime.utcnow().year,
         category_meta_json=json.dumps(
             {key: {'label': label, 'color': color} for key, label, color in THREAD_CATEGORIES},
             ensure_ascii=False
