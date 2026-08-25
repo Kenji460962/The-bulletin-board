@@ -13,6 +13,12 @@ import boto3
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+# Nginx1台のみの場合: x_for=1
+# Cloudflare + Nginx の場合: x_for=2
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2, x_proto=1, x_host=1, x_prefix=1)
+
 load_dotenv()
 
 app = Flask(__name__)
