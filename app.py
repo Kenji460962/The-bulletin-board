@@ -104,11 +104,19 @@ def get_daily_user_id(ip_address):
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
 
+
+
 def get_client_ip():
-    cf_ip = request.headers.get('CF-Connecting-IP', '').strip()
-    if cf_ip:
-        return cf_ip
-    return request.remote_addr or ""
+    # Cloudflare Tunnelから送られてくるクライアントの真のIPを取得
+    ip = request.headers.get('CF-Connecting-IP')
+    
+    # ローカル開発環境などのためのフォールバック
+    if not ip:
+        ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+        if ip and ',' in ip:
+            ip = ip.split(',')[0].strip()
+            
+    return ip
 
 PROXYCHECK_API_KEY = os.environ.get('PROXYCHECK_API_KEY', '')
 _PROXY_CHECK_CACHE = {}
