@@ -83,13 +83,6 @@ def response_to_uptimerobot():
     if request.method == 'HEAD':
         return make_response('', 200)
 
-@app.before_request
-def enforce_cloudflare_only():
-    if request.method == 'HEAD':
-        return
-    if CF_SHARED_SECRET and request.headers.get('X-Origin-Verify') != CF_SHARED_SECRET:
-        return "Access denied", 403
-
 s3_client = boto3.client(
     's3',
     endpoint_url=os.environ.get('R2_ENDPOINT'),
@@ -112,10 +105,9 @@ def get_daily_user_id(ip_address):
     return hashed[:8]
 
 def get_client_ip():
-    if CF_SHARED_SECRET and request.headers.get('X-Origin-Verify') == CF_SHARED_SECRET:
-        cf_ip = request.headers.get('CF-Connecting-IP', '').strip()
-        if cf_ip:
-            return cf_ip
+    cf_ip = request.headers.get('CF-Connecting-IP', '').strip()
+    if cf_ip:
+        return cf_ip
     return request.remote_addr or ""
 
 PROXYCHECK_API_KEY = os.environ.get('PROXYCHECK_API_KEY', '')
