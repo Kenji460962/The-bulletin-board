@@ -12,6 +12,8 @@ import random
 import httpx
 import boto3
 from werkzeug.utils import secure_filename
+from dotenv import load_dotenv
+load_dotenv()
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
