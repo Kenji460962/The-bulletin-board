@@ -7,12 +7,12 @@ import hashlib
 import uuid
 import time
 import re
-import string
 import random
 import httpx
 import boto3
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -99,7 +99,6 @@ s3_client = boto3.client(
 )
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
-
 
 
 LAST_THREAD_TIMES = {}
@@ -323,7 +322,6 @@ def _othello_apply(board, player, r, c):
     return ''.join(a)
 
 
-
 def _initial_chess():
     # 64要素のリストを作成し、JSON文字列にシリアライズして返す
     board_list = [
@@ -505,8 +503,6 @@ def _cookie_response(resp, token):
     if not request.cookies.get('game_player_token'):
         resp.set_cookie('game_player_token', token, max_age=60*60*24*365, httponly=True, samesite='Lax')
     return resp
-
-
 
 
 @app.route('/games')
@@ -802,89 +798,181 @@ def game_lobby():
 
 @app.route('/game/create', methods=['POST'])
 def game_create():
-    token=_game_token(); name=_game_name(); code=_new_room_code(); now=datetime.utcnow().isoformat()
-    query_d1('INSERT INTO othello_rooms (room_code,black_token,black_name,white_token,white_name,board,turn,status,winner,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [code,token,name,None,None,_initial_othello(),'B','waiting',None,now,now])
-    resp=redirect(url_for('game_room',room_code=code)); return _cookie_response(resp,token)
+    token = _game_token()
+    name = _game_name()
+    code = _new_room_code()
+    now = datetime.utcnow().isoformat()
+    query_d1(
+        '''INSERT INTO othello_rooms
+           (room_code, black_token, black_name, white_token, white_name, board, turn, status, winner, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+        [code, token, name, None, None, _initial_othello(), 'B', 'waiting', None, now, now]
+    )
+    resp = redirect(url_for('game_room', room_code=code))
+    return _cookie_response(resp, token)
 
 @app.route('/game/<room_code>')
 def game_room(room_code):
-    rows=query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1',[room_code.upper()])
-    if not rows: return redirect(url_for('game_lobby'))
-    room=rows[0]; token=_game_token(); my_color='B' if room.get('black_token')==token else ('W' if room.get('white_token')==token else None)
-    resp=make_response(render_template('game.html',room=room,my_color=my_color)); return _cookie_response(resp,token)
+    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    if not rows:
+        return redirect(url_for('game_lobby'))
+    room = rows[0]
+    token = _game_token()
+    my_color = 'B' if room.get('black_token') == token else ('W' if room.get('white_token') == token else None)
+    resp = make_response(render_template('game.html', room=room, my_color=my_color))
+    return _cookie_response(resp, token)
 
-@app.route('/game/<room_code>/join',methods=['POST'])
+@app.route('/game/<room_code>/join', methods=['POST'])
 def game_join(room_code):
-    code=room_code.upper(); rows=query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1',[code])
-    if not rows: return {'success':False,'error':'部屋が見つかりません'},404
-    room=rows[0]; token=_game_token(); name=_game_name()
-    if room.get('black_token')==token or room.get('white_token')==token: return {'success':True}
-    if room.get('white_token'): return {'success':False,'error':'この部屋は満員です'},409
-    query_d1('UPDATE othello_rooms SET white_token=?,white_name=?,status=?,updated_at=? WHERE room_code=?',[token,name,'playing',datetime.utcnow().isoformat(),code])
-    return {'success':True}
+    code = room_code.upper()
+    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
+    if not rows:
+        return {'success': False, 'error': '部屋が見つかりません'}, 404
+    room = rows[0]
+    token = _game_token()
+    name = _game_name()
+    if room.get('black_token') == token or room.get('white_token') == token:
+        return {'success': True}
+    if room.get('white_token'):
+        return {'success': False, 'error': 'この部屋は満員です'}, 409
+    query_d1(
+        'UPDATE othello_rooms SET white_token=?,white_name=?,status=?,updated_at=? WHERE room_code=?',
+        [token, name, 'playing', datetime.utcnow().isoformat(), code]
+    )
+    return {'success': True}
 
 @app.route('/api/game/<room_code>/state')
 def game_state(room_code):
-    rows=query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1',[room_code.upper()])
-    if not rows: return {'error':'not found'},404
-    r=rows[0]; token=_game_token(); my='B' if r.get('black_token')==token else ('W' if r.get('white_token')==token else None)
-    b=r['board']; bc=b.count('B'); wc=b.count('W');
-    valid=_othello_valid(b,r['turn']) if r['status']=='playing' else []
-    return {'success':True,'room_code':r['room_code'],'board':b,'turn':r['turn'],'status':r['status'],'winner':r['winner'],'black_name':r.get('black_name') or '名無しさん','white_name':r.get('white_name') or '名無しさん','black_id':(r.get('black_token') or '')[:4],'white_id':(r.get('white_token') or '')[:4],'has_white':bool(r.get('white_token')),'my_color':my,'black_count':bc,'white_count':wc,'valid_moves':valid}
+    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    if not rows:
+        return {'error': 'not found'}, 404
+    r = rows[0]
+    token = _game_token()
+    my = 'B' if r.get('black_token') == token else ('W' if r.get('white_token') == token else None)
+    board = r['board']
+    black_count = board.count('B')
+    white_count = board.count('W')
+    valid_moves = _othello_valid(board, r['turn']) if r['status'] == 'playing' else []
+    return {
+        'success': True,
+        'room_code': r['room_code'],
+        'board': board,
+        'turn': r['turn'],
+        'status': r['status'],
+        'winner': r['winner'],
+        'black_name': r.get('black_name') or '名無しさん',
+        'white_name': r.get('white_name') or '名無しさん',
+        'black_id': (r.get('black_token') or '')[:4],
+        'white_id': (r.get('white_token') or '')[:4],
+        'has_white': bool(r.get('white_token')),
+        'my_color': my,
+        'black_count': black_count,
+        'white_count': white_count,
+        'valid_moves': valid_moves,
+    }
 
-@app.route('/game/<room_code>/move',methods=['POST'])
+@app.route('/game/<room_code>/move', methods=['POST'])
 def game_move(room_code):
-    code=room_code.upper(); rows=query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1',[code])
-    if not rows: return {'success':False,'error':'部屋が見つかりません'},404
-    r=rows[0]; token=_game_token(); player='B' if r.get('black_token')==token else ('W' if r.get('white_token')==token else None)
-    if not player: return {'success':False,'error':'観戦者は着手できません'},403
-    if r['status']!='playing': return {'success':False,'error':'対局は終了しています'}
-    if r['turn']!=player: return {'success':False,'error':'相手のターンです'}
-    body=request.get_json(silent=True) or {}; rr=int(body.get('row',-1)); cc=int(body.get('col',-1))
-    newb=_othello_apply(r['board'],player,rr,cc)
-    if newb is None: return {'success':False,'error':'そこには置けません'}
-    opp='W' if player=='B' else 'B'; next_turn=opp; status='playing'; winner=None
-    if not _othello_valid(newb,opp):
-        if _othello_valid(newb,player): next_turn=player
+    code = room_code.upper()
+    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
+    if not rows:
+        return {'success': False, 'error': '部屋が見つかりません'}, 404
+    r = rows[0]
+    token = _game_token()
+    player = 'B' if r.get('black_token') == token else ('W' if r.get('white_token') == token else None)
+    if not player:
+        return {'success': False, 'error': '観戦者は着手できません'}, 403
+    if r['status'] != 'playing':
+        return {'success': False, 'error': '対局は終了しています'}
+    if r['turn'] != player:
+        return {'success': False, 'error': '相手のターンです'}
+
+    body = request.get_json(silent=True) or {}
+    row = int(body.get('row', -1))
+    col = int(body.get('col', -1))
+    new_board = _othello_apply(r['board'], player, row, col)
+    if new_board is None:
+        return {'success': False, 'error': 'そこには置けません'}
+
+    opponent = 'W' if player == 'B' else 'B'
+    next_turn = opponent
+    status = 'playing'
+    winner = None
+    if not _othello_valid(new_board, opponent):
+        if _othello_valid(new_board, player):
+            next_turn = player
         else:
-            status='finished'; bc=newb.count('B'); wc=newb.count('W'); winner='B' if bc>wc else ('W' if wc>bc else 'draw')
-    now=datetime.utcnow().isoformat(); query_d1('UPDATE othello_rooms SET board=?,turn=?,status=?,winner=?,updated_at=? WHERE room_code=? AND turn=?',[newb,next_turn,status,winner,now,code,player])
-    return {'success':True}
+            status = 'finished'
+            black_count = new_board.count('B')
+            white_count = new_board.count('W')
+            winner = 'B' if black_count > white_count else ('W' if white_count > black_count else 'draw')
+
+    now = datetime.utcnow().isoformat()
+    query_d1(
+        'UPDATE othello_rooms SET board=?,turn=?,status=?,winner=?,updated_at=? WHERE room_code=? AND turn=?',
+        [new_board, next_turn, status, winner, now, code, player]
+    )
+    return {'success': True}
 
 @app.route('/chess')
 def chess_lobby():
-    resp=make_response(render_template('chess.html',room=None,my_color=None)); return _cookie_response(resp,_game_token())
+    resp = make_response(render_template('chess.html', room=None, my_color=None))
+    return _cookie_response(resp, _game_token())
 
-@app.route('/chess/create',methods=['POST'])
+@app.route('/chess/create', methods=['POST'])
 def chess_create():
-    token=_game_token(); name=_game_name(); code=_new_room_code(); now=datetime.utcnow().isoformat()
-    query_d1('INSERT INTO chess_rooms (room_code,white_token,white_name,black_token,black_name,board,turn,status,winner,in_check,castling,en_passant,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[code,token,name,None,None,_chess_board(),'w','waiting',None,None,'KQkq',None,now,now])
-    resp=redirect(url_for('chess_room',room_code=code)); return _cookie_response(resp,token)
+    token = _game_token()
+    name = _game_name()
+    code = _new_room_code()
+    now = datetime.utcnow().isoformat()
+    query_d1(
+        '''INSERT INTO chess_rooms
+           (room_code, white_token, white_name, black_token, black_name, board, turn, status, winner, in_check, castling, en_passant, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+        [code, token, name, None, None, _chess_board(), 'w', 'waiting', None, None, 'KQkq', None, now, now]
+    )
+    resp = redirect(url_for('chess_room', room_code=code))
+    return _cookie_response(resp, token)
 
 @app.route('/chess/<room_code>')
 def chess_room(room_code):
-    rows=query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1',[room_code.upper()])
-    if not rows: return redirect(url_for('chess_lobby'))
-    r=rows[0]; token=_game_token(); my='w' if r.get('white_token')==token else ('b' if r.get('black_token')==token else None)
-    resp=make_response(render_template('chess.html',room=r,my_color=my)); return _cookie_response(resp,token)
+    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    if not rows:
+        return redirect(url_for('chess_lobby'))
+    r = rows[0]
+    token = _game_token()
+    my = 'w' if r.get('white_token') == token else ('b' if r.get('black_token') == token else None)
+    resp = make_response(render_template('chess.html', room=r, my_color=my))
+    return _cookie_response(resp, token)
 
-@app.route('/chess/<room_code>/join',methods=['POST'])
+@app.route('/chess/<room_code>/join', methods=['POST'])
 def chess_join(room_code):
-    code=room_code.upper(); rows=query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1',[code])
-    if not rows: return {'success':False,'error':'部屋が見つかりません'},404
-    r=rows[0]; token=_game_token(); name=_game_name()
-    if r.get('white_token')==token or r.get('black_token')==token: return {'success':True}
-    if r.get('black_token'): return {'success':False,'error':'この部屋は満員です'},409
-    query_d1('UPDATE chess_rooms SET black_token=?,black_name=?,status=?,updated_at=? WHERE room_code=?',[token,name,'playing',datetime.utcnow().isoformat(),code])
-    return {'success':True}
-
+    code = room_code.upper()
+    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
+    if not rows:
+        return {'success': False, 'error': '部屋が見つかりません'}, 404
+    r = rows[0]
+    token = _game_token()
+    name = _game_name()
+    if r.get('white_token') == token or r.get('black_token') == token:
+        return {'success': True}
+    if r.get('black_token'):
+        return {'success': False, 'error': 'この部屋は満員です'}, 409
+    query_d1(
+        'UPDATE chess_rooms SET black_token=?,black_name=?,status=?,updated_at=? WHERE room_code=?',
+        [token, name, 'playing', datetime.utcnow().isoformat(), code]
+    )
+    return {'success': True}
 
 @app.route('/api/chess/<room_code>/state')
 def chess_state(room_code):
-    rows=query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1',[room_code.upper()])
-    if not rows: return {'error':'not found'},404
-    r=rows[0]; token=_game_token(); my='w' if r.get('white_token')==token else ('b' if r.get('black_token')==token else None)
-    
+    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    if not rows:
+        return {'error': 'not found'}, 404
+    r = rows[0]
+    token = _game_token()
+    my = 'w' if r.get('white_token') == token else ('b' if r.get('black_token') == token else None)
+
     # DBに保存されたJSON文字列を配列に変換してフロントに渡す
     try:
         board_data = json.loads(r['board'])
@@ -894,43 +982,68 @@ def chess_state(room_code):
     en_passant_raw = r.get('en_passant')
     en_passant_out = json.loads(en_passant_raw) if en_passant_raw else None
 
-    return {'success':True,'room_code':r['room_code'],'board':board_data,'turn':r['turn'],'status':r['status'],'winner':r['winner'],'in_check':r['in_check'],'castling':r.get('castling') or 'KQkq','en_passant':en_passant_out,'white_name':r.get('white_name') or '名無しさん','black_name':r.get('black_name') or '名無しさん','white_id':(r.get('white_token') or '')[:4],'black_id':(r.get('black_token') or '')[:4],'has_black':bool(r.get('black_token')),'my_color':my}
+    return {
+        'success': True,
+        'room_code': r['room_code'],
+        'board': board_data,
+        'turn': r['turn'],
+        'status': r['status'],
+        'winner': r['winner'],
+        'in_check': r['in_check'],
+        'castling': r.get('castling') or 'KQkq',
+        'en_passant': en_passant_out,
+        'white_name': r.get('white_name') or '名無しさん',
+        'black_name': r.get('black_name') or '名無しさん',
+        'white_id': (r.get('white_token') or '')[:4],
+        'black_id': (r.get('black_token') or '')[:4],
+        'has_black': bool(r.get('black_token')),
+        'my_color': my,
+    }
 
-
-
-
-
-@app.route('/chess/<room_code>/move',methods=['POST'])
+@app.route('/chess/<room_code>/move', methods=['POST'])
 def chess_move(room_code):
-    code=room_code.upper(); rows=query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1',[code])
-    if not rows: return {'success':False,'error':'部屋が見つかりません'},404
-    r=rows[0]; token=_game_token(); color='w' if r.get('white_token')==token else ('b' if r.get('black_token')==token else None)
-    if not color: return {'success':False,'error':'観戦者は着手できません'},403
-    if r['status']!='playing': return {'success':False,'error':'対局は終了しています'}
-    if r['turn']!=color: return {'success':False,'error':'相手のターンです'}
-    body=request.get_json(silent=True) or {}
-    try: fr,fc,tr,tc=[int(body[k]) for k in ('from_row','from_col','to_row','to_col')]
-    except Exception: return {'success':False,'error':'着手情報が不正です'},400
-    if not all(0<=x<8 for x in (fr,fc,tr,tc)): return {'success':False,'error':'着手位置が不正です'},400
-    
+    code = room_code.upper()
+    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
+    if not rows:
+        return {'success': False, 'error': '部屋が見つかりません'}, 404
+    r = rows[0]
+    token = _game_token()
+    color = 'w' if r.get('white_token') == token else ('b' if r.get('black_token') == token else None)
+    if not color:
+        return {'success': False, 'error': '観戦者は着手できません'}, 403
+    if r['status'] != 'playing':
+        return {'success': False, 'error': '対局は終了しています'}
+    if r['turn'] != color:
+        return {'success': False, 'error': '相手のターンです'}
+
+    body = request.get_json(silent=True) or {}
+    try:
+        fr, fc, tr, tc = [int(body[k]) for k in ('from_row', 'from_col', 'to_row', 'to_col')]
+    except Exception:
+        return {'success': False, 'error': '着手情報が不正です'}, 400
+    if not all(0 <= x < 8 for x in (fr, fc, tr, tc)):
+        return {'success': False, 'error': '着手位置が不正です'}, 400
+
     # JSON文字列をリストに読み込んで操作する
     try:
         board = json.loads(r['board'])
     except Exception:
-        return {'success':False,'error':'盤面データの読み込みに失敗しました'},500
+        return {'success': False, 'error': '盤面データの読み込みに失敗しました'}, 500
 
     castling = r.get('castling') or 'KQkq'
     en_passant_raw = r.get('en_passant')
     en_passant = tuple(json.loads(en_passant_raw)) if en_passant_raw else None
 
-    piece = board[fr*8+fc]
-    if not piece or piece[0]!=color: return {'success':False,'error':'自分の駒を選んでください'}
-    if (tr,tc) not in _chess_pseudo(board,fr,fc,castling,en_passant): return {'success':False,'error':'その駒はそこへ動かせません'}
+    piece = board[fr * 8 + fc]
+    if not piece or piece[0] != color:
+        return {'success': False, 'error': '自分の駒を選んでください'}
+    if (tr, tc) not in _chess_pseudo(board, fr, fc, castling, en_passant):
+        return {'success': False, 'error': 'その駒はそこへ動かせません'}
 
     # その手を指した結果、自分の王が王手にさらされる場合は指せない
     simulated = _chess_apply(board, fr, fc, tr, tc)
     if _chess_in_check(simulated, color):
-        return {'success':False,'error':'その手を指すと自分の王が王手にさらされます'}
+        return {'success': False, 'error': 'その手を指すと自分の王が王手にさらされます'}
 
     # キャスリング権の更新(王・ルークが動いた/取られたら該当する権利を失う)
     new_castling = _chess_update_castling_rights(castling, piece[1], color, fr, fc, tr, tc)
@@ -941,11 +1054,11 @@ def chess_move(room_code):
         new_en_passant = [(fr + tr) // 2, fc]
 
     board = simulated
-    nextc = 'b' if color=='w' else 'w'
+    next_color = 'b' if color == 'w' else 'w'
 
     # 次の手番が王手されているか、さらに合法手が残っているか(チェックメイト/ステイルメイト判定)
-    next_in_check = _chess_in_check(board, nextc)
-    next_has_moves = len(_chess_legal_moves(board, nextc, new_castling, new_en_passant)) > 0
+    next_in_check = _chess_in_check(board, next_color)
+    next_has_moves = len(_chess_legal_moves(board, next_color, new_castling, new_en_passant)) > 0
 
     new_status = r['status']
     winner = r.get('winner')
@@ -953,14 +1066,14 @@ def chess_move(room_code):
         new_status = 'finished'
         winner = 'draw' if not next_in_check else color
 
-    newb = json.dumps(board)
+    new_board_json = json.dumps(board)
     new_ep_json = json.dumps(new_en_passant) if new_en_passant else None
     now = datetime.utcnow().isoformat()
     query_d1(
         'UPDATE chess_rooms SET board=?,turn=?,updated_at=?,in_check=?,status=?,winner=?,castling=?,en_passant=? WHERE room_code=? AND turn=?',
-        [newb, nextc, now, (nextc if next_in_check else None), new_status, winner, new_castling, new_ep_json, code, color]
+        [new_board_json, next_color, now, (next_color if next_in_check else None), new_status, winner, new_castling, new_ep_json, code, color]
     )
-    return {'success':True}
+    return {'success': True}
 
 def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
     """threads を、レス数・最終更新日時・現在の閲覧人数つきで取得する共通ヘルパー"""
@@ -1418,7 +1531,6 @@ def thread_view(thread_id):
         if not thread_res:
             return "スレッドが見つかりません", 404
         thread = thread_res[0]
-
 
 
         # 合計レス数を取得(通し番号の計算とページングに使う)
