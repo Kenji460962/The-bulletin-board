@@ -10,19 +10,21 @@ import re
 import random
 import httpx
 import boto3
+import psutil
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-
 from werkzeug.middleware.proxy_fix import ProxyFix
-
-# Nginx1台のみの場合: x_for=1
-# Cloudflare + Nginx の場合: x_for=2
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2, x_proto=1, x_host=1, x_prefix=1)
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
+
+# Nginx1台のみの場合: x_for=1
+# Cloudflare + Nginx の場合: x_for=2
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2, x_proto=1, x_host=1, x_prefix=1)
+
+psutil.cpu_percent(interval=None)
 
 # --- スレッドのカテゴリ定義（value, 表示ラベル, バッジ配色キー） ---
 THREAD_CATEGORIES = [
@@ -81,6 +83,106 @@ def query_d1(sql, params=None):
     return []
 
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345')
+
+# ---- サーバー状況（CPU/メモリ/ネットワーク）計測用 ----
+_last_cpu_usage_usec = None
+_last_cpu_check_time = None
+
+def read_cgroup_memory():
+    try:
+        with open('/sys/fs/cgroup/memory.current') as f:
+            used = int(f.read().strip())
+        with open('/sys/fs/cgroup/memory.max') as f:
+            limit_raw = f.read().strip()
+            limit = None if limit_raw == 'max' else int(limit_raw)
+        return used, limit
+    except Exception:
+        pass
+    try:
+        with open('/sys/fs/cgroup/memory/memory.usage_in_bytes') as f:
+            used = int(f.read().strip())
+        with open('/sys/fs/cgroup/memory/memory.limit_in_bytes') as f:
+            limit = int(f.read().strip())
+            if limit > 10**15:
+                limit = None
+        return used, limit
+    except Exception:
+        return None, None
+
+def read_cgroup_cpu_percent():
+    global _last_cpu_usage_usec, _last_cpu_check_time
+    try:
+        usage_usec = None
+        with open('/sys/fs/cgroup/cpu.stat') as f:
+            for line in f:
+                k, v = line.strip().split()
+                if k == 'usage_usec':
+                    usage_usec = int(v)
+                    break
+        if usage_usec is None:
+            return None
+
+        quota_cores = None
+        try:
+            with open('/sys/fs/cgroup/cpu.max') as f:
+                parts = f.read().strip().split()
+                if parts[0] != 'max':
+                    quota_cores = int(parts[0]) / int(parts[1])
+        except Exception:
+            pass
+
+        now = time.time()
+        percent = None
+        if _last_cpu_usage_usec is not None and _last_cpu_check_time is not None:
+            usec_delta = usage_usec - _last_cpu_usage_usec
+            time_delta = now - _last_cpu_check_time
+            if time_delta > 0 and usec_delta >= 0:
+                cores_used = (usec_delta / 1_000_000) / time_delta
+                denom = quota_cores or (os.cpu_count() or 1)
+                percent = round((cores_used / denom) * 100, 1)
+
+        _last_cpu_usage_usec = usage_usec
+        _last_cpu_check_time = now
+        return percent
+    except Exception:
+        return None
+
+_last_net_rx_bytes = None
+_last_net_tx_bytes = None
+_last_net_check_time = None
+
+def read_network_speed():
+    global _last_net_rx_bytes, _last_net_tx_bytes, _last_net_check_time
+    try:
+        rx_total = 0
+        tx_total = 0
+        with open('/proc/net/dev') as f:
+            lines = f.readlines()[2:]
+        for line in lines:
+            if ':' not in line:
+                continue
+            iface, rest = line.split(':', 1)
+            iface = iface.strip()
+            if iface == 'lo':
+                continue
+            fields = rest.split()
+            rx_total += int(fields[0])
+            tx_total += int(fields[8])
+
+        now = time.time()
+        rx_speed = tx_speed = None
+        if _last_net_rx_bytes is not None and _last_net_check_time is not None:
+            time_delta = now - _last_net_check_time
+            if time_delta > 0:
+                rx_speed = max(0, (rx_total - _last_net_rx_bytes) / time_delta)
+                tx_speed = max(0, (tx_total - _last_net_tx_bytes) / time_delta)
+
+        _last_net_rx_bytes = rx_total
+        _last_net_tx_bytes = tx_total
+        _last_net_check_time = now
+        return rx_speed, tx_speed
+    except Exception:
+        return None, None
 
 CF_SHARED_SECRET = os.environ.get('CF_SHARED_SECRET')
 
@@ -1666,6 +1768,42 @@ def ban_thread_owner(thread_id):
     except Exception as e:
         print(f"スレッドオーナーBANエラー: {e}")
         return f"エラーが発生しました: {e}", 500
+
+@app.route('/api/server_stats')
+def server_metrics():
+    mem_used, mem_limit = read_cgroup_memory()
+    if mem_used is not None:
+        if mem_limit and mem_limit > 0:
+            memory_percent = round((mem_used / mem_limit) * 100, 1)
+            memory_used_mb = round(mem_used / (1024 * 1024), 1)
+            memory_limit_mb = round(mem_limit / (1024 * 1024), 1)
+        else:
+            memory_percent = 0.0
+            memory_used_mb = round(mem_used / (1024 * 1024), 1)
+            memory_limit_mb = "Unlimited"
+    else:
+        vm = psutil.virtual_memory()
+        memory_percent = vm.percent
+        memory_used_mb = round(vm.used / (1024 * 1024), 1)
+        memory_limit_mb = round(vm.total / (1024 * 1024), 1)
+
+    cpu_percent = read_cgroup_cpu_percent()
+    if cpu_percent is None:
+        cpu_percent = psutil.cpu_percent(interval=None)
+
+    rx_speed, tx_speed = read_network_speed()
+    rx_kbps = round(rx_speed / 1024, 1) if rx_speed is not None else 0.0
+    tx_kbps = round(tx_speed / 1024, 1) if tx_speed is not None else 0.0
+
+    return {
+        "cpu_percent": cpu_percent,
+        "memory_percent": memory_percent,
+        "memory_used_mb": memory_used_mb,
+        "memory_total_mb": memory_limit_mb,
+        "net_rx_kbps": rx_kbps,
+        "net_tx_kbps": tx_kbps,
+        "timestamp": time.time()
+    }
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
