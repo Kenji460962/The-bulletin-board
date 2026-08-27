@@ -547,7 +547,7 @@
         <!-- 1. ロビータブ -->
         <div id="lobby-tab" class="content-section active">
             <div class="glass-panel lobby-hero">
-                <div class="lobby-eyebrow">✨ 完全匿名・登録不要の次世代リアルタイム掲示板</div>
+                <div class="lobby-eyebrow">完全匿名・登録不要の次世代リアルタイム掲示板</div>
                 <div class="lobby-title">Welcome to talk<span class="accent">-ch</span></div>
                 <p class="lobby-desc">
                     トークちゃんねるは完全匿名、登録不要の掲示板です。<br>
@@ -560,12 +560,12 @@
             </div>
 
             <div class="glass-panel">
-                <h2 class="panel-title">📣 管理者からの一言</h2>
+                <h2 class="panel-title">管理者からの一言</h2>
                 <div class="admin-box">{{ admin_message }}</div>
             </div>
 
             <div class="glass-panel">
-                <h2 class="panel-title">🖥️ サーバー状況（リアルタイム）</h2>
+                <h2 class="panel-title">サーバー状況（リアルタイム）</h2>
                 <div class="stat-row">
                     <div>CPU使用率: <strong id="cpu-value" style="color: var(--primary);">--%</strong></div>
                     <div>メモリ使用率: <strong id="mem-value" style="color: var(--green);">--%</strong></div>
@@ -599,7 +599,7 @@
             <!-- 上段：スレ立てフォーム -->
             <div class="glass-panel">
                 <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
-                    <h3 class="panel-title" style="margin-top:0;">💬 新しい板（スレッド）を立てる</h3>
+                    <h3 class="panel-title" style="margin-top:0;">新しい板（スレッド）を立てる</h3>
                     <div style="display:flex; gap:10px; flex-wrap:wrap;">
                         <input type="text" name="title" placeholder="スレッドのタイトルを入力（50文字以内）" style="flex:1 1 220px;" maxlength="50" required>
                         <select name="category" id="create-thread-category" style="background: var(--bg); color: var(--text); border: 1px solid var(--card-border); border-radius: var(--radius-sm); padding: 10px 12px; font-family: inherit; font-size: 14px;">
@@ -664,14 +664,14 @@
 
             <!-- 下段：いま立っている板一覧 -->
             <div class="glass-panel">
-                <h2 class="panel-title">🗂️ いま立っている板一覧</h2>
+                <h2 class="panel-title">いま立っている板一覧</h2>
                 <ul id="thread-list">
                     {% for thread in threads %}
                     <li class="thread-card{% if thread.is_pinned or thread.id|int in [1,2,3,4] %} pinned{% endif %}">
                         <div class="thread-card-main">
                             <div class="thread-meta-row">
                                 {% if thread.is_pinned or thread.id|int in [1,2,3,4] %}
-                                <span class="thread-badge pin">📌 固定</span>
+                                <span class="thread-badge pin">📌</span>
                                 {% endif %}
                                 <span class="thread-badge cat-{{ thread_category_colors.get(thread.category, 'gray') }}">{{ thread_category_labels.get(thread.category, 'その他') }}</span>
                                 <span class="thread-badge">#{{ thread.id }}</span>
@@ -719,7 +719,7 @@
         <!-- 3. 「その他」タブ -->
         <div id="other-tab" class="content-section">
             <div class="glass-panel">
-                <h3 class="panel-title" style="margin-top: 0;">🎮 ゲーム</h3>
+                <h3 class="panel-title" style="margin-top: 0;">ゲーム</h3>
                 <ul class="menu-list">
                     <li>
                         <a class="menu-list-item" href="{{ url_for('games_hub') }}">
@@ -735,7 +735,7 @@
             </div>
 
             <div class="glass-panel">
-                <h3 class="panel-title" style="margin-top: 0;">🧭 その他メニュー</h3>
+                <h3 class="panel-title" style="margin-top: 0;">その他メニュー</h3>
                 <ul class="menu-list">
                     <li>
                         <a class="menu-list-item" href="{{ url_for('archive_list') }}">
