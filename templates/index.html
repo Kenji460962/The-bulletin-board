@@ -2,1019 +2,822 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
-    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>talk-ch トークちゃんねる</title>
+
+
+    <!-- WebPファビコン -->
+    <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
+
+    <!-- iOS (iPhone) ホーム画面用アイコン -->
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+
+    <!-- Android用 Web App Manifest -->
+    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+
+    
+
+    <!--スマホ対応-->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125"
+     crossorigin="anonymous"></script>
+
+
+    <title> talk-ch トークちゃんねる </title>
 
     <script>
         (function() {
             var saved = localStorage.getItem('talk_ch_theme');
-            if (saved === 'light') {
-                document.documentElement.setAttribute('data-theme', 'light');
+            if (saved === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
             }
         })();
     </script>
 
     <style>
         :root {
-            --bg-base: #090d16;
-            --bg-surface: rgba(15, 23, 42, 0.75);
-            --bg-card: rgba(30, 41, 59, 0.65);
-            --bg-input: rgba(15, 23, 42, 0.85);
-            --border: rgba(255, 255, 255, 0.12);
-            --border-highlight: rgba(56, 189, 248, 0.4);
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --text-muted: #64748b;
-            --accent-cyan: #38bdf8;
-            --accent-blue: #2563eb;
-            --accent-green: #10b981;
-            --accent-orange: #f59e0b;
-            --accent-red: #ef4444;
-            --accent-purple: #a855f7;
-            --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.45);
-            --radius-sm: 8px;
-            --radius-md: 14px;
+            --bg: #EEF1F7;
+            --card-bg: #FFFFFF;
+            --card-border: #E5E9F2;
+            --text: #171B2B;
+            --text-muted: #8A92A8;
+            --text-faint: #B2B8C9;
+            --primary: #2E7CF6;
+            --primary-hover: #2569DC;
+            --primary-soft: #E9F1FF;
+            --navy: #10162B;
+            --cyan: #35E7D2;
+            --green: #23C55E;
+            --amber: #F5A623;
+            --amber-soft: #FFF1DE;
+            --red: #EF4444;
+            --shadow-sm: 0 1px 2px rgba(23, 27, 43, 0.05);
+            --shadow-md: 0 6px 18px rgba(23, 27, 43, 0.07);
             --radius-lg: 20px;
+            --radius-md: 14px;
+            --radius-sm: 10px;
+            --radius-pill: 999px;
         }
 
-        html[data-theme="light"] {
-            --bg-base: #f1f5f9;
-            --bg-surface: rgba(255, 255, 255, 0.85);
-            --bg-card: rgba(255, 255, 255, 0.95);
-            --bg-input: #ffffff;
-            --border: rgba(0, 0, 0, 0.1);
-            --border-highlight: rgba(2, 132, 199, 0.5);
-            --text-primary: #0f172a;
-            --text-secondary: #475569;
-            --text-muted: #64748b;
-            --accent-cyan: #0284c7;
-            --accent-blue: #1d4ed8;
-            --accent-green: #059669;
-            --accent-orange: #d97706;
-            --accent-red: #dc2626;
-            --accent-purple: #7c3aed;
-            --shadow-glass: 0 8px 24px -4px rgba(0, 0, 0, 0.08);
+        html[data-theme="dark"] {
+            --bg: #0B0F1C;
+            --card-bg: #141A2C;
+            --card-border: #232A42;
+            --text: #EEF1F7;
+            --text-muted: #8B93AA;
+            --text-faint: #5C6480;
+            --primary: #4C8CFF;
+            --primary-hover: #6BA0FF;
+            --primary-soft: rgba(76, 140, 255, 0.14);
+            --amber-soft: rgba(245, 166, 35, 0.15);
+            --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 10px 24px rgba(0, 0, 0, 0.35);
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; }
 
         body {
-            background-color: var(--bg-base);
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(56, 189, 248, 0.12) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.12) 0px, transparent 50%),
-                url("{{ url_for('static', filename='bg-space.webp') }}");
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-            color: var(--text-primary);
-            font-family: 'Plus Jakarta Sans', 'Noto Sans JP', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            padding: 24px 16px 60px;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', "Hiragino Kaku Gothic ProN", "Yu Gothic", "MS PGothic", sans-serif;
             margin: 0;
             min-height: 100vh;
-            line-height: 1.6;
-            -webkit-font-smoothing: antialiased;
+            transition: background-color 0.2s ease, color 0.2s ease;
         }
 
-        html[data-theme="light"] body {
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(2, 132, 199, 0.08) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(124, 58, 237, 0.08) 0px, transparent 50%),
-                url("{{ url_for('static', filename='pexels-zkadoshi-35285737.webp') }}");
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-        }
-
-        .container {
-            max-width: 1180px;
+        .page-shell {
+            max-width: 900px;
             margin: 0 auto;
+            padding: 28px 20px 60px;
         }
 
-        .layout-wrapper {
-            display: flex;
-            gap: 20px;
-            align-items: flex-start;
-        }
-
-        .layout-main {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .pc-sidebar-ad {
-            width: 300px;
-            flex-shrink: 0;
-            position: sticky;
-            top: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .pc-sidebar-ad .ad-banner-box {
-            margin: 0;
-            min-height: 280px;
-        }
-
-        @media (max-width: 959px) {
-            .pc-sidebar-ad {
-                display: none !important;
-            }
-        }
-
-        /* App Branding Header */
-        .brand-header {
+        /* ---- ヘッダー（ロゴ＆タイトル） ---- */
+        .site-header {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-            gap: 12px;
+            gap: 14px;
+            margin-bottom: 18px;
         }
 
-        .logo-wrap {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            text-decoration: none;
-        }
-
-        .logo-badge {
-            width: 42px;
-            height: 42px;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #38bdf8, #6366f1);
+        .site-logo {
+            flex: 0 0 auto;
+            width: 52px;
+            height: 52px;
+            border-radius: 15px;
+            background: linear-gradient(160deg, var(--navy), #1C2540);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 22px;
-            box-shadow: 0 4px 12px rgba(56, 189, 248, 0.35);
+            box-shadow: var(--shadow-md);
         }
 
-        h1 {
-            font-size: 28px;
+        .site-logo img { width: 100%; height: 100%; object-fit: cover; border-radius: 15px; display: block; }
+
+        .site-title-block { line-height: 1.25; }
+
+        .site-title {
+            font-size: 26px;
             font-weight: 800;
-            letter-spacing: -0.5px;
-            color: var(--text-primary);
-            display: flex;
-            align-items: baseline;
-            gap: 8px;
+            letter-spacing: -0.02em;
+            margin: 0;
+            color: var(--text);
         }
+        .site-title .accent { color: var(--primary); }
 
-        h1 span.sub {
+        .site-subtitle {
             font-size: 13px;
+            color: var(--text-muted);
             font-weight: 500;
-            color: var(--accent-cyan);
-            letter-spacing: 0.5px;
         }
 
-        /* Modern Glass Navigation Bar */
-        .menu-bar {
-            background: var(--bg-surface);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 6px 10px;
-            margin-bottom: 24px;
+        /* ---- コントロールバー（タブ／オンライン／テーマ） ---- */
+        .control-bar {
             display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: center;
-            box-shadow: var(--shadow-glass);
-            gap: 10px;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 22px;
         }
 
-        .nav-group {
-            display: flex;
-            gap: 6px;
-            align-items: center;
+        .tab-pills {
+            display: inline-flex;
+            gap: 4px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-pill);
+            padding: 4px;
+            box-shadow: var(--shadow-sm);
         }
 
         .menu-btn {
+            appearance: none;
+            border: none;
             background: transparent;
-            color: var(--text-secondary);
-            border: 1px solid transparent;
-            border-radius: 10px;
-            padding: 8px 18px;
-            cursor: pointer;
-            font-weight: 600;
+            color: var(--text-muted);
+            font-family: inherit;
             font-size: 14px;
-            transition: all 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+            font-weight: 700;
+            padding: 9px 20px;
+            border-radius: var(--radius-pill);
+            cursor: pointer;
+            transition: all 0.15s ease;
         }
-
-        .menu-btn:hover {
-            background: rgba(255, 255, 255, 0.08);
-            color: var(--text-primary);
-        }
-
+        .menu-btn:hover { color: var(--text); background: var(--primary-soft); }
         .menu-btn.active {
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.25));
-            color: var(--accent-cyan);
-            border-color: var(--border-highlight);
-            box-shadow: 0 2px 10px rgba(56, 189, 248, 0.2);
+            background: var(--primary);
+            color: #fff;
+            box-shadow: 0 4px 10px rgba(46, 124, 246, 0.35);
         }
 
-        .right-tools {
+        .status-cluster {
             display: flex;
             align-items: center;
             gap: 10px;
         }
 
-        .status-pill {
+        .online-pill {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: var(--accent-green);
-            padding: 5px 12px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 600;
+            gap: 7px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 13px;
+            padding: 9px 16px;
+            border-radius: var(--radius-pill);
+            box-shadow: var(--shadow-sm);
             white-space: nowrap;
         }
+        .online-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 0 3px rgba(35, 197, 94, 0.18);
+        }
 
-        .status-dot {
-            width: 8px;
-            height: 8px;
+        .icon-btn {
+            width: 38px; height: 38px;
             border-radius: 50%;
-            background-color: var(--accent-green);
-            animation: pulseDot 2s infinite;
-        }
-
-        @keyframes pulseDot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.4; transform: scale(0.85); }
-        }
-
-        .theme-toggle-btn {
-            background: var(--bg-card);
-            color: var(--text-primary);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            width: 36px;
-            height: 36px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
             cursor: pointer;
-            font-size: 15px;
-            transition: all 0.2s ease;
+            box-shadow: var(--shadow-sm);
         }
+        .icon-btn:hover { background: var(--primary-soft); }
 
-        .theme-toggle-btn:hover {
-            border-color: var(--accent-cyan);
-            transform: scale(1.05);
-        }
+        /* ---- 共通カード ---- */
+        .content-section { display: none; }
+        .content-section.active { display: block; }
 
-        /* Glass Panel */
         .glass-panel {
-            background: var(--bg-card);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--border);
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
             border-radius: var(--radius-lg);
-            padding: 24px;
-            margin-bottom: 20px;
-            box-shadow: var(--shadow-glass);
-            transition: border-color 0.2s ease;
-        }
-
-        .glass-panel:hover {
-            border-color: rgba(255, 255, 255, 0.2);
-        }
-
-        html[data-theme="light"] .glass-panel:hover {
-            border-color: rgba(0, 0, 0, 0.2);
+            padding: 22px;
+            margin-bottom: 18px;
+            box-shadow: var(--shadow-sm);
         }
 
         .panel-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 16px;
+            font-size: 16px;
+            font-weight: 800;
+            margin: 0 0 14px;
             display: flex;
             align-items: center;
             gap: 8px;
         }
 
-        /* Tabs display */
-        .content-section { display: none; }
-        .content-section.active { display: block; animation: fadeIn 0.25s ease-out; }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(6px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Lobby Welcome Hero */
-        .lobby-welcome {
-            text-align: center;
-            padding: 36px 20px;
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(168, 85, 247, 0.1));
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--border-highlight);
-            margin-bottom: 20px;
-        }
-
-        .lobby-title {
-            font-size: 26px;
-            font-weight: 800;
-            color: var(--text-primary);
-            margin-bottom: 12px;
-            letter-spacing: -0.5px;
-        }
-
-        .lobby-desc {
-            font-size: 14px;
-            color: var(--text-secondary);
-            line-height: 1.7;
-            max-width: 580px;
-            margin: 0 auto;
-        }
-
-        /* Admin Announcement Card */
-        .admin-box {
-            background: linear-gradient(135deg, rgba(56, 189, 248, 0.1), rgba(37, 99, 235, 0.08));
-            border: 1px solid rgba(56, 189, 248, 0.3);
-            border-left: 4px solid var(--accent-cyan);
-            border-radius: var(--radius-sm);
-            padding: 16px 18px;
-            font-size: 15px;
-            line-height: 1.7;
-            color: var(--text-primary);
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        /* Server stats telemetry card */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-
-        .stat-card {
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 12px 14px;
-        }
-
-        html[data-theme="light"] .stat-card {
-            background: rgba(0, 0, 0, 0.04);
-        }
-
-        .stat-label {
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
-            margin-bottom: 4px;
-        }
-
-        .stat-val {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-
-        .chart-container {
-            position: relative;
-            width: 100%;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: var(--radius-sm);
-            padding: 8px;
-            border: 1px solid var(--border);
-            margin-top: 10px;
-        }
-
-        html[data-theme="light"] .chart-container {
-            background: rgba(0, 0, 0, 0.03);
-        }
-
-        /* Forms & Inputs */
-        .form-group {
-            margin-bottom: 14px;
-        }
-
+        /* ---- フォーム部品 ---- */
+        form { max-width: 520px; }
         input[type="text"], input[type="password"], input[type="number"], textarea {
-            width: 100%;
-            background: var(--bg-input);
-            color: var(--text-primary);
-            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--card-border);
             border-radius: var(--radius-sm);
-            padding: 11px 14px;
-            font-size: 14px;
+            padding: 10px 14px;
             font-family: inherit;
+            font-size: 14px;
             outline: none;
-            transition: all 0.2s ease;
+            transition: border-color 0.15s ease;
         }
-
-        input:focus, textarea:focus {
-            border-color: var(--accent-cyan);
-            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+        input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus, textarea:focus {
+            border-color: var(--primary);
         }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #0284c7, #2563eb);
-            color: #ffffff;
+        button {
+            background: var(--primary);
+            color: #fff;
             border: none;
-            border-radius: var(--radius-sm);
-            padding: 11px 22px;
-            font-weight: 600;
+            border-radius: var(--radius-pill);
+            padding: 10px 20px;
+            font-family: inherit;
+            font-weight: 700;
             font-size: 14px;
             cursor: pointer;
-            transition: all 0.2s ease;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 6px;
-            box-shadow: 0 4px 14px rgba(2, 132, 199, 0.3);
+            transition: background 0.15s ease;
+        }
+        button:hover { background: var(--primary-hover); }
+
+        /* ---- スレ一覧 ---- */
+        .thread-toolbar-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--card-border);
+        }
+        .thread-toolbar-row form {
+            display: flex; align-items: center; gap: 8px; margin: 0;
+        }
+        .thread-toolbar-row label {
+            font-size: 13px; color: var(--text-muted); font-weight: 600; white-space: nowrap;
         }
 
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #0369a1, #1d4ed8);
-            transform: translateY(-1px);
-            box-shadow: 0 6px 20px rgba(2, 132, 199, 0.4);
-        }
+        #thread-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 
-        .btn-secondary {
-            background: var(--bg-surface);
-            color: var(--text-primary);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 8px 14px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .btn-secondary:hover {
-            border-color: var(--accent-cyan);
-            color: var(--accent-cyan);
-        }
-
-        /* Thread List Styles */
-        .thread-item-card {
+        .thread-card {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 14px 18px;
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            margin-bottom: 10px;
-            text-decoration: none;
-            transition: all 0.2s ease;
             gap: 12px;
+            background: var(--bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            transition: border-color 0.15s ease, transform 0.1s ease;
         }
+        .thread-card:hover { border-color: var(--primary); }
+        .thread-card.pinned { border-left: 4px solid var(--amber); }
 
-        .thread-item-card:hover {
-            border-color: var(--border-highlight);
-            transform: translateY(-2px);
-            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+        .thread-card-main { min-width: 0; }
+
+        .thread-meta-row {
+            display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;
         }
-
-        .thread-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex: 1;
-            min-width: 0;
+        .thread-badge {
+            font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: var(--radius-pill);
+            background: var(--primary-soft); color: var(--primary);
         }
+        .thread-badge.pin { background: var(--amber-soft); color: var(--amber); }
+        .thread-date { font-size: 12px; color: var(--text-faint); }
 
-        .thread-num-badge {
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--accent-cyan);
-            background: rgba(56, 189, 248, 0.12);
-            padding: 4px 8px;
-            border-radius: 6px;
-            white-space: nowrap;
+        /* ---- カテゴリバッジ配色 ---- */
+        .cat-red    { background: #FFE3E3; color: #E1432D; }
+        .cat-blue   { background: var(--primary-soft); color: var(--primary); }
+        .cat-purple { background: #F1E8FF; color: #8B5CF6; }
+        .cat-slate  { background: #EAECF2; color: #5B6478; }
+        .cat-pink   { background: #FFE6F1; color: #EC4899; }
+        .cat-teal   { background: #E0FBF6; color: #0EA5A5; }
+        .cat-indigo { background: #E8ECFF; color: #4F5FE0; }
+        .cat-amber  { background: var(--amber-soft); color: var(--amber); }
+        .cat-gray   { background: #EEF0F4; color: #8A92A8; }
+
+        /* ---- カテゴリ／並び替えフィルターピル ---- */
+        .filter-row {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+            margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--card-border);
         }
-
-        .thread-pinned-badge {
-            font-size: 11px;
-            font-weight: 700;
-            color: #ef4444;
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            padding: 2px 7px;
-            border-radius: 4px;
-            white-space: nowrap;
+        .filter-row-label {
+            font-size: 12px; color: var(--text-muted); font-weight: 700;
+            flex: 0 0 auto; margin-right: 2px;
         }
-
-        .thread-title-link {
-            color: var(--text-primary);
-            font-weight: 600;
-            font-size: 15px;
+        .filter-pill {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 12.5px; font-weight: 700;
+            padding: 7px 14px;
+            border-radius: var(--radius-pill);
+            border: 1px solid var(--card-border);
+            background: var(--bg);
+            color: var(--text-muted);
             text-decoration: none;
+            white-space: nowrap;
+        }
+        .filter-pill:hover { border-color: var(--primary); color: var(--primary); }
+        .filter-pill.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+        .thread-link {
+            color: var(--text) !important;
+            font-weight: 700;
+            font-size: 16px;
+            text-decoration: none;
+            display: block;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            flex: 1;
         }
+        .thread-link:hover { color: var(--primary) !important; }
 
-        .thread-title-link:hover {
-            color: var(--accent-cyan);
+        .thread-card-side {
+            flex: 0 0 auto;
+            display: flex; align-items: center; gap: 14px;
         }
+        .res-count { color: var(--text-muted); font-size: 13px; font-weight: 600; white-space: nowrap; }
+        .active-viewers { color: var(--green); font-size: 13px; font-weight: 600; white-space: nowrap; }
 
-        .thread-meta {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-shrink: 0;
+        .delete-thread-btn {
+            background: #FFE3E3; color: #D92626; border: 1px solid #F5B5B5;
+            border-radius: var(--radius-sm); font-size: 11px; font-weight: 700;
+            padding: 5px 10px; cursor: pointer;
         }
+        .delete-thread-btn:hover { background: #FFD1D1; }
 
-        .res-counter {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-muted);
-            background: rgba(255, 255, 255, 0.06);
-            padding: 3px 9px;
-            border-radius: 999px;
+        .empty-state { color: var(--text-muted); font-size: 14px; text-align: center; padding: 30px 0; }
+
+        .pagination-row { margin-top: 20px; display: flex; gap: 10px; align-items: center; }
+        .page-link {
+            background: var(--bg); color: var(--text); padding: 8px 16px; border-radius: var(--radius-pill);
+            text-decoration: none; border: 1px solid var(--card-border); font-size: 13px; font-weight: 700;
         }
+        .page-link:hover { border-color: var(--primary); color: var(--primary); }
+        .page-indicator { color: var(--text-muted); font-size: 13px; font-weight: 600; }
 
-        html[data-theme="light"] .res-counter {
-            background: rgba(0, 0, 0, 0.06);
-        }
-
-        .active-watch-tag {
-            font-size: 12px;
-            font-weight: 600;
-            color: var(--accent-green);
-            background: rgba(16, 185, 129, 0.12);
-            padding: 3px 8px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .btn-delete-thread {
-            background: rgba(239, 68, 68, 0.15);
-            color: #f87171;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            border-radius: 6px;
-            font-size: 12px;
-            padding: 4px 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .btn-delete-thread:hover {
-            background: #ef4444;
-            color: #fff;
-        }
-
-        /* Hub & Other Links Grid */
-        .hub-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 16px;
-        }
-
-        .hub-card {
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            padding: 20px;
-            text-decoration: none;
-            color: var(--text-primary);
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            transition: all 0.2s ease;
-        }
-
-        .hub-card:hover {
-            border-color: var(--accent-cyan);
-            transform: translateY(-3px);
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-        }
-
-        .hub-icon {
-            font-size: 28px;
-            margin-bottom: 4px;
-        }
-
-        .hub-card-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: var(--text-primary);
-        }
-
-        .hub-card-desc {
-            font-size: 13px;
-            color: var(--text-secondary);
-            line-height: 1.5;
-        }
-
-        /* Ad Banner Section */
-        .ad-banner-box {
-            margin: 16px 0;
-            padding: 12px;
-            background: var(--bg-surface);
-            border: 1px dashed var(--border);
-            border-radius: var(--radius-md);
+        /* ---- ロビー ---- */
+        .lobby-hero {
             text-align: center;
-            min-height: 100px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
+            padding: 44px 24px;
+        }
+        .lobby-eyebrow {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--primary-soft); color: var(--primary);
+            font-size: 13px; font-weight: 700;
+            padding: 7px 16px; border-radius: var(--radius-pill);
+            margin-bottom: 20px;
+        }
+        .lobby-title {
+            font-size: 38px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 18px;
+            color: var(--text);
+        }
+        .lobby-title .accent { color: var(--primary); }
+        .lobby-desc {
+            font-size: 15px; color: var(--text-muted); line-height: 1.7;
+            max-width: 560px; margin: 0 auto 26px;
+        }
+        .lobby-cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        .lobby-cta-primary {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: var(--primary); color: #fff; font-weight: 700; font-size: 14px;
+            padding: 12px 22px; border-radius: var(--radius-pill); text-decoration: none;
+        }
+        .lobby-cta-secondary {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: var(--card-bg); color: var(--text); font-weight: 700; font-size: 14px;
+            padding: 12px 22px; border-radius: var(--radius-pill); text-decoration: none;
+            border: 1px solid var(--card-border);
         }
 
-        .ad-label {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-bottom: 6px;
-            letter-spacing: 0.5px;
-        }
-
-        .ad-content {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        /* Toast Container */
-        #toast-box {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .toast-msg {
-            background: #0f172a;
-            color: #f8fafc;
-            border: 1px solid var(--border-highlight);
-            padding: 12px 18px;
-            border-radius: var(--radius-sm);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            font-size: 14px;
+        .admin-box {
+            background: var(--primary-soft);
+            border: 1px solid rgba(46, 124, 246, 0.2);
+            border-radius: var(--radius-md);
+            padding: 16px 18px;
+            font-size: 15px;
+            min-height: 60px;
+            white-space: pre-wrap;
+            color: var(--primary);
             font-weight: 600;
-            animation: slideIn 0.3s ease;
+            line-height: 1.6;
         }
 
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+        .stat-row { display: flex; gap: 22px; font-size: 13px; color: var(--text-muted); margin-bottom: 10px; flex-wrap: wrap; }
+        .stat-row strong { font-weight: 800; }
+        canvas.stat-chart {
+            width: 100%; height: 130px;
+            background: var(--bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm);
         }
+
+        /* ---- その他タブ：メニューリスト ---- */
+        .menu-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+        .menu-list-item {
+            display: flex; align-items: center; gap: 14px;
+            background: var(--bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            text-decoration: none;
+            color: var(--text);
+            transition: border-color 0.15s ease;
+        }
+        .menu-list-item:hover { border-color: var(--primary); }
+        .menu-list-icon {
+            flex: 0 0 auto;
+            width: 42px; height: 42px;
+            border-radius: 12px;
+            background: var(--primary-soft);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 19px;
+        }
+        .menu-list-text { min-width: 0; flex: 1 1 auto; }
+        .menu-list-title { font-weight: 700; font-size: 15px; }
+        .menu-list-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .menu-list-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 18px; }
+
+        /* ---- フッター ---- */
+        .site-footer {
+            margin-top: 24px;
+            background: transparent;
+            border-top: 1px solid var(--card-border);
+            padding: 20px 6px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .site-footer-copy {
+            color: var(--text-faint);
+            font-size: 13px;
+        }
+        .site-footer-copy strong { color: var(--text-muted); font-weight: 800; }
+        .site-footer-links {
+            display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+        }
+        .site-footer-links a {
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .site-footer-links a:hover { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 
         @media (max-width: 640px) {
-            body { padding: 12px 8px 40px; }
-            .menu-bar { flex-direction: column; align-items: stretch; gap: 8px; }
-            .nav-group { justify-content: space-between; }
-            .right-tools { justify-content: space-between; }
-            .thread-item-card { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .thread-meta { width: 100%; justify-content: space-between; }
+            .site-footer { flex-direction: column; align-items: flex-start; }
+        }
+
+        /* ---- 管理者フォーム ---- */
+        .admin-form-note { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; }
+
+        @media (max-width: 640px) {
+            .site-header { gap: 10px; }
+            .site-logo { width: 44px; height: 44px; }
+            .site-title { font-size: 21px; }
+            .control-bar { flex-direction: column; align-items: stretch; }
+            .tab-pills { justify-content: center; }
+            .status-cluster { justify-content: center; }
+            .thread-card { flex-direction: column; align-items: flex-start; }
+            .thread-card-side { align-self: flex-end; }
+            .lobby-title { font-size: 28px; }
         }
     </style>
+
 </head>
 <body>
-<div class="container">
 
-    <!-- Top Header -->
-    <header class="brand-header">
-        <a href="/" class="logo-wrap">
-            <div class="logo-badge">💬</div>
-            <h1>talk-ch <span class="sub">トークちゃんねる</span></h1>
-        </a>
-    </header>
+    <div class="page-shell">
 
-    <!-- Navigation Menu Bar -->
-    <nav class="menu-bar">
-        <div class="nav-group">
-            <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">
-                <span>🏠</span> ロビー
-            </button>
-            <button class="menu-btn" onclick="switchTab('threads-tab', this)">
-                <span>📋</span> スレ一覧
-            </button>
-            <button class="menu-btn" onclick="switchTab('other-tab', this)">
-                <span>✨</span> その他
-            </button>
-        </div>
-
-        <div class="right-tools">
-            <div class="status-pill">
-                <span class="status-dot"></span>
-                <span>オンライン: <strong id="lobby-active-count">{{ active_count }}</strong>人</span>
+        <!-- ヘッダー -->
+        <div class="site-header">
+            <div class="site-logo">
+                <img src="{{ url_for('static', filename='favicon.webp') }}" alt="talk-ch">
             </div>
-            <button type="button" id="theme-toggle-btn" class="theme-toggle-btn" title="テーマ切り替え">🌙</button>
-        </div>
-    </nav>
-
-    <!-- Main Content Layout (PC 2-Column with Right Sidebar Ad, Mobile Streamlined) -->
-    <div class="layout-wrapper">
-        <div class="layout-main">
-            <!-- 1. Lobby Tab -->
-            <main id="lobby-tab" class="content-section active">
-        <!-- Welcome Hero -->
-        <section class="lobby-welcome">
-            <h2 class="lobby-title">Welcome to talk-ch!</h2>
-            <p class="lobby-desc">
-                talk-chは完全匿名・登録不要で自由に語り合える次世代掲示板です。<br>
-                スレ一覧から興味のある話題に参加したり、新しくスレッドを立ち上げて会話を始めましょう。
-            </p>
-        </section>
-
-        <!-- Admin Announcement -->
-        <section class="glass-panel">
-            <h3 class="panel-title">📢 管理者からのお知らせ</h3>
-            <div class="admin-box">{{ admin_message }}</div>
-        </section>
-
-        <!-- Advertisement Banner -->
-        <div class="ad-banner-box">
-            <div class="ad-label">スポンサーリンク</div>
-            <div class="ad-content" id="ad-lobby-banner">
-                <!-- 忍者AdMax / 広告タグ枠 -->
-                <div style="color: var(--text-muted); font-size: 12px; padding: 10px;">広告枠（忍者AdMax等）</div>
+            <div class="site-title-block">
+                <p class="site-title">talk<span class="accent">-ch</span></p>
+                <div class="site-subtitle">トークちゃんねる</div>
             </div>
         </div>
 
-        <!-- Server Telemetry & Real-Time Stats -->
-        <section class="glass-panel">
-            <h3 class="panel-title">🖥️ サーバー稼働状況（リアルタイム）</h3>
-            
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">CPU 利用率</div>
-                    <div class="stat-val" id="cpu-value" style="color: var(--accent-cyan);">--%</div>
+        <!-- コントロールバー -->
+        <div class="control-bar">
+            <div class="tab-pills">
+                <button class="menu-btn active" onclick="switchTab('lobby-tab', this)">ロビー</button>
+                <button class="menu-btn" onclick="switchTab('threads-tab', this)">スレ一覧</button>
+                <button class="menu-btn" onclick="switchTab('other-tab', this)">その他</button>
+            </div>
+            <div class="status-cluster">
+                <div class="online-pill">
+                    <span class="online-dot"></span>
+                    オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">メモリ利用率</div>
-                    <div class="stat-val" id="mem-value" style="color: var(--accent-green);">--%</div>
-                    <div id="mem-detail" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;"></div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">↓ ネットワーク受信</div>
-                    <div class="stat-val" id="net-rx-value" style="color: var(--accent-orange);">-- KB/s</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">↑ ネットワーク送信</div>
-                    <div class="stat-val" id="net-tx-value" style="color: var(--accent-purple);">-- KB/s</div>
+                <button type="button" id="theme-toggle-btn" class="icon-btn"></button>
+            </div>
+        </div>
+
+
+        <!-- 1. ロビータブ -->
+        <div id="lobby-tab" class="content-section active">
+            <div class="glass-panel lobby-hero">
+                <div class="lobby-eyebrow">✨ 完全匿名・登録不要の次世代リアルタイム掲示板</div>
+                <div class="lobby-title">Welcome to talk<span class="accent">-ch</span></div>
+                <p class="lobby-desc">
+                    トークちゃんねるは完全匿名、登録不要の掲示板です。<br>
+                    上の「スレ一覧」から自由にトピックを作って会話を始めましょう！
+                </p>
+                <div class="lobby-cta-row">
+                    <button type="button" class="lobby-cta-primary" onclick="switchTab('threads-tab', document.querySelectorAll('.menu-btn')[1])">💬 スレ一覧を見る</button>
+                    <a class="lobby-cta-secondary" href="{{ url_for('games_hub') }}">🎮 ゲームハブ（オセロ・チェス）</a>
                 </div>
             </div>
 
-            <div class="chart-container">
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">CPU / メモリ推移グラフ</div>
-                <canvas id="server-stats-chart" width="800" height="130" style="width: 100%; height: 130px; display: block;"></canvas>
+            <div class="glass-panel">
+                <h2 class="panel-title">📣 管理者からの一言</h2>
+                <div class="admin-box">{{ admin_message }}</div>
             </div>
 
-            <div class="chart-container" style="margin-top: 12px;">
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">トラフィック推移グラフ</div>
-                <canvas id="network-stats-chart" width="800" height="130" style="width: 100%; height: 130px; display: block;"></canvas>
+            <div class="glass-panel">
+                <h2 class="panel-title">🖥️ サーバー状況（リアルタイム）</h2>
+                <div class="stat-row">
+                    <div>CPU使用率: <strong id="cpu-value" style="color: var(--primary);">--%</strong></div>
+                    <div>メモリ使用率: <strong id="mem-value" style="color: var(--green);">--%</strong></div>
+                    <div id="mem-detail" style="color: var(--text-faint);"></div>
+                </div>
+                <canvas id="server-stats-chart" class="stat-chart" width="600" height="150"></canvas>
+
+                <div class="stat-row" style="margin-top: 14px;">
+                    <div>↓ イン: <strong id="net-rx-value" style="color: var(--amber);">-- KB/s</strong></div>
+                    <div>↑ アウト: <strong id="net-tx-value" style="color: #F472B6;">-- KB/s</strong></div>
+                </div>
+                <canvas id="network-stats-chart" class="stat-chart" width="600" height="150"></canvas>
             </div>
-        </section>
 
-        {% if is_admin_user %}
-        <!-- Admin Management Panel -->
-        <section class="glass-panel" style="border-color: rgba(239, 68, 68, 0.4);">
-            <h3 class="panel-title" style="color: #f87171;">🛡️ 【管理者専用】お知らせ更新</h3>
-            <form action="{{ url_for('update_admin_message') }}" method="POST">
-                <div class="form-group">
-                    <label style="font-size: 13px; color: var(--text-secondary); margin-bottom: 6px; display: block;">新しい一言メッセージ:</label>
-                    <textarea name="message" rows="3" placeholder="告知メッセージを入力" required>{{ admin_message }}</textarea>
-                </div>
-                <button type="submit" class="btn-primary">お知らせを更新する</button>
-            </form>
-        </section>
-        {% endif %}
-    </main>
+            {% if is_admin_user %}
+            <div class="glass-panel">
+                <h3 class="panel-title">【管理者専用】一言を更新する</h3>
+                <form action="{{ url_for('update_admin_message') }}" method="POST">
+                    <div class="admin-form-note">パスワード</div>
+                    <input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
+                    <div class="admin-form-note">新しいメッセージ</div>
+                    <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required>{{ admin_message }}</textarea><br><br>
+                    <button type="submit">一言を更新する</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
 
-    <!-- 2. Thread List Tab -->
-    <main id="threads-tab" class="content-section">
-        <!-- Create Thread Card -->
-        <section class="glass-panel">
-            <h3 class="panel-title">✍️ 新しいスレッドを立てる</h3>
-            <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
-                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <input type="text" name="title" placeholder="スレッドのタイトルを入力（50文字以内）" maxlength="50" style="flex: 1; min-width: 240px;" required>
-                    <button type="submit" class="btn-primary">＋ スレッド作成</button>
-                </div>
-            </form>
-
-            <div style="display: flex; flex-wrap: wrap; gap: 16px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);">
-                <!-- Thread Jump -->
-                <form id="jump-thread-form" style="display: flex; align-items: center; gap: 8px; margin: 0;">
-                    <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">スレ番号ジャンプ:</label>
-                    <input type="number" id="jump-thread-input" min="1" placeholder="例: 1" style="width: 80px;" required>
-                    <button type="submit" class="btn-secondary">移動</button>
+        <!-- 2. スレ一覧タブ -->
+        <div id="threads-tab" class="content-section">
+            <!-- 上段：スレ立てフォーム -->
+            <div class="glass-panel">
+                <form id="create-thread-form" action="{{ url_for('create_thread') }}" method="POST">
+                    <h3 class="panel-title" style="margin-top:0;">💬 新しい板（スレッド）を立てる</h3>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <input type="text" name="title" placeholder="スレッドのタイトルを入力（50文字以内）" style="flex:1 1 220px;" maxlength="50" required>
+                        <select name="category" id="create-thread-category" style="background: var(--bg); color: var(--text); border: 1px solid var(--card-border); border-radius: var(--radius-sm); padding: 10px 12px; font-family: inherit; font-size: 14px;">
+                            {% for value, label, color in thread_categories %}
+                            <option value="{{ value }}" {% if value == 'other' %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit">＋ 新規スレッド作成</button>
+                    </div>
                 </form>
 
-                <!-- Search -->
-                <form id="search-thread-form" action="{{ url_for('index') }}" method="GET" style="display: flex; align-items: center; gap: 8px; margin: 0; flex: 1; min-width: 220px;">
-                    <input type="hidden" name="tab" value="threads">
-                    <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">スレ検索:</label>
-                    <input type="text" name="q" value="{{ search_query }}" placeholder="キーワード検索" style="flex: 1;">
-                    <button type="submit" class="btn-secondary">検索</button>
-                    {% if search_query %}
-                    <a href="{{ url_for('index') }}?tab=threads" class="btn-secondary" style="color: var(--text-muted);">クリア</a>
+                <div class="thread-toolbar-row">
+                    <!-- スレ番号でジャンプ -->
+                    <form id="jump-thread-form">
+                        <label>スレ番号でジャンプ:</label>
+                        <input type="number" id="jump-thread-input" min="1" placeholder="例: 123" style="width: 90px;" required>
+                        <button type="submit">移動 →</button>
+                    </form>
+
+                    <!-- スレ検索 -->
+                    <form id="search-thread-form" action="{{ url_for('index') }}" method="GET">
+                        <input type="hidden" name="tab" value="threads">
+                        {% if current_category %}<input type="hidden" name="category" value="{{ current_category }}">{% endif %}
+                        {% if current_sort and current_sort != 'latest_activity' %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
+                        <label>スレ検索:</label>
+                        <input type="text" name="q" value="{{ search_query }}" placeholder="タイトルで検索" style="width: 170px;">
+                        <button type="submit">検索</button>
+                        {% if search_query %}
+                        <a href="{{ url_for('index') }}?tab=threads" style="font-size: 12px; margin-left: 4px; color: var(--text-muted);">クリア</a>
+                        {% endif %}
+                    </form>
+                </div>
+
+                <!-- 並び替え -->
+                <div class="filter-row">
+                    <span class="filter-row-label">並び替え:</span>
+                    {% for value, label, order_sql in thread_sort_options %}
+                    <a class="filter-pill{% if current_sort == value %} active{% endif %}"
+                       href="{{ url_for('index') }}?tab=threads&sort={{ value }}{% if current_category %}&category={{ current_category }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">{{ label }}</a>
+                    {% endfor %}
+                </div>
+
+                <!-- カテゴリ絞り込み -->
+                <div class="filter-row" style="border-top: none; padding-top: 0; margin-top: 10px;">
+                    <span class="filter-row-label">カテゴリ:</span>
+                    <a class="filter-pill{% if not current_category %} active{% endif %}"
+                       href="{{ url_for('index') }}?tab=threads{% if current_sort and current_sort != 'latest_activity' %}&sort={{ current_sort }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">すべて</a>
+                    {% for value, label, color in thread_categories %}
+                    <a class="filter-pill{% if current_category == value %} active{% endif %}"
+                       href="{{ url_for('index') }}?tab=threads&category={{ value }}{% if current_sort and current_sort != 'latest_activity' %}&sort={{ current_sort }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}">{{ label }}</a>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if search_query or current_category %}
+            <div class="glass-panel" style="padding: 12px 20px; font-size: 13px; color: var(--text-muted);">
+                {% if search_query %}「{{ search_query }}」の検索結果{% if current_category %}（{{ thread_category_labels[current_category] }}）{% endif %}: {{ threads|length }}件
+                {% else %}{{ thread_category_labels[current_category] }}の一覧: {{ threads|length }}件
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <!-- 下段：いま立っている板一覧 -->
+            <div class="glass-panel">
+                <h2 class="panel-title">🗂️ いま立っている板一覧</h2>
+                <ul id="thread-list">
+                    {% for thread in threads %}
+                    <li class="thread-card{% if thread.is_pinned or thread.id|int in [1,2,3,4] %} pinned{% endif %}">
+                        <div class="thread-card-main">
+                            <div class="thread-meta-row">
+                                {% if thread.is_pinned or thread.id|int in [1,2,3,4] %}
+                                <span class="thread-badge pin">📌 固定</span>
+                                {% endif %}
+                                <span class="thread-badge cat-{{ thread_category_colors.get(thread.category, 'gray') }}">{{ thread_category_labels.get(thread.category, 'その他') }}</span>
+                                <span class="thread-badge">#{{ thread.id }}</span>
+                                {% if thread.created_at %}
+                                <span class="thread-date">{{ thread.created_at[:10] }}</span>
+                                {% endif %}
+                            </div>
+                            <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
+                                {{ thread.title }}
+                            </a>
+                        </div>
+
+                        <div class="thread-card-side">
+                            <span class="res-count">{{ thread.replies_count }}レス</span>
+                            {% if thread.thread_active_count and thread.thread_active_count > 0 %}
+                            <span class="active-viewers">👀 {{ thread.thread_active_count }}人</span>
+                            {% endif %}
+                            {% if is_admin_user %}
+                            <form action="/thread/{{ thread.id }}/delete_thread" method="POST" style="display:inline; margin:0; padding:0;" onsubmit="return confirm('このスレッドを中身ごと完全に削除しますか？');">
+                                <button type="submit" class="delete-thread-btn">スレ削除</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% else %}
+                    <li id="no-thread-msg" class="empty-state">まだ板がありません。新しい板を立ててみましょう！</li>
+                    {% endfor %}
+                </ul>
+
+                <!-- ページ切り替え -->
+                <div class="pagination-row">
+                    {% if current_page > 1 %}
+                        <a href="/?tab=threads&page={{ current_page - 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}" class="page-link">◀ 前のページ</a>
                     {% endif %}
-                </form>
-            </div>
-        </section>
 
-        {% if search_query %}
-        <div style="margin-bottom: 12px; font-size: 14px; color: var(--accent-cyan);">
-            🔍 「{{ search_query }}」の検索結果: {{ threads|length }}件
+                    <span class="page-indicator">ページ {{ current_page }}</span>
+
+                    {% if has_next %}
+                        <a href="/?tab=threads&page={{ current_page + 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}" class="page-link">次のページ ▶</a>
+                    {% endif %}
+                </div>
+            </div>
         </div>
-        {% endif %}
 
-        <!-- Threads Listing -->
-        <section class="glass-panel">
-            <h3 class="panel-title">📌 スレッド一覧</h3>
-            <div id="thread-list">
-                {% for thread in threads %}
-                <div class="thread-item-card">
-                    <div class="thread-info">
-                        <span class="thread-num-badge">#{{ thread.id }}</span>
-                        {% if thread.id|int <= 4 or thread.is_pinned %}
-                        <span class="thread-pinned-badge">PIN</span>
-                        {% endif %}
-                        <a class="thread-title-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
-                            {{ thread.title }}
+        <!-- 3. 「その他」タブ -->
+        <div id="other-tab" class="content-section">
+            <div class="glass-panel">
+                <h3 class="panel-title" style="margin-top: 0;">🎮 ゲーム</h3>
+                <ul class="menu-list">
+                    <li>
+                        <a class="menu-list-item" href="{{ url_for('games_hub') }}">
+                            <div class="menu-list-icon">🎮</div>
+                            <div class="menu-list-text">
+                                <div class="menu-list-title">ゲームハブ（オセロ・チェス）</div>
+                                <div class="menu-list-desc">ブラウザで今すぐ遊べるリバーシ＆チェス対戦</div>
+                            </div>
+                            <div class="menu-list-chevron">›</div>
                         </a>
-                    </div>
-
-                    <div class="thread-meta">
-                        <span class="res-counter">{{ thread.replies_count }} レス</span>
-                        {% if thread.thread_active_count and thread.thread_active_count > 0 %}
-                        <span class="active-watch-tag">👀 {{ thread.thread_active_count }}</span>
-                        {% endif %}
-
-                        {% if is_admin_user %}
-                        <form action="/thread/{{ thread.id }}/delete_thread" method="POST" style="display: inline; margin: 0;" onsubmit="return confirm('このスレッドを完全に削除しますか？');">
-                            <button type="submit" class="btn-delete-thread">削除</button>
-                        </form>
-                        {% endif %}
-                    </div>
-                </div>
-                {% else %}
-                <div id="no-thread-msg" style="text-align: center; padding: 32px 16px; color: var(--text-muted);">
-                    まだスレッドがありません。上のフォームから新しいスレッドを立ててみましょう！
-                </div>
-                {% endfor %}
+                    </li>
+                </ul>
             </div>
 
-            <!-- Advertisement Banner -->
-            <div class="ad-banner-box" style="margin-top: 20px;">
-                <div class="ad-label">スポンサーリンク</div>
-                <div class="ad-content" id="ad-threadlist-banner">
-                    <!-- 忍者AdMax / 広告タグ枠 -->
-                    <div style="color: var(--text-muted); font-size: 12px; padding: 10px;">広告枠（忍者AdMax等）</div>
-                </div>
+            <div class="glass-panel">
+                <h3 class="panel-title" style="margin-top: 0;">🧭 その他メニュー</h3>
+                <ul class="menu-list">
+                    <li>
+                        <a class="menu-list-item" href="{{ url_for('archive_list') }}">
+                            <div class="menu-list-icon">📦</div>
+                            <div class="menu-list-text">
+                                <div class="menu-list-title">過去ログアーカイブ一覧</div>
+                                <div class="menu-list-desc">過去の盛り上がったスレッドや名作スレを閲覧</div>
+                            </div>
+                            <div class="menu-list-chevron">›</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="menu-list-item" href="{{ url_for('privacy') }}" target="_blank">
+                            <div class="menu-list-icon">🔒</div>
+                            <div class="menu-list-text">
+                                <div class="menu-list-title">プライバシーポリシー</div>
+                            </div>
+                            <div class="menu-list-chevron">›</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="menu-list-item" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">
+                            <div class="menu-list-icon">✉️</div>
+                            <div class="menu-list-text">
+                                <div class="menu-list-title">お問い合わせ・通報窓口</div>
+                            </div>
+                            <div class="menu-list-chevron">›</div>
+                        </a>
+                    </li>
+                    <li>
+                        <a class="menu-list-item" href="{{ url_for('roles') }}" target="_blank">
+                            <div class="menu-list-icon">🏷️</div>
+                            <div class="menu-list-text">
+                                <div class="menu-list-title">運営体制・役職一覧</div>
+                            </div>
+                            <div class="menu-list-chevron">›</div>
+                        </a>
+                    </li>
+                </ul>
             </div>
+        </div>
 
-            <!-- Pagination -->
-            <div style="margin-top: 24px; display: flex; gap: 12px; align-items: center; justify-content: center;">
-                {% if current_page > 1 %}
-                    <a href="/?tab=threads&page={{ current_page - 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}" class="btn-secondary">◀ 前のページ</a>
-                {% endif %}
-                
-                <span style="color: var(--text-secondary); font-size: 13px; font-weight: 600;">ページ {{ current_page }}</span>
-                
-                {% if has_next %}
-                    <a href="/?tab=threads&page={{ current_page + 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}" class="btn-secondary">次のページ ▶</a>
-                {% endif %}
+        <!-- フッター -->
+        <div class="site-footer">
+            <div class="site-footer-copy"><strong>talk-ch</strong> © {{ current_year }} トークちゃんねる All rights reserved.</div>
+            <div class="site-footer-links">
+                <a href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
+                <a href="{{ url_for('privacy') }}" target="_blank">利用規約・プライバシー</a>
+                <a href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報・お問い合わせ</a>
             </div>
-        </section>
-    </main>
+        </div>
 
-    <!-- 3. Other Tab (Hub / Links) -->
-    <main id="other-tab" class="content-section">
-        <section class="glass-panel">
-            <h3 class="panel-title">🎮 オンラインゲーム</h3>
-            <div class="hub-grid">
-                <a href="{{ url_for('game_lobby') }}" class="hub-card">
-                    <div class="hub-icon">⚪⚫</div>
-                    <div class="hub-card-title">オンラインオセロ</div>
-                    <div class="hub-card-desc">リアルタイムで部屋を作って対局！合言葉共有で誰とでも遊べます。</div>
-                </a>
-                <a href="{{ url_for('chess_lobby') }}" class="hub-card">
-                    <div class="hub-icon">♟️👑</div>
-                    <div class="hub-card-title">オンラインチェス</div>
-                    <div class="hub-card-desc">王手やキャスリング・アンパッサン対応のブラウザ対戦チェス。</div>
-                </a>
-            </div>
-        </section>
 
-        <section class="glass-panel">
-            <h3 class="panel-title">📚 インフォメーション・その他</h3>
-            <div class="hub-grid">
-                <a href="{{ url_for('archive_list') }}" class="hub-card">
-                    <div class="hub-icon">📦</div>
-                    <div class="hub-card-title">過去ログ一覧</div>
-                    <div class="hub-card-desc">一定期間経過したアーカイブ済みスレッドの閲覧ができます。</div>
-                </a>
-                <a href="{{ url_for('roles') }}" class="hub-card" target="_blank">
-                    <div class="hub-icon">🛡️</div>
-                    <div class="hub-card-title">役職・スタッフ一覧</div>
-                    <div class="hub-card-desc">トークちゃんねるの運営スタッフと権限について。</div>
-                </a>
-                <a href="{{ url_for('privacy') }}" class="hub-card" target="_blank">
-                    <div class="hub-icon">🔒</div>
-                    <div class="hub-card-title">プライバシーポリシー</div>
-                    <div class="hub-card-desc">当サイトの利用規約および個人情報・アクセス情報の取扱い方針。</div>
-                </a>
-                <a href="https://forms.cloud.microsoft/r/0txMxE8bs3" class="hub-card" target="_blank">
-                    <div class="hub-icon">✉️</div>
-                    <div class="hub-card-title">お問い合わせ・通報窓口</div>
-                    <div class="hub-card-desc">不具合の報告や利用規約違反の通報はこちらのフォームから。</div>
-                </a>
-            </div>
-        </section>
-    </main>
-        </div><!-- /.layout-main -->
 
-        <!-- PC Exclusive Right-Side Advertisement Area -->
-        <aside class="pc-sidebar-ad">
-            <div class="ad-banner-box">
-                <div class="ad-label">スポンサーリンク</div>
-                <div class="ad-content" id="ad-index-sidebar">
-                    <!-- 忍者AdMax / 広告タグ枠（PC右側） -->
-                    <div style="color: var(--text-muted); font-size: 12px; padding: 24px 8px; line-height: 1.6; text-align: center;">
-                        広告エリア<br>
-                        <span style="font-size: 11px; opacity: 0.8;">（PC右側・忍者AdMax等）</span>
-                    </div>
-                </div>
-            </div>
-        </aside>
-    </div><!-- /.layout-wrapper -->
+        <script>
 
-</div><!-- /.container -->
+    // カテゴリの表示ラベル・バッジ配色（サーバー側のTHREAD_CATEGORIESと同期）
+    const CATEGORY_META = {{ category_meta_json | safe }};
 
-<div id="toast-box"></div>
-
-<script>
-    // Theme Switcher
+    // ---- ライト/ダークモード切り替え（デフォルトはライト） ----
     (function() {
         const btn = document.getElementById('theme-toggle-btn');
         function applyLabel() {
-            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-            if (btn) btn.textContent = isLight ? '☀️' : '🌙';
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            if (btn) btn.textContent = isDark ? '☀️' : '🌙';
         }
         applyLabel();
         if (btn) {
             btn.addEventListener('click', () => {
-                const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-                if (isLight) {
+                const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                if (isDark) {
                     document.documentElement.removeAttribute('data-theme');
-                    localStorage.setItem('talk_ch_theme', 'dark');
-                } else {
-                    document.documentElement.setAttribute('data-theme', 'light');
                     localStorage.setItem('talk_ch_theme', 'light');
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                    localStorage.setItem('talk_ch_theme', 'dark');
                 }
                 applyLabel();
-                drawServerStatsChart();
-                drawNetworkChart();
             });
         }
     })();
 
-    function showToast(msg) {
-        const box = document.getElementById('toast-box');
-        if (!box) return;
-        const toast = document.createElement('div');
-        toast.className = 'toast-msg';
-        toast.textContent = msg;
-        box.appendChild(toast);
-        setTimeout(() => toast.remove(), 3500);
-    }
-
-    // Active count polling
     async function pollLobbyActiveCount() {
         try {
             const res = await fetch('/api/lobby/active_count');
@@ -1024,17 +827,15 @@
                 el.textContent = data.active_count;
             }
         } catch (err) {
-            console.warn('オンライン人数の取得に失敗しました:', err);
+            console.error('オンライン人数の取得に失敗しました:', err);
         }
     }
-    setInterval(pollLobbyActiveCount, 15000);
+    setInterval(pollLobbyActiveCount, 20000);
 
-    // Server Stats Canvas Rendering
+    // ---- サーバー負荷グラフ(自前canvas描画。ライブラリ追加なしで軽量に保つ) ----
     const SERVER_STATS_MAX_POINTS = 30;
     let cpuHistory = [];
     let memHistory = [];
-    let rxHistory = [];
-    let txHistory = [];
 
     function drawServerStatsChart() {
         const canvas = document.getElementById('server-stats-chart');
@@ -1044,10 +845,10 @@
         const h = canvas.height;
         ctx.clearRect(0, 0, w, h);
 
-        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-        ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
+        // グリッド線
+        const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--card-border') || 'rgba(0,0,0,0.08)';
+        ctx.strokeStyle = gridColor;
         ctx.lineWidth = 1;
-
         for (let i = 0; i <= 4; i++) {
             const y = (h / 4) * i;
             ctx.beginPath();
@@ -1059,20 +860,23 @@
         function drawLine(history, color) {
             if (history.length < 2) return;
             ctx.strokeStyle = color;
-            ctx.lineWidth = 2.5;
+            ctx.lineWidth = 2;
             ctx.beginPath();
             history.forEach((val, i) => {
                 const x = (w / (SERVER_STATS_MAX_POINTS - 1)) * i;
-                const y = h - (val / 100) * (h - 10) - 5;
+                const y = h - (val / 100) * h;
                 if (i === 0) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             });
             ctx.stroke();
         }
 
-        drawLine(cpuHistory, '#38bdf8');
-        drawLine(memHistory, '#10b981');
+        drawLine(cpuHistory, '#2E7CF6');
+        drawLine(memHistory, '#23C55E');
     }
+
+    let rxHistory = [];
+    let txHistory = [];
 
     function formatKbps(v) {
         if (v === null || typeof v === 'undefined') return '-- KB/s';
@@ -1088,10 +892,9 @@
         const h = canvas.height;
         ctx.clearRect(0, 0, w, h);
 
-        const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-        ctx.strokeStyle = isLight ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.08)';
+        const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--card-border') || 'rgba(0,0,0,0.08)';
+        ctx.strokeStyle = gridColor;
         ctx.lineWidth = 1;
-
         for (let i = 0; i <= 4; i++) {
             const y = (h / 4) * i;
             ctx.beginPath();
@@ -1100,66 +903,61 @@
             ctx.stroke();
         }
 
+        // 通信速度は上限が決まっていないので、直近の最大値に合わせて自動スケール
         const allVals = rxHistory.concat(txHistory).filter(v => v !== null);
-        const maxVal = Math.max(20, ...allVals);
+        const maxVal = Math.max(1, ...allVals);
 
         function drawLine(history, color) {
             const points = history.filter(v => v !== null);
             if (points.length < 2) return;
             ctx.strokeStyle = color;
-            ctx.lineWidth = 2.5;
+            ctx.lineWidth = 2;
             ctx.beginPath();
             history.forEach((val, i) => {
                 if (val === null) return;
                 const x = (w / (SERVER_STATS_MAX_POINTS - 1)) * i;
-                const y = h - (val / maxVal) * (h - 10) - 5;
+                const y = h - (val / maxVal) * h * 0.9;
                 if (i === 0 || history[i - 1] === null) ctx.moveTo(x, y);
                 else ctx.lineTo(x, y);
             });
             ctx.stroke();
         }
 
-        drawLine(rxHistory, '#f59e0b');
-        drawLine(txHistory, '#a855f7');
+        drawLine(rxHistory, '#F5A623');
+        drawLine(txHistory, '#F472B6');
     }
 
     async function pollServerStats() {
         try {
             const res = await fetch('/api/server_stats');
             const data = await res.json();
-            if (!data.success) return;
+            if (data.error) return;
 
-            const cpu = data.cpu_usage_percent ?? data.cpu_percent ?? 5;
-            const mem = data.mem_usage_percent ?? data.memory_percent ?? 20;
-            const rx = data.net_rx_kb ?? data.net_rx_kbps ?? 15;
-            const tx = data.net_tx_kb ?? data.net_tx_kbps ?? 22;
+            document.getElementById('cpu-value').textContent = data.cpu_percent + '%';
+            document.getElementById('mem-value').textContent = data.memory_percent + '%';
+            document.getElementById('mem-detail').textContent = `(${data.memory_used_mb}MB / ${data.memory_total_mb}MB)`;
+            document.getElementById('net-rx-value').textContent = formatKbps(data.net_rx_kbps);
+            document.getElementById('net-tx-value').textContent = formatKbps(data.net_tx_kbps);
 
-            document.getElementById('cpu-value').textContent = cpu + '%';
-            document.getElementById('mem-value').textContent = mem + '%';
-            document.getElementById('mem-detail').textContent = `${data.mem_used_mb || data.memory_used_mb || 120}MB / ${data.mem_total_mb || data.memory_total_mb || 512}MB`;
-            document.getElementById('net-rx-value').textContent = formatKbps(rx);
-            document.getElementById('net-tx-value').textContent = formatKbps(tx);
-
-            cpuHistory.push(cpu);
-            memHistory.push(mem);
+            cpuHistory.push(data.cpu_percent);
+            memHistory.push(data.memory_percent);
             if (cpuHistory.length > SERVER_STATS_MAX_POINTS) cpuHistory.shift();
             if (memHistory.length > SERVER_STATS_MAX_POINTS) memHistory.shift();
 
-            rxHistory.push(rx);
-            txHistory.push(tx);
+            rxHistory.push(typeof data.net_rx_kbps === 'number' ? data.net_rx_kbps : null);
+            txHistory.push(typeof data.net_tx_kbps === 'number' ? data.net_tx_kbps : null);
             if (rxHistory.length > SERVER_STATS_MAX_POINTS) rxHistory.shift();
             if (txHistory.length > SERVER_STATS_MAX_POINTS) txHistory.shift();
 
             drawServerStatsChart();
             drawNetworkChart();
         } catch (err) {
-            console.warn('Stats fetch warning:', err);
+            console.error('サーバー負荷の取得に失敗しました:', err);
         }
     }
     pollServerStats();
     setInterval(pollServerStats, 4000);
 
-    // Thread Jump
     document.getElementById('jump-thread-form').addEventListener('submit', (e) => {
         e.preventDefault();
         const num = document.getElementById('jump-thread-input').value.trim();
@@ -1168,56 +966,78 @@
         }
     });
 
-    // Create Thread
     document.getElementById('create-thread-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
+        e.preventDefault(); 
+
         const form = e.target;
         const formData = new FormData(form);
-        const title = form.title.value.trim();
 
         try {
             const response = await fetch(form.action, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title })
+                body: formData
             });
 
             const result = await response.json();
-            if (result.success && result.thread) {
+
+            if (result.success) {
+             
                 const thread = result.thread;
                 const threadList = document.getElementById('thread-list');
+                
                 const noThreadMsg = document.getElementById('no-thread-msg');
-                if (noThreadMsg) noThreadMsg.remove();
+                if (noThreadMsg) {
+                    noThreadMsg.remove();
+                }
 
-                const newCard = document.createElement('div');
-                newCard.className = 'thread-item-card';
-                newCard.innerHTML = `
-                    <div class="thread-info">
-                        <span class="thread-num-badge">#${thread.id}</span>
-                        <a class="thread-title-link" href="/thread/${thread.id}">
+                const newLi = document.createElement('li');
+                newLi.className = 'thread-card';
+
+                let deleteButtonHtml = '';
+                if ({{ 'true' if is_admin_user else 'false' }}) {
+                    deleteButtonHtml = `
+                        <form action="/thread/${thread.id}/delete_thread" method="POST" style="display: inline; margin: 0; padding: 0;" onsubmit="return confirm('このスレッドを中身ごと完全に削除しますか？');">
+                            <button type="submit" class="delete-thread-btn">スレ削除</button>
+                        </form>
+                    `;
+                }
+
+                const catMeta = CATEGORY_META[thread.category] || { label: 'その他', color: 'gray' };
+
+                newLi.innerHTML = `
+                    <div class="thread-card-main">
+                        <div class="thread-meta-row">
+                            <span class="thread-badge cat-${catMeta.color}">${escapeHtml(catMeta.label)}</span>
+                            <span class="thread-badge">#${thread.id}</span>
+                        </div>
+                        <a class="thread-link" href="/thread/${thread.id}">
                             ${escapeHtml(thread.title)}
                         </a>
                     </div>
-                    <div class="thread-meta">
-                        <span class="res-counter">0 レス</span>
+                    <div class="thread-card-side">
+                        <span class="res-count">0レス</span>
+                        ${deleteButtonHtml}
                     </div>
                 `;
 
-                threadList.insertBefore(newCard, threadList.firstChild);
+                threadList.insertBefore(newLi, threadList.firstChild);
                 form.reset();
-                showToast('スレッドを作成しました！');
-                setTimeout(() => {
-                    window.location.href = `/thread/${thread.id}`;
-                }, 600);
+                
+
+
             } else if (result.error) {
-                showToast(result.error);
+               
+                alert(result.error);
+            } else {
+                alert('スレッドの作成に失敗しました。');
             }
         } catch (error) {
             console.error('Error:', error);
-            showToast('通信エラーが発生しました');
+            alert('通信エラーが発生しました。');
         }
     });
 
+    
     function escapeHtml(str) {
         return str.replace(/&/g, '&amp;')
                   .replace(/</g, '&lt;')
@@ -1226,26 +1046,41 @@
                   .replace(/'/g, '&#39;');
     }
 
+    
     function switchTab(tabId, buttonElement) {
-        const sections = document.querySelectorAll('.content-section');
-        sections.forEach(s => s.classList.remove('active'));
-        const buttons = document.querySelectorAll('.menu-btn');
-        buttons.forEach(b => b.classList.remove('active'));
-
-        const target = document.getElementById(tabId);
-        if (target) target.classList.add('active');
-        if (buttonElement) buttonElement.classList.add('active');
+        var sections = document.querySelectorAll('.content-section');
+        for (var i = 0; i < sections.length; i++) {
+            sections[i].classList.remove('active');
+        }
+        var buttons = document.querySelectorAll('.menu-btn');
+        for (var j = 0; j < buttons.length; j++) {
+            buttons[j].classList.remove('active');
+        }
+        var targetSection = document.getElementById(tabId);
+        if (targetSection) {
+            targetSection.classList.add('active');
+        }
+        if (buttonElement) {
+            buttonElement.classList.add('active');
+        }
     }
 
+ 
     window.addEventListener('load', function() {
-        const params = new URLSearchParams(window.location.search);
+        var params = new URLSearchParams(window.location.search);
         if (params.get('tab') === 'threads') {
-            const btns = document.querySelectorAll('.menu-btn');
-            btns.forEach(b => {
-                if (b.textContent.includes('スレ一覧')) switchTab('threads-tab', b);
-            });
+            var btns = document.querySelectorAll('.menu-btn');
+            for (var k = 0; k < btns.length; k++) {
+                if (btns[k].textContent.trim() === 'スレ一覧') {
+                    switchTab('threads-tab', btns[k]);
+                    break;
+                }
+            }
         }
     });
-</script>
+    </script>
+
+    </div>
+
 </body>
 </html>
