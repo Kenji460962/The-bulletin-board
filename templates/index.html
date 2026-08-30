@@ -206,6 +206,34 @@
 
         .topbar-spacer { flex: 1 1 auto; }
 
+        /* ---- ハンバーガーメニューボタン（スマホ表示時のみ） ---- */
+        .hamburger-btn {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            flex: 0 0 auto;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--card-border);
+            background: var(--card-bg);
+            color: var(--text);
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .hamburger-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+        /* ---- サイドバーの背後オーバーレイ（スマホ表示時のみ） ---- */
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+        .sidebar-overlay.active { display: block; }
+
         .status-cluster {
             display: flex;
             align-items: center;
@@ -573,14 +601,27 @@
 
         @media (max-width: 900px) {
             .app-shell { flex-direction: column; }
+
+            .hamburger-btn { display: inline-flex; }
+
             .sidebar {
-                width: 100%; flex: 0 0 auto; position: relative; min-height: auto;
-                max-height: none; border-right: none; border-bottom: 1px solid var(--card-border);
-                padding: 14px 12px;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: min(280px, 82vw);
+                flex: 0 0 auto;
+                min-height: 100vh;
+                max-height: 100vh;
+                border-right: 1px solid var(--card-border);
+                border-bottom: none;
+                padding: 18px 14px 24px;
+                transform: translateX(-100%);
+                transition: transform 0.25s ease;
+                z-index: 1001;
+                box-shadow: 2px 0 16px rgba(0, 0, 0, 0.15);
             }
-            .side-nav { flex-direction: row; flex-wrap: wrap; }
-            .side-section-label, .side-collapsible-head { display: none; }
-            .side-collapsible-body { display: none !important; }
+            .sidebar.open { transform: translateX(0); }
+
             .main-wrap { padding: 16px 14px 40px; }
             .lobby-title { font-size: 19px; }
             .thread-card { flex-direction: column; align-items: flex-start; }
@@ -594,8 +635,11 @@
 
     <div class="app-shell">
 
+        <!-- スマホ表示時：サイドバー背後のオーバーレイ -->
+        <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
         <!-- ============ 左サイドバー ============ -->
-        <aside class="sidebar">
+        <aside class="sidebar" id="app-sidebar">
             <div class="brand-block">
                 <p class="brand-name">
                     <img src="{{ url_for('static', filename='favicon.webp') }}" alt="talk-ch">
@@ -629,6 +673,7 @@
 
             <!-- トップバー -->
             <div class="topbar">
+                <button type="button" id="hamburger-btn" class="hamburger-btn" aria-label="メニューを開く" aria-expanded="false" aria-controls="app-sidebar">☰</button>
                 <form id="search-thread-form" class="search-box" action="{{ url_for('index') }}" method="GET">
                     <input type="hidden" name="tab" value="threads">
                     {% if current_category %}<input type="hidden" name="category" value="{{ current_category }}">{% endif %}
@@ -1154,6 +1199,48 @@
     }
     pollServerStats();
     setInterval(pollServerStats, 4000);
+
+    (function() {
+        var sidebar = document.getElementById('app-sidebar');
+        var overlay = document.getElementById('sidebar-overlay');
+        var hamburgerBtn = document.getElementById('hamburger-btn');
+        if (!sidebar || !overlay || !hamburgerBtn) return;
+
+        function openSidebar() {
+            sidebar.classList.add('open');
+            overlay.classList.add('active');
+            hamburgerBtn.setAttribute('aria-expanded', 'true');
+        }
+        function closeSidebar() {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('active');
+            hamburgerBtn.setAttribute('aria-expanded', 'false');
+        }
+
+        hamburgerBtn.addEventListener('click', function() {
+            if (sidebar.classList.contains('open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
+
+        overlay.addEventListener('click', closeSidebar);
+
+        // メニュー内のリンク／ボタンをタップしたら閉じる（スマホ表示時のみ意味を持つ）
+        sidebar.querySelectorAll('a, button').forEach(function(el) {
+            el.addEventListener('click', function() {
+                closeSidebar();
+            });
+        });
+
+        // PC表示に戻った場合は開閉状態をリセット
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 900) {
+                closeSidebar();
+            }
+        });
+    })();
 
     document.getElementById('jump-thread-form').addEventListener('submit', (e) => {
         e.preventDefault();
