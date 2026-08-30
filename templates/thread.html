@@ -439,7 +439,8 @@
             <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
                 <label style="font-size: 11px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 11px;" value="名無しさん"></label>
                 <label style="font-size: 11px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
-                <button type="submit" id="submit-btn" style="font-size: 11px; padding: 3px 12px; background: var(--accent-color); color: #0f172a; border: none;">書き込む</button>
+                <button type="submit" id="submit-btn" style="font-size: 13px; font-weight: 700; padding: 6px 18px; background: var(--accent-color); color: #0f172a; border: none; border-radius: 6px; cursor: pointer;">書き込む</button>
+                <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">(Ctrl + Enterで送信)</span>
             </div>
             <div>
                 <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
@@ -844,6 +845,21 @@
         if (bbsForm && !bbsForm.dataset.submitHandlerBound) {
             bbsForm.dataset.submitHandlerBound = '1';
             let isSubmitting = false;
+
+            // Ctrl + Enter (Macは Cmd + Enter) でフォーム送信
+            const contentInput = bbsForm.querySelector('textarea[name="content"]');
+            if (contentInput) {
+                contentInput.addEventListener('keydown', (e) => {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        if (typeof bbsForm.requestSubmit === 'function') {
+                            bbsForm.requestSubmit();
+                        } else {
+                            bbsForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                        }
+                    }
+                });
+            }
 
             bbsForm.addEventListener('submit', async (e) => {
                 if (isSubmitting) {
