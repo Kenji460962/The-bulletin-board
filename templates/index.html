@@ -608,7 +608,7 @@
                 <button class="side-nav-item active" data-tab="lobby-tab" onclick="switchTab('lobby-tab', this)">ロビー</button>
                 <button class="side-nav-item" data-tab="threads-tab" onclick="switchTab('threads-tab', this)">スレ一覧</button>
                 <a class="side-nav-item" href="{{ url_for('games_hub') }}">ゲーム</a>
-                <button class="side-nav-item" data-tab="other-tab" onclick="switchTab('other-tab', this)">使い方（未実装）</button>
+                <button class="side-nav-item" data-tab="guide-tab" onclick="switchTab('guide-tab', this)">使い方</button>
             </nav>
 
             <div class="side-collapsible-head" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">
@@ -822,6 +822,58 @@
                                     <a href="/?tab=threads&page={{ current_page + 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}" class="page-link">次のページ</a>
                                 {% endif %}
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 使い方タブ -->
+                    <div id="guide-tab" class="content-section">
+                        <div class="glass-panel lobby-hero">
+                            <h1 class="lobby-title" style="font-size: 20px;">talk<span class="accent">-ch</span> の使い方ガイド</h1>
+                            <p class="lobby-desc">
+                                トークちゃんねるへようこそ！初めての方でも安心して楽しめる基本的な使い方をご案内します。
+                            </p>
+                        </div>
+
+                        <!-- 1. 閲覧と書き込み -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">1. スレッドを閲覧・書き込む</h2>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li><strong style="color: var(--text);">スレッドを探す:</strong> 「スレ一覧」タブから興味のある話題を選ぶか、上部の検索バーやカテゴリフィルターで検索できます。</li>
+                                <li><strong style="color: var(--text);">レス（返信）を書く:</strong> スレッド内の投稿フォームから、名前（省略可）と本文を入力して投稿できます。</li>
+                                <li><strong style="color: var(--text);">アンカー機能:</strong> 本文中に <code>&gt;&gt;1</code> や <code>&gt;&gt;5</code> のように入力すると、過去の書き込みにリンクできます。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 2. スレ立て -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">2. 新しいスレッド（板）を立てる</h2>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li>「スレ一覧」タブの上部にある<strong style="color: var(--text);">「新しい板（スレッド）を立てる」</strong>フォームから作成します。</li>
+                                <li>話題に合った<strong style="color: var(--text);">「カテゴリ」</strong>を選択し、50文字以内でタイトルを入力して送信してください。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 3. 便利機能 -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">3. 便利な機能</h2>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li><strong style="color: var(--text);">ダークモード切り替え:</strong> 右上の「ダーク表示 / ライト表示」ボタンで画面デザインを切り替えられます。</li>
+                                <li><strong style="color: var(--text);">スレ番号ジャンプ:</strong> スレ一覧にある「スレ番号でジャンプ」にID番号を入力すると、目的のスレに一発で移動できます。</li>
+                                <li><strong style="color: var(--text);">ミニゲーム:</strong> サイドバーの「ゲーム」から、ブラウザで遊べるオセロやチェスを楽しめます。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 4. ルールとマナー -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">4. 利用ルールとマナー</h2>
+                            <p style="color: var(--text-muted); margin: 0 0 10px; line-height: 1.7;">
+                                みんなが快適に利用できるよう、以下のマナーをお守りください。
+                            </p>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li>誹謗中傷、差別的発言、過度な荒らし行為は禁止されています。</li>
+                                <li>個人情報（本名・電話番号・住所など）は書き込まないでください。</li>
+                                <li>違反・不適切な投稿を見つけた場合は、サイドバーの<a href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank" style="color: var(--primary); font-weight: 600;">「通報窓口・お問い合わせ」</a>よりご連絡ください。</li>
+                            </ul>
                         </div>
                     </div>
 
@@ -1202,14 +1254,25 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
- 
+
+
     window.addEventListener('load', function() {
         var params = new URLSearchParams(window.location.search);
-        if (params.get('tab') === 'threads') {
+        var tabParam = params.get('tab');
+        
+        if (tabParam === 'threads') {
             var btns = document.querySelectorAll('.side-nav-item[data-tab]');
             for (var k = 0; k < btns.length; k++) {
                 if (btns[k].getAttribute('data-tab') === 'threads-tab') {
                     switchTab('threads-tab', btns[k]);
+                    break;
+                }
+            }
+        } else if (tabParam === 'guide') {
+            var btns = document.querySelectorAll('.side-nav-item[data-tab]');
+            for (var k = 0; k < btns.length; k++) {
+                if (btns[k].getAttribute('data-tab') === 'guide-tab') {
+                    switchTab('guide-tab', btns[k]);
                     break;
                 }
             }
