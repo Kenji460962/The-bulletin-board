@@ -659,10 +659,9 @@
                 <a class="side-nav-item" href="{{ url_for('games_hub') }}">
                     <span class="icon">🎮</span> ゲーム
                 </a>
-                <button class="side-nav-item" data-tab="other-tab" onclick="switchTab('other-tab', this)">
-                    <span class="icon">❓</span> 使い方（未実装）
+                <button class="side-nav-item" data-tab="guide-tab" onclick="switchTab('guide-tab', this)">
+                    <span class="icon">❓</span> 使い方
                 </button>
-            </nav>
 
             <div class="side-collapsible-head" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">
                 <span class="label">その他</span>
@@ -906,6 +905,36 @@
                                     <a href="/?tab=threads&page={{ current_page + 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}" class="page-link">次のページ ▶</a>
                                 {% endif %}
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- 使い方タブ -->
+                    <div id="guide-tab" class="content-section">
+                        <div class="glass-panel">
+                            <h2 class="panel-title">❓ talk-ch の使い方</h2>
+                            <p style="color: var(--text-muted); font-size: 14px; line-height: 1.8; margin-top: 0;">
+                                talk-ch（トークちゃんねる）は、誰でも自由にスレッドを作成して会話を楽しめる掲示板です。<br>
+                                アカウント登録不要で手軽にご利用いただけます。
+                            </p>
+                        </div>
+
+                        <div class="glass-panel">
+                            <h3 class="panel-title">📌 主な機能</h3>
+                            <ul style="line-height: 2; padding-left: 20px; color: var(--text); margin: 0;">
+                                <li><strong>スレッド作成：</strong>「スレ一覧」タブからタイトルとカテゴリを設定してスレッドを作成できます。</li>
+                                <li><strong>書き込み：</strong>気になるスレッドを開き、ページ下部の入力フォームから投稿します。</li>
+                                <li><strong>検索・絞り込み：</strong>上部の検索バーや「スレ一覧」のカテゴリピルからスレッドを絞り込めます。</li>
+                                <li><strong>ダークモード：</strong>画面右上の 🌙 / ☀️ アイコンで背景テーマを切り替えられます。</li>
+                            </ul>
+                        </div>
+
+                        <div class="glass-panel">
+                            <h3 class="panel-title">⚠️ 利用上の注意</h3>
+                            <ul style="line-height: 2; padding-left: 20px; color: var(--text-muted); margin: 0;">
+                                <li>他者への誹謗中傷や不快感を与える書き込みはお控えください。</li>
+                                <li>個人情報（電話番号、住所、本名など）の掲載は禁止です。</li>
+                                <li>規約違反の投稿を見かけた場合は、左ナビゲーションの「通報窓口、お問い合わせ」よりご連絡ください。</li>
+                            </ul>
                         </div>
                     </div>
 
@@ -1291,19 +1320,22 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
- 
-    window.addEventListener('load', function() {
-        var params = new URLSearchParams(window.location.search);
-        if (params.get('tab') === 'threads') {
-            var btns = document.querySelectorAll('.side-nav-item[data-tab]');
-            for (var k = 0; k < btns.length; k++) {
-                if (btns[k].getAttribute('data-tab') === 'threads-tab') {
-                    switchTab('threads-tab', btns[k]);
-                    break;
+
+
+        window.addEventListener('load', function() {
+            var params = new URLSearchParams(window.location.search);
+            var tabParam = params.get('tab'); // "threads" や "guide" を取得
+
+            if (tabParam) {
+                var targetTabId = tabParam + '-tab'; // "threads-tab" や "guide-tab" に変換
+                var btn = document.querySelector('.side-nav-item[data-tab="' + targetTabId + '"]');
+        
+                if (btn) {
+                    switchTab(targetTabId, btn);
                 }
             }
-        }
-    });
+        });
+    
     </script>
 
 </body>
