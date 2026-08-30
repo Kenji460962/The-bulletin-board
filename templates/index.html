@@ -39,13 +39,13 @@
     </script>
 
     <style>
-        :root {
+          :root {
             --bg: #FAFAFA;
             --card-bg: #FFFFFF;
             --card-border: #E5E7EB;
             --text: #111827;
-            --text-muted: #6B7280;
-            --text-faint: #9CA3AF;
+            --text-muted: #475569; /* より濃く読みやすい色に変更 (#6B7280 -> #475569) */
+            --text-faint: #64748B; /* 薄すぎる文字を改善 (#9CA3AF -> #64748B) */
             --primary: #2563EB;
             --primary-hover: #1D4ED8;
             --primary-soft: #EFF4FE;
@@ -67,8 +67,8 @@
             --card-bg: #16181D;
             --card-border: #2A2D34;
             --text: #E5E7EB;
-            --text-muted: #9199A8;
-            --text-faint: #5B6270;
+            --text-muted: #CBD5E1; /* ダークモード時もくっきり読めるように変更 */
+            --text-faint: #94A3B8;
             --primary: #5B93F5;
             --primary-hover: #7CA8F8;
             --primary-soft: rgba(91, 147, 245, 0.12);
@@ -695,12 +695,18 @@
                 <main class="main-col">
 
                     <!-- 1. ロビータブ -->
+                    <!-- 1. ロビータブ -->
                     <div id="lobby-tab" class="content-section active">
                         <div class="glass-panel lobby-hero">
                             <h1 class="lobby-title">Welcome to talk<span class="accent">-ch</span></h1>
                             <p class="lobby-desc">
                                 ルールを守って、自由に書き込んでください。みんなで楽しく話せる掲示板です。
                             </p>
+                            <div style="margin-top: 14px;">
+                                <button type="button" class="btn-primary-action" onclick="switchTab('threads-tab', document.querySelector('.side-nav-item[data-tab=\'threads-tab\']'))">
+                                    🔥 スレッド一覧を見る
+                                </button>
+                            </div>
                         </div>
 
                         <div class="glass-panel">
