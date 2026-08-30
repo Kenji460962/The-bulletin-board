@@ -703,7 +703,6 @@
                 <main class="main-col">
 
                     <!-- 1. ロビータブ -->
-                    <!-- 1. ロビータブ -->
                     <div id="lobby-tab" class="content-section active">
                         <div class="glass-panel lobby-hero">
                             <h1 class="lobby-title">Welcome to talk<span class="accent">-ch</span></h1>
@@ -747,7 +746,7 @@
                         </div>
 
                         <div class="glass-panel">
-                            <h2 class="panel-title">サーバー状況（リアルタイム）</h2>
+                            <h2 class="panel-title">サーバー状況</h2>
                             <div class="stat-row">
                                 <div>CPU使用率: <strong id="cpu-value" style="color: var(--primary);">--%</strong></div>
                                 <div>メモリ使用率: <strong id="mem-value" style="color: var(--green);">--%</strong></div>
@@ -1001,19 +1000,9 @@
                             </ul>
                         </div>
                     </div>
-
-                    <!-- フッター -->
-                    <div class="site-footer">
-                        <div class="site-footer-copy"><strong>talk-ch</strong> © {{ current_year }} トークちゃんねる All rights reserved.</div>
-                        <div class="site-footer-links">
-                            <a href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
-                            <a href="{{ url_for('privacy') }}" target="_blank">利用規約・プライバシー</a>
-                            <a href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報・お問い合わせ</a>
-                        </div>
-                    </div>
-
                 </main>
 
+                    
                 <!-- ============ 右カラム ============ -->
                 <aside class="side-col">
                     <div class="glass-panel">
@@ -1040,6 +1029,17 @@
                         <h2 class="panel-title">管理者の一言</h2>
                         <div class="admin-box">{{ admin_message }}</div>
                     </div>
+
+                    <!-- フッター -->
+                    <div class="site-footer">
+                        <div class="site-footer-copy"><strong>talk-ch</strong> © {{ current_year }} トークちゃんねる All rights reserved.</div>
+                        <div class="site-footer-links">
+                            <a href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
+                            <a href="{{ url_for('privacy') }}" target="_blank">利用規約・プライバシー</a>
+                            <a href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報・お問い合わせ</a>
+                        </div>
+                    </div>
+
                 </aside>
             </div>
 
