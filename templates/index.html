@@ -602,7 +602,7 @@
                 <button class="side-nav-item active" data-tab="lobby-tab" onclick="switchTab('lobby-tab', this)">ロビー</button>
                 <button class="side-nav-item" data-tab="threads-tab" onclick="switchTab('threads-tab', this)">スレ一覧</button>
                 <a class="side-nav-item" href="{{ url_for('games_hub') }}">ゲーム</a>
-                <button class="side-nav-item" data-tab="other-tab" onclick="switchTab('other-tab', this)">その他・使い方</button>
+                <button class="side-nav-item" data-tab="other-tab" onclick="switchTab('other-tab', this)">使い方（未実装）</button>
             </nav>
 
             <div class="side-collapsible-head" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">
@@ -612,8 +612,7 @@
             <nav class="side-collapsible-body">
                 <a class="side-nav-item" href="{{ url_for('archive_list') }}">過去スレ</a>
                 <a class="side-nav-item" href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a>
-                <a class="side-nav-item" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">お問い合わせ</a>
-                <a class="side-nav-item" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報窓口</a>
+                <a class="side-nav-item" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報窓口、お問い合わせ</a>
                 <a class="side-nav-item" href="{{ url_for('roles') }}" target="_blank">運営体制・役職</a>
             </nav>
         </aside>
