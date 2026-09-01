@@ -215,15 +215,19 @@ def get_daily_user_id(ip_address):
 
 
 def get_client_ip():
-    # Cloudflare Tunnelから送られてくるクライアントの真のIPを取得
+    # サーバーIPへの直接アクセスは不可にしてあるため、リクエストは必ず
+    # Cloudflareを経由する。よってCF-Connecting-IP(Cloudflareが書き換える
+    # 正規のクライアントIP)をそのまま信頼してよい。
     ip = request.headers.get('CF-Connecting-IP')
-    
-    # ローカル開発環境などのためのフォールバック
+
+    # CF-Connecting-IPが無い場合(ローカル開発環境など)のフォールバック。
+    # ProxyFix(x_for=2)が信頼するプロキシ段数を考慮して正しく解決した
+    # request.remote_addrを使う。
+    # (生のX-Forwarded-Forヘッダーの先頭値を自前で取ると、その値は
+    #  クライアントが自由に偽装できてしまうため不正確)
     if not ip:
-        ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-        if ip and ',' in ip:
-            ip = ip.split(',')[0].strip()
-            
+        ip = request.remote_addr
+
     return ip
 
 PROXYCHECK_API_KEY = os.environ.get('PROXYCHECK_API_KEY', '')
