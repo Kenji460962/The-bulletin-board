@@ -61,7 +61,6 @@
             --radius-sm: 4px;
             --radius-pill: 4px;
             --sidebar-w: 240px;
-            --sideCol-w: 280px;
         }
 
         html[data-theme="dark"] {
@@ -273,18 +272,15 @@
         }
         .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
 
-        /* ---- 本文2カラム（メイン＋右サイドカラム） ---- */
+        /* ---- 本文（単一カラム。PC/タブレット/スマホ共通の縦積みレイアウト） ---- */
         .content-cols {
-            display: flex;
-            align-items: flex-start;
-            gap: 24px;
+            display: block;
+            width: 100%;
         }
-        .main-col { flex: 1 1 auto; min-width: 0; }
-        .side-col {
-            width: var(--sideCol-w);
-            flex: 0 0 var(--sideCol-w);
-            display: flex;
-            flex-direction: column;
+        .main-col {
+            width: 100%;
+            max-width: 760px;
+            margin: 0 auto;
         }
 
         /* ---- 共通セクション（カードではなく境界線区切り） ---- */
@@ -568,7 +564,8 @@
 
         /* ---- フッター ---- */
         .site-footer {
-            margin-top: 16px;
+            max-width: 760px;
+            margin: 16px auto 0;
             background: transparent;
             border-top: 1px solid var(--card-border);
             padding: 14px 2px 4px;
@@ -598,15 +595,16 @@
         .admin-form-note { font-size: 12.5px; color: var(--text-muted); margin-bottom: 5px; font-weight: 600; }
 
     
-        @media (max-width: 1180px) {
-            .content-cols {
-                flex-direction: column;
-            }
-            .side-col {
-                width: 100%;
-                flex: 1 1 auto;
-                margin-top: 20px;
-            }
+        /* ---- タブレット幅（iPad縦横含む：〜1024px） ---- */
+        @media (max-width: 1024px) {
+            .sidebar { width: 210px; flex: 0 0 210px; padding: 16px 12px 20px; }
+            .main-wrap { padding: 18px 22px 40px; }
+            .main-col { max-width: 100%; }
+            .site-footer { max-width: 100%; }
+            .lobby-title { font-size: 26px; }
+            .glass-panel { padding: 18px 0; }
+            .panel-title { font-size: 16.5px; }
+            .search-box { max-width: 340px; }
         }
 
         @media (max-width: 900px) {
@@ -637,6 +635,11 @@
             .thread-card { flex-direction: column; align-items: flex-start; }
             .thread-card-side { align-self: flex-end; }
             .thread-toolbar-row { flex-direction: column; align-items: stretch; }
+        }
+
+        /* ---- スマホ幅：フッターも縦積みにして読みやすく ---- */
+        @media (max-width: 560px) {
+            .site-footer { flex-direction: column; align-items: flex-start; gap: 10px; }
         }
     </style>
 
@@ -706,6 +709,8 @@
 
                     <!-- 1. ロビータブ -->
                     <div id="lobby-tab" class="content-section active">
+
+                        <!-- 1. Welcome（ウェルカムメッセージ・検索バー／オンライン人数は上部トップバー） -->
                         <div class="glass-panel lobby-hero">
                             <h1 class="lobby-title">Welcome to talk<span class="accent">-ch</span></h1>
                             <p class="lobby-desc">
@@ -718,6 +723,28 @@
                             </div>
                         </div>
 
+                        <!-- 2. 人気スレ -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">人気スレ</h2>
+                            <ul class="popular-list">
+                                {% for thread in threads|sort(attribute='replies_count', reverse=True) %}
+                                {% if loop.index <= 5 %}
+                                <li>
+                                    <a class="popular-item" href="{{ url_for('thread_view', thread_id=thread.id) }}">
+                                        <span class="popular-rank">{{ loop.index }}</span>
+                                        <span class="popular-title">{{ thread.title }}</span>
+                                        <span class="popular-count">{{ thread.replies_count }}</span>
+                                    </a>
+                                </li>
+                                {% endif %}
+                                {% else %}
+                                <li class="empty-state" style="padding:12px 0;">まだ板がありません</li>
+                                {% endfor %}
+                            </ul>
+                            <a class="popular-more" href="{{ url_for('index') }}?tab=threads">もっと見る</a>
+                        </div>
+
+                        <!-- 3. 掲示板カテゴリ -->
                         <div class="glass-panel">
                             <h2 class="panel-title">掲示板カテゴリ</h2>
                             <ul class="category-list">
@@ -745,6 +772,12 @@
                                 </li>
                                 {% endfor %}
                             </ul>
+                        </div>
+
+                        <!-- 4. 管理者の一言 -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">管理者の一言</h2>
+                            <div class="admin-box">{{ admin_message }}</div>
                         </div>
 
                         <div class="glass-panel">
@@ -1003,46 +1036,16 @@
                         </div>
                     </div>
                 </main>
+            </div>
 
-                    
-                <!-- ============ 右カラム ============ -->
-                <aside class="side-col">
-                    <div class="glass-panel">
-                        <h2 class="panel-title">人気スレ</h2>
-                        <ul class="popular-list">
-                            {% for thread in threads|sort(attribute='replies_count', reverse=True) %}
-                            {% if loop.index <= 5 %}
-                            <li>
-                                <a class="popular-item" href="{{ url_for('thread_view', thread_id=thread.id) }}">
-                                    <span class="popular-rank">{{ loop.index }}</span>
-                                    <span class="popular-title">{{ thread.title }}</span>
-                                    <span class="popular-count">{{ thread.replies_count }}</span>
-                                </a>
-                            </li>
-                            {% endif %}
-                            {% else %}
-                            <li class="empty-state" style="padding:12px 0;">まだ板がありません</li>
-                            {% endfor %}
-                        </ul>
-                        <a class="popular-more" href="{{ url_for('index') }}?tab=threads">もっと見る</a>
-                    </div>
-
-                    <div class="glass-panel">
-                        <h2 class="panel-title">管理者の一言</h2>
-                        <div class="admin-box">{{ admin_message }}</div>
-                    </div>
-
-                    <!-- フッター -->
-                    <div class="site-footer">
-                        <div class="site-footer-copy"><strong>talk-ch</strong> © {{ current_year }} トークちゃんねる All rights reserved.</div>
-                        <div class="site-footer-links">
-                            <a href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
-                            <a href="{{ url_for('privacy') }}" target="_blank">利用規約・プライバシー</a>
-                            <a href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報・お問い合わせ</a>
-                        </div>
-                    </div>
-
-                </aside>
+            <!-- 5. フッター（常に最後に全幅で表示） -->
+            <div class="site-footer">
+                <div class="site-footer-copy"><strong>talk-ch</strong> © {{ current_year }} トークちゃんねる All rights reserved.</div>
+                <div class="site-footer-links">
+                    <a href="{{ url_for('roles') }}" target="_blank">役職一覧</a>
+                    <a href="{{ url_for('privacy') }}" target="_blank">利用規約・プライバシー</a>
+                    <a href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報・お問い合わせ</a>
+                </div>
             </div>
 
         </div>
