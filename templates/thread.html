@@ -437,14 +437,15 @@
 
     <div class="footer-area">
         <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
-            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;">
-                <label style="font-size: 11px; color: var(--text-muted);">名前: <input type="text" name="author" style="width: 120px; font-size: 11px;" value="名無しさん"></label>
-                <label style="font-size: 11px; color: var(--text-muted);">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted);"></label>
-                <button type="submit" id="submit-btn" style="font-size: 13px; font-weight: 700; padding: 6px 18px; background: var(--accent-color); color: #0f172a; border: none; border-radius: 6px; cursor: pointer;">書き込む</button>
-                <span style="font-size: 11px; color: var(--text-muted); margin-left: 4px;">(Ctrl + Enterで送信)</span>
+            <div style="display: flex; align-items: stretch; gap: 8px; margin-bottom: 4px;">
+                <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; justify-content: center;">
+                    <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">名前: <input type="text" name="author" style="width: 120px; font-size: 11px; padding: 2px 6px;" value="名無しさん"></label>
+                    <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted); max-width: 160px;"></label>
+                </div>
+                <button type="submit" id="submit-btn" title="Ctrl + Enterで送信" style="flex: 0 0 auto; align-self: stretch; font-size: 13px; font-weight: 700; padding: 6px 18px; background: var(--accent-color); color: #0f172a; border: none; border-radius: 6px; cursor: pointer; white-space: nowrap;">書き込む</button>
             </div>
             <div>
-                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力..."></textarea>
+                <textarea name="content" rows="2" style="width: 100%; box-sizing: border-box; font-size: 12px; resize: none;" placeholder="メッセージを入力...（Ctrl + Enterで送信）"></textarea>
             </div>
         </form>
 
