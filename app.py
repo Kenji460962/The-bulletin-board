@@ -364,6 +364,19 @@ def update_and_get_user_counts(current_token, location):
 
     return count
 
+@app.route('/api/lobby/active_count')
+def api_lobby_active_count():
+    user_token = request.cookies.get('user_bbs_token')
+    is_new_user = False
+    if not user_token:
+        user_token = str(uuid.uuid4())
+        is_new_user = True
+    count = update_and_get_user_counts(user_token, "lobby")
+    resp = make_response({'success': True, 'active_count': count, 'count': count})
+    if is_new_user:
+        resp.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+    return resp
+
 @app.route('/privacy')
 def privacy():
     return render_template('privacy.html')
