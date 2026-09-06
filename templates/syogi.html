@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>将棋 - talk-ch</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --panel-bg2: #24324a;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-color: #38bdf8;
+            --sente-color: #f8fafc;
+            --gote-color: #fbbf24;
+            --board-line: #0b1220;
+            --cell-bg: #d9b98c;
+            --cell-bg2: #e7cba3;
+            --highlight: #38bdf8;
+            --danger: #f87171;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        a { color: var(--accent-color); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .top-nav { width: 100%; max-width: 460px; margin-bottom: 12px; font-size: 13px; display: flex; justify-content: space-between; }
+        h1 { font-size: 19px; margin: 0 0 12px 0; }
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            width: 100%;
+            max-width: 460px;
+        }
+        .btn {
+            display: inline-block;
+            background: var(--accent-color);
+            color: #0f172a;
+            font-weight: 600;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .btn:disabled { opacity: 0.5; cursor: default; }
+        .btn.secondary { background: var(--panel-bg2); color: var(--text-main); border: 1px solid var(--border-color); }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-color);
+            color: var(--text-main);
+            font-size: 14px;
+            margin-top: 6px;
+        }
+        label { font-size: 13px; color: var(--text-muted); }
+        .hr { border-top: 1px solid var(--border-color); margin: 18px 0; }
+
+        /* --- 対局画面 --- */
+        .game-wrap { width: 100%; max-width: 460px; }
+        .room-code-box {
+            display:flex; align-items:center; justify-content: space-between;
+            background: var(--panel-bg); border:1px solid var(--border-color); border-radius: 10px;
+            padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
+        }
+        .room-code-box .code { font-family: monospace; font-size: 16px; letter-spacing: 2px; color: var(--accent-color); }
+        .copy-btn { background: var(--panel-bg2); border:1px solid var(--border-color); color: var(--text-main); border-radius:6px; padding: 4px 10px; font-size:12px; cursor:pointer; }
+
+        .player-row {
+            display:flex; align-items:center; justify-content: space-between;
+            padding: 8px 12px; border-radius: 8px; background: var(--panel-bg);
+            border: 1px solid var(--border-color); font-size: 13px; margin-bottom: 6px;
+        }
+        .player-row.active { border-color: var(--accent-color); box-shadow: 0 0 0 1px var(--accent-color) inset; }
+        .player-name { font-weight: 600; }
+        .player-tag { font-size: 11px; color: var(--text-muted); }
+        .check-badge { color: var(--danger); font-weight: 700; font-size: 12px; margin-left: 6px; }
+
+        .hand-row {
+            display: flex; flex-wrap: wrap; gap: 6px;
+            min-height: 40px; align-items: center;
+            background: var(--panel-bg); border: 1px solid var(--border-color);
+            border-radius: 8px; padding: 6px 8px; margin: 6px 0;
+        }
+        .hand-piece {
+            position: relative;
+            background: var(--cell-bg2); color: #1b1206;
+            border: 1px solid #7a5c34; border-radius: 6px;
+            width: 34px; height: 34px; display:flex; align-items:center; justify-content:center;
+            font-size: 16px; font-weight: 700; cursor: pointer;
+        }
+        .hand-piece.disabled { opacity: 0.35; cursor: default; }
+        .hand-piece.selected { outline: 2px solid var(--highlight); }
+        .hand-piece .count {
+            position: absolute; bottom: -4px; right: -4px;
+            background: var(--accent-color); color: #0f172a;
+            border-radius: 50%; font-size: 10px; width: 16px; height: 16px;
+            display:flex; align-items:center; justify-content:center; font-weight:700;
+        }
+        .hand-empty { font-size: 12px; color: var(--text-muted); padding: 0 4px; }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            grid-template-rows: repeat(9, 1fr);
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background: var(--board-line);
+            border: 2px solid var(--board-line);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .cell {
+            background: var(--cell-bg);
+            border: 1px solid #b08e5f;
+            display:flex; align-items:center; justify-content:center;
+            position: relative;
+            cursor: default;
+        }
+        .cell.candidate { box-shadow: inset 0 0 0 999px rgba(56,189,248,0.28); cursor: pointer; }
+        .cell.candidate::after {
+            content: ''; position:absolute; width: 28%; height:28%; border-radius:50%;
+            background: rgba(56,189,248,0.65);
+        }
+        .cell.candidate.has-piece::after { display:none; }
+        .cell.selected { box-shadow: inset 0 0 0 999px rgba(248,113,113,0.28); }
+        .piece {
+            font-size: min(4.6vw, 22px);
+            font-weight: 700;
+            font-family: 'Hiragino Mincho ProN','Yu Mincho', serif;
+            user-select: none;
+            line-height: 1;
+        }
+        .piece.sente { color: #1b1206; }
+        .piece.gote { color: #7a1616; transform: rotate(180deg); }
+        .piece.promoted { color: #b3261e; }
+        .piece.gote.promoted { color: #b3261e; }
+
+        .status-line {
+            text-align:center; font-size: 13px; color: var(--text-muted); margin: 10px 0;
+            min-height: 18px;
+        }
+        .msg-toast {
+            text-align:center; font-size: 13px; color: var(--danger); margin: 4px 0; min-height: 16px;
+        }
+        .winner-banner {
+            text-align:center; background: var(--panel-bg2); border:1px solid var(--accent-color);
+            border-radius: 8px; padding: 12px; margin: 10px 0; font-size: 15px; font-weight: 700;
+        }
+        .hint { font-size: 12px; color: var(--text-muted); text-align:center; margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="top-nav">
+        <a href="{{ url_for('games_hub') }}">← ゲーム一覧に戻る</a>
+        <a href="/">talk-chトップ</a>
+    </div>
+
+    <h1>🀄 オンライン将棋</h1>
+
+    {% if not room %}
+    <div class="panel">
+        <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">
+            部屋を作って、リンクや部屋コードを相手に共有しよう。登録不要・匿名で対局できます。
+        </div>
+        <button class="btn" id="createBtn">対局部屋を作る</button>
+        <div class="hr"></div>
+        <label for="joinCode">部屋コードを入力して参加</label>
+        <input type="text" id="joinCode" placeholder="例: AB12CD" maxlength="6" autocapitalize="characters">
+        <button class="btn secondary" id="joinBtn">この部屋に入る</button>
+    </div>
+
+    <script>
+        document.getElementById('createBtn').addEventListener('click', async () => {
+            const r = await fetch("{{ url_for('shogi_create') }}", { method: 'POST' });
+            if (r.redirected) { window.location.href = r.url; }
+        });
+        document.getElementById('joinBtn').addEventListener('click', () => {
+            const code = document.getElementById('joinCode').value.trim().toUpperCase();
+            if (code.length > 0) { window.location.href = '/shogi/' + code; }
+        });
+    </script>
+    {% else %}
+    <div class="game-wrap">
+        <div class="room-code-box">
+            <span>部屋コード: <span class="code">{{ room.room_code }}</span></span>
+            <button class="copy-btn" id="copyBtn">リンクをコピー</button>
+        </div>
+
+        <div id="playersArea"></div>
+        <div class="status-line" id="statusLine">読み込み中...</div>
+        <div id="winnerBanner"></div>
+
+        <div id="goteHandRow" class="hand-row"></div>
+
+        <div class="board" id="board"></div>
+
+        <div id="senteHandRow" class="hand-row"></div>
+
+        <div class="msg-toast" id="msgToast"></div>
+        <div id="joinArea"></div>
+        <div class="hint">駒をタップして選び、光るマスをタップして着手します。持ち駒は上下の欄からタップして打てます。</div>
+    </div>
+
+    <script>
+    const ROOM_CODE = {{ room.room_code | tojson }};
+    const MY_COLOR = {{ (my_color or '') | tojson }}; // 's' / 'g' / ''
+    const KANJI = { P:'歩', L:'香', N:'桂', S:'銀', G:'金', B:'角', R:'飛', K:'玉' };
+    const KANJI_GOTE_KING = '王';
+    const KANJI_PROMOTED = { P:'と', L:'杏', N:'圭', S:'全', B:'馬', R:'龍' };
+    const HAND_ORDER = ['R','B','G','S','N','L','P'];
+
+    let state = null;
+    let selected = null; // {kind:'board', r, c} | {kind:'hand', piece}
+    let candidates = []; // [[r,c], ...]
+    let busy = false;
+
+    function forward(color) { return color === 's' ? -1 : 1; }
+
+    function pieceMovesJS(board, r, c) {
+        const p = board[r*9+c];
+        if (!p) return [];
+        const color = p[0], typ = p.slice(1);
+        const out = [];
+        const inb = (rr,cc) => rr>=0 && rr<9 && cc>=0 && cc<9;
+        const step = (dr,dc) => {
+            const rr=r+dr, cc=c+dc;
+            if (inb(rr,cc)) {
+                const t = board[rr*9+cc];
+                if (!t || t[0] !== color) out.push([rr,cc]);
+            }
+        };
+        const slide = (dr,dc) => {
+            let rr=r+dr, cc=c+dc;
+            while (inb(rr,cc)) {
+                const t = board[rr*9+cc];
+                if (!t) { out.push([rr,cc]); }
+                else { if (t[0] !== color) out.push([rr,cc]); break; }
+                rr+=dr; cc+=dc;
+            }
+        };
+        const f = forward(color);
+        if (typ === 'P') { step(f,0); }
+        else if (typ === 'L') { slide(f,0); }
+        else if (typ === 'N') { step(2*f,-1); step(2*f,1); }
+        else if (typ === 'S') { [[f,0],[f,-1],[f,1],[-f,-1],[-f,1]].forEach(d=>step(d[0],d[1])); }
+        else if (typ === 'G' || typ === '+P' || typ === '+L' || typ === '+N' || typ === '+S') {
+            [[f,0],[f,-1],[f,1],[0,-1],[0,1],[-f,0]].forEach(d=>step(d[0],d[1]));
+        }
+        else if (typ === 'K') {
+            for (let dr=-1; dr<=1; dr++) for (let dc=-1; dc<=1; dc++) { if (dr||dc) step(dr,dc); }
+        }
+        else if (typ === 'B') { [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(d=>slide(d[0],d[1])); }
+        else if (typ === 'R') { [[-1,0],[1,0],[0,-1],[0,1]].forEach(d=>slide(d[0],d[1])); }
+        else if (typ === '+B') {
+            [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(d=>slide(d[0],d[1]));
+            [[-1,0],[1,0],[0,-1],[0,1]].forEach(d=>step(d[0],d[1]));
+        }
+        else if (typ === '+R') {
+            [[-1,0],[1,0],[0,-1],[0,1]].forEach(d=>slide(d[0],d[1]));
+            [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(d=>step(d[0],d[1]));
+        }
+        return out;
+    }
+
+    function dropAllowedJS(board, color, ptype, r, c) {
+        if (board[r*9+c]) return false;
+        if (ptype === 'P') {
+            const lastRow = color === 's' ? 0 : 8;
+            if (r === lastRow) return false;
+            for (let rr=0; rr<9; rr++) { if (board[rr*9+c] === color+'P') return false; }
+        } else if (ptype === 'L') {
+            const lastRow = color === 's' ? 0 : 8;
+            if (r === lastRow) return false;
+        } else if (ptype === 'N') {
+            if (color === 's' && r <= 1) return false;
+            if (color === 'g' && r >= 7) return false;
+        }
+        return true;
+    }
+
+    function isForcedPromotion(baseTyp, color, tr) {
+        if (baseTyp === 'P' || baseTyp === 'L') return tr === (color === 's' ? 0 : 8);
+        if (baseTyp === 'N') return color === 's' ? tr <= 1 : tr >= 7;
+        return false;
+    }
+    function inZone(color, r) { return color === 's' ? r <= 2 : r >= 6; }
+
+    function pieceLabel(color, typ) {
+        if (typ.startsWith('+')) return KANJI_PROMOTED[typ.slice(1)] || typ;
+        if (typ === 'K') return color === 's' ? KANJI.K : KANJI_GOTE_KING;
+        return KANJI[typ] || typ;
+    }
+
+    async function refresh() {
+        try {
+            const res = await fetch(`/api/shogi/${ROOM_CODE}/state`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!data.success) return;
+            state = data;
+            render();
+        } catch (e) { /* 通信エラーは無視して次回ポーリングに任せる */ }
+    }
+
+    function setToast(text) {
+        document.getElementById('msgToast').textContent = text || '';
+        if (text) setTimeout(() => { document.getElementById('msgToast').textContent = ''; }, 2500);
+    }
+
+    function render() {
+        if (!state) return;
+        renderPlayers();
+        renderStatus();
+        renderHands();
+        renderBoard();
+        renderJoinArea();
+    }
+
+    function renderPlayers() {
+        const area = document.getElementById('playersArea');
+        const goteActive = state.turn === 'g' && state.status === 'playing';
+        const senteActive = state.turn === 's' && state.status === 'playing';
+        area.innerHTML = `
+            <div class="player-row ${goteActive ? 'active' : ''}">
+                <span class="player-name">後手: ${escapeHtml(state.gote_name)} ${state.has_gote ? '' : '(空席)'}</span>
+                <span class="player-tag">${state.in_check === 'g' ? '<span class="check-badge">王手!</span>' : ''}</span>
+            </div>
+            <div class="player-row ${senteActive ? 'active' : ''}">
+                <span class="player-name">先手: ${escapeHtml(state.sente_name)}</span>
+                <span class="player-tag">${state.in_check === 's' ? '<span class="check-badge">王手!</span>' : ''}</span>
+            </div>
+        `;
+    }
+
+    function renderStatus() {
+        const el = document.getElementById('statusLine');
+        const banner = document.getElementById('winnerBanner');
+        if (state.status === 'waiting') {
+            el.textContent = '対局相手の参加を待っています…';
+            banner.innerHTML = '';
+        } else if (state.status === 'finished') {
+            el.textContent = '対局は終了しました';
+            const winnerText = state.winner === 'draw' ? '引き分け'
+                : (state.winner === 's' ? `${state.sente_name}(先手)の勝ち` : `${state.gote_name}(後手)の勝ち`);
+            banner.innerHTML = `<div class="winner-banner">🏆 ${escapeHtml(winnerText)}</div>`;
+        } else {
+            const turnText = state.turn === 's' ? `先手番: ${state.sente_name}` : `後手番: ${state.gote_name}`;
+            el.textContent = turnText + (state.my_color ? (state.my_color === state.turn ? '（あなたの番です）' : '（相手の番です）') : '（観戦中）');
+            banner.innerHTML = '';
+        }
+    }
+
+    function renderJoinArea() {
+        const area = document.getElementById('joinArea');
+        if (!state.my_color && !state.has_gote && state.status === 'waiting') {
+            area.innerHTML = `<button class="btn" id="joinNowBtn">この部屋に参加して対局する</button>`;
+            document.getElementById('joinNowBtn').addEventListener('click', async () => {
+                const r = await fetch(`/shogi/${ROOM_CODE}/join`, { method: 'POST' });
+                const d = await r.json();
+                if (d.success) { refresh(); } else { setToast(d.error || '参加できませんでした'); }
+            });
+        } else {
+            area.innerHTML = '';
+        }
+    }
+
+    function renderHands() {
+        const senteEl = document.getElementById('senteHandRow');
+        const goteEl = document.getElementById('goteHandRow');
+        senteEl.innerHTML = handHtml('s');
+        goteEl.innerHTML = handHtml('g');
+        bindHandClicks();
+    }
+
+    function handHtml(color) {
+        const hand = (state.hands && state.hands[color]) || {};
+        const items = HAND_ORDER.filter(t => (hand[t] || 0) > 0);
+        if (items.length === 0) return `<span class="hand-empty">持ち駒なし</span>`;
+        return items.map(t => {
+            const count = hand[t];
+            const canUse = state.my_color === color && state.turn === color && state.status === 'playing';
+            const isSelected = selected && selected.kind === 'hand' && selected.color === color && selected.piece === t;
+            return `<div class="hand-piece ${canUse ? '' : 'disabled'} ${isSelected ? 'selected' : ''}"
+                        data-color="${color}" data-piece="${t}">
+                        ${KANJI[t]}<span class="count">${count}</span>
+                    </div>`;
+        }).join('');
+    }
+
+    function bindHandClicks() {
+        document.querySelectorAll('.hand-piece').forEach(el => {
+            el.addEventListener('click', () => {
+                const color = el.getAttribute('data-color');
+                const piece = el.getAttribute('data-piece');
+                if (state.my_color !== color || state.turn !== color || state.status !== 'playing') return;
+                if (selected && selected.kind === 'hand' && selected.piece === piece) {
+                    selected = null; candidates = [];
+                } else {
+                    selected = { kind: 'hand', color, piece };
+                    candidates = [];
+                    for (let r=0; r<9; r++) for (let c=0; c<9; c++) {
+                        if (dropAllowedJS(state.board, color, piece, r, c)) candidates.push([r,c]);
+                    }
+                }
+                render();
+            });
+        });
+    }
+
+    function renderBoard() {
+        const boardEl = document.getElementById('board');
+        boardEl.innerHTML = '';
+        for (let r=0; r<9; r++) {
+            for (let c=0; c<9; c++) {
+                const idx = r*9+c;
+                const p = state.board[idx];
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.r = r; cell.dataset.c = c;
+                if (selected && selected.kind === 'board' && selected.r === r && selected.c === c) {
+                    cell.classList.add('selected');
+                }
+                const isCandidate = candidates.some(([cr,cc]) => cr===r && cc===c);
+                if (isCandidate) {
+                    cell.classList.add('candidate');
+                    if (p) cell.classList.add('has-piece');
+                }
+                if (p) {
+                    const color = p[0], typ = p.slice(1);
+                    const span = document.createElement('span');
+                    span.className = 'piece ' + (color === 's' ? 'sente' : 'gote') + (typ.startsWith('+') ? ' promoted' : '');
+                    span.textContent = pieceLabel(color, typ);
+                    cell.appendChild(span);
+                }
+                cell.addEventListener('click', onCellClick);
+                boardEl.appendChild(cell);
+            }
+        }
+    }
+
+    async function onCellClick(e) {
+        if (busy || !state || state.status !== 'playing') return;
+        const r = parseInt(e.currentTarget.dataset.r);
+        const c = parseInt(e.currentTarget.dataset.c);
+        if (!state.my_color || state.turn !== state.my_color) return;
+
+        const isCandidate = candidates.some(([cr,cc]) => cr===r && cc===c);
+
+        if (selected && selected.kind === 'hand') {
+            if (isCandidate) {
+                await sendDrop(selected.piece, r, c);
+            }
+            selected = null; candidates = []; render();
+            return;
+        }
+
+        if (selected && selected.kind === 'board') {
+            if (isCandidate) {
+                await sendMove(selected.r, selected.c, r, c);
+                selected = null; candidates = []; render();
+                return;
+            }
+            // 別の自分の駒をクリックしたら選択し直す
+            const p = state.board[r*9+c];
+            if (p && p[0] === state.my_color) {
+                selected = { kind: 'board', r, c };
+                candidates = pieceMovesJS(state.board, r, c);
+                render();
+            } else {
+                selected = null; candidates = []; render();
+            }
+            return;
+        }
+
+        const p = state.board[r*9+c];
+        if (p && p[0] === state.my_color) {
+            selected = { kind: 'board', r, c };
+            candidates = pieceMovesJS(state.board, r, c);
+            render();
+        }
+    }
+
+    async function sendMove(fr, fc, tr, tc) {
+        const piece = state.board[fr*9+fc];
+        const typ = piece.slice(1);
+        const baseTyp = typ.startsWith('+') ? typ.slice(1) : typ;
+        let promote = false;
+        if (!typ.startsWith('+') && ['P','L','N','S','B','R'].includes(baseTyp)) {
+            if (isForcedPromotion(baseTyp, state.my_color, tr)) {
+                promote = true;
+            } else if (inZone(state.my_color, fr) || inZone(state.my_color, tr)) {
+                promote = confirm('この駒を成りますか？');
+            }
+        }
+        busy = true;
+        try {
+            const res = await fetch(`/shogi/${ROOM_CODE}/move`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ from_row: fr, from_col: fc, to_row: tr, to_col: tc, promote })
+            });
+            const data = await res.json();
+            if (!data.success) { setToast(data.error || '着手できませんでした'); }
+            await refresh();
+        } finally { busy = false; }
+    }
+
+    async function sendDrop(piece, r, c) {
+        busy = true;
+        try {
+            const res = await fetch(`/shogi/${ROOM_CODE}/drop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ piece, row: r, col: c })
+            });
+            const data = await res.json();
+            if (!data.success) { setToast(data.error || '打てませんでした'); }
+            await refresh();
+        } finally { busy = false; }
+    }
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    }
+
+    document.getElementById('copyBtn').addEventListener('click', () => {
+        navigator.clipboard.writeText(window.location.href).then(() => setToast('リンクをコピーしました'));
+    });
+
+    refresh();
+    setInterval(refresh, 1500);
+    </script>
+    {% endif %}
+
+</body>
+</html>
