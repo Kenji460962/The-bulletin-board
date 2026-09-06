@@ -8,6 +8,7 @@ import uuid
 import time
 import re
 import random
+from urllib.parse import unquote
 import httpx
 import boto3
 import psutil
@@ -392,7 +393,12 @@ def _game_name(default='名無しさん'):
         body = request.get_json(silent=True) or {}
         name = body.get('name')
     if not name:
-        name = request.cookies.get('bbs_saved_author')
+        raw = request.cookies.get('bbs_saved_author')
+        if raw:
+            try:
+                name = unquote(raw)
+            except Exception:
+                name = raw
     name = html.escape(str(name or default).strip())[:20]
     return name or default
 
