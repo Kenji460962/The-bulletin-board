@@ -59,6 +59,15 @@
         }
         .game-card:hover { border-color: var(--accent-color); text-decoration: none; }
         .game-icon { font-size: 36px; line-height: 1; }
+        .koma-icon {
+            width: 34px; height: 34px;
+            background: linear-gradient(180deg, #f0d9ab, #d9b477);
+            clip-path: polygon(50% 0%, 88% 22%, 100% 100%, 0% 100%, 12% 22%);
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+            font-weight: 700; font-size: 16px; color: #3b2610;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+        }
         .game-info h2 { font-size: 17px; margin: 0 0 4px 0; }
         .game-info p { font-size: 13px; color: var(--text-muted); margin: 0; }
     </style>
@@ -85,6 +94,13 @@
             <div class="game-info">
                 <h2>オンラインチェス</h2>
                 <p>王手・キャスリングにも対応した本格対戦</p>
+            </div>
+        </a>
+        <a class="game-card" href="{{ url_for('shogi_lobby') }}">
+            <div class="game-icon"><div class="koma-icon">歩</div></div>
+            <div class="game-info">
+                <h2>オンライン将棋</h2>
+                <p>持ち駒・成りにも対応した本格対戦</p>
             </div>
         </a>
     </div>
