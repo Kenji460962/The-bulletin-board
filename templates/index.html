@@ -289,16 +289,42 @@
         }
         .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
 
-        /* ---- 本文（単一カラム。PC/タブレット/スマホ共通の縦積みレイアウト） ---- */
+        /* ---- 本文 ----
+           PC/iPad（広い画面）: ロビータブのみ「中央エリア＋右サイドバー」の
+           2カラムCSS Gridにする。他のタブ（スレ一覧・使い方）は従来どおり単一カラム。
+           スマホ（狭い画面）: 下の @media (max-width: 900px) で1カラムに切り替える。 */
         .content-cols {
             display: block;
             width: 100%;
         }
         .main-col {
             width: 100%;
-            max-width: 760px;
+            max-width: 1040px;
             margin: 0 auto;
         }
+
+        /* ---- ロビータブ：PC/iPadでは中央＋右サイドバーの2カラムグリッド ----
+           grid-template-areas で見た目の並び順を制御するため、
+           HTML側の要素の並び順（DOM順）を変えずに配置を切り替えられる。 */
+        #lobby-tab.active {
+            display: grid;
+            grid-template-columns: 1fr 300px;
+            column-gap: 32px;
+            align-items: start;
+            grid-template-areas:
+                "hero     popular"
+                "category admin"
+                "extra    extra";
+        }
+        .lobby-hero     { grid-area: hero; }
+        .panel-popular  { grid-area: popular; }
+        .panel-category { grid-area: category; }
+        .panel-admin    { grid-area: admin; }
+        .lobby-extra    { grid-area: extra; }
+
+        /* 右サイドバー内のパネルは中央エリアと罫線の見た目を合わせつつ、
+           上下の余白を少し詰めて縦に並べる */
+        .panel-popular, .panel-admin { padding-top: 0; }
 
         /* ---- 共通セクション（カードではなく境界線区切り） ---- */
         .content-section { display: none; }
@@ -652,6 +678,13 @@
             .thread-card { flex-direction: column; align-items: flex-start; }
             .thread-card-side { align-self: flex-end; }
             .thread-toolbar-row { flex-direction: column; align-items: stretch; }
+
+            /* ---- スマホ表示時のロビータブ：1カラムで縦積み ----
+               Welcomeメッセージ → 人気スレ → 掲示板カテゴリ → 管理者の一言 → その他 の順 */
+            #lobby-tab.active {
+                display: block;
+            }
+            .panel-popular, .panel-admin { padding-top: 16px; }
         }
 
         /* ---- スマホ幅：フッターも縦積みにして読みやすく ---- */
@@ -743,7 +776,7 @@
                         </div>
 
                         <!-- 2. 人気スレ -->
-                        <div class="glass-panel">
+                        <div class="glass-panel panel-popular">
                             <h2 class="panel-title">人気スレ</h2>
                             <ul class="popular-list">
                                 {% for thread in threads|sort(attribute='replies_count', reverse=True) %}
@@ -764,7 +797,7 @@
                         </div>
 
                         <!-- 3. 掲示板カテゴリ -->
-                        <div class="glass-panel">
+                        <div class="glass-panel panel-category">
                             <h2 class="panel-title">掲示板カテゴリ</h2>
                             <ul class="category-list">
                                 {% for value, label, color in thread_categories %}
@@ -794,39 +827,42 @@
                         </div>
 
                         <!-- 4. 管理者の一言 -->
-                        <div class="glass-panel">
+                        <div class="glass-panel panel-admin">
                             <h2 class="panel-title">管理者の一言</h2>
                             <div class="admin-box">{{ admin_message }}</div>
                         </div>
 
-                        <div class="glass-panel">
-                            <h2 class="panel-title">サーバー状況</h2>
-                            <div class="stat-row">
-                                <div>CPU使用率: <strong id="cpu-value" style="color: var(--primary);">--%</strong></div>
-                                <div>メモリ使用率: <strong id="mem-value" style="color: var(--green);">--%</strong></div>
-                                <div id="mem-detail" style="color: var(--text-faint);"></div>
-                            </div>
-                            <canvas id="server-stats-chart" class="stat-chart" width="600" height="150"></canvas>
+                        <!-- 5. その他（サーバー状況・管理者専用フォーム）：並び順の指定対象外のため常に最後にまとめて表示 -->
+                        <div class="lobby-extra">
+                            <div class="glass-panel">
+                                <h2 class="panel-title">サーバー状況</h2>
+                                <div class="stat-row">
+                                    <div>CPU使用率: <strong id="cpu-value" style="color: var(--primary);">--%</strong></div>
+                                    <div>メモリ使用率: <strong id="mem-value" style="color: var(--green);">--%</strong></div>
+                                    <div id="mem-detail" style="color: var(--text-faint);"></div>
+                                </div>
+                                <canvas id="server-stats-chart" class="stat-chart" width="600" height="150"></canvas>
 
-                            <div class="stat-row" style="margin-top: 12px;">
-                                <div>イン: <strong id="net-rx-value" style="color: var(--amber);">-- KB/s</strong></div>
-                                <div>アウト: <strong id="net-tx-value" style="color: #BE185D;">-- KB/s</strong></div>
+                                <div class="stat-row" style="margin-top: 12px;">
+                                    <div>イン: <strong id="net-rx-value" style="color: var(--amber);">-- KB/s</strong></div>
+                                    <div>アウト: <strong id="net-tx-value" style="color: #BE185D;">-- KB/s</strong></div>
+                                </div>
+                                <canvas id="network-stats-chart" class="stat-chart" width="600" height="150"></canvas>
                             </div>
-                            <canvas id="network-stats-chart" class="stat-chart" width="600" height="150"></canvas>
-                        </div>
 
-                        {% if is_admin_user %}
-                        <div class="glass-panel">
-                            <h3 class="panel-title">【管理者専用】一言を更新する</h3>
-                            <form action="{{ url_for('update_admin_message') }}" method="POST">
-                                <div class="admin-form-note">パスワード</div>
-                                <input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
-                                <div class="admin-form-note">新しいメッセージ</div>
-                                <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required>{{ admin_message }}</textarea><br><br>
-                                <button type="submit">一言を更新する</button>
-                            </form>
+                            {% if is_admin_user %}
+                            <div class="glass-panel">
+                                <h3 class="panel-title">【管理者専用】一言を更新する</h3>
+                                <form action="{{ url_for('update_admin_message') }}" method="POST">
+                                    <div class="admin-form-note">パスワード</div>
+                                    <input type="password" name="admin_password" placeholder="管理者用パスワード" required><br><br>
+                                    <div class="admin-form-note">新しいメッセージ</div>
+                                    <textarea name="message" rows="4" cols="45" placeholder="ここに新しい一言を入力してください" required>{{ admin_message }}</textarea><br><br>
+                                    <button type="submit">一言を更新する</button>
+                                </form>
+                            </div>
+                            {% endif %}
                         </div>
-                        {% endif %}
                     </div>
 
                     <!-- 2. スレ一覧タブ -->
