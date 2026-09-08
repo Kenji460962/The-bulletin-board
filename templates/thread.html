@@ -18,13 +18,13 @@
     <meta name="monetag" content="0e0b60bce08b5f1302c3b3de174cc7af">
 
 
-    <!-- 元からあったWebPファビコン（ブラウザのタブ用としてそのまま残す） -->
+    <!-- WebPファビコン -->
     <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
 
-    <!-- iOS (iPhone) ホーム画面用アイコン（※180x180のPNG画像を1枚追加） -->
+    <!-- iOS ホーム画面用アイコン　(もうちょいカッコよくしたいので、これを見た人は作れよ(圧)) -->
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
 
-    <!-- Android用 Web App Manifest -->
+    <!-- Android用  -->
     <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
 
 
@@ -40,7 +40,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <script>
-        // ページ描画前にテーマを適用(一瞬ダーク→ライトに切り替わるチラつきを防ぐ)
         (function() {
             var saved = localStorage.getItem('talk_ch_theme');
             if (saved === 'light') {
@@ -110,7 +109,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
-/* タイトル行のレイアウト整列 */
+
         .header-title-row {
             display: flex;
             align-items: center;
@@ -125,7 +124,7 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            flex: 1; /* 長いタイトルは自動で「...」と省略 */
+            flex: 1; /* 長いタイトルは自動で「...」に */
             min-width: 0;
         }
 
@@ -135,7 +134,7 @@
             color: var(--text-muted);
             opacity: 0.7;
             white-space: nowrap;
-            flex-shrink: 0; /* スレ主IDが潰れないように保持 */
+            flex-shrink: 0; /* ←スレ主IDが潰れないように保持 */
         }
 
 /* 2行目のサブメニュー行 */
@@ -153,7 +152,7 @@
         
        
 
-        /* スマホ用スクロール領域（固定された入力欄＋広告の高さ分あける：165pxに調整） */
+        /* スマホ用スクロール領域（広告サイズを変更した時に変更すること！） */
         .posts-container { 
             position: absolute !important;
             top: 65px !important;
@@ -167,7 +166,7 @@
             scroll-behavior: smooth;
         }
 
-        /* スマホ用：入力欄と広告をまとめた固定フッターエリア（165px） */
+        /* スマホ用フッター */
         .footer-area { 
             position: absolute !important;
             bottom: 0 !important;
@@ -184,7 +183,7 @@
             justify-content: space-between;
         }
 
-        /* 入力欄のすぐ下に配置するスマホ用広告スペース（320x50） */
+        /* スマホ用広告スペース */
         .ad-item-sp {
             width: 100%;
             height: 50px;
@@ -202,8 +201,13 @@
         }
 
         /* ----------------------------------------- */
-        /* PC画面（横幅768px以上）：右側に300x250広告を固定配置 */
+        /* PC画面（横幅768px以上）：右側に300x250広告を表示 */
+        /*     \‾‾_\^___^    「‾‾‾‾‾‾‾‾‾‾‾‾
+        /*     \ _\(о´∀`о)  < 見つかったピカ     */
+        /*     \\\ /     \     ____________」   */
         /* ----------------------------------------- */
+
+        
         @media (min-width: 768px) {
             .posts-container {
                 right: 330px !important;
@@ -257,7 +261,7 @@
         }
         .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         
-        /* 番号リンク（クリックで入力欄に引用） */
+        /* 番号リンク */
         .post-num { 
             font-weight: 700; 
             color: var(--accent-color); 
@@ -268,7 +272,7 @@
             text-decoration: underline; 
         }
 
-        /* >>アンカーのスタイル（色付き・ジャンプ用） */
+        /* >>アンカーのスタイル*/
         .post-anchor {
             color: #f43f5e;
             font-weight: 600;
@@ -546,13 +550,13 @@
             }
         }
 
-        // 新着レスを滑らかに最下部へ移動
+        // 新着レスを「滑らかに」最下部へ移動
         function smoothScrollToBottom() {
             if (!container) return;
             container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
         }
 
-        // 強制的に一番下へスクロールする関数
+        // 強制的に一番下へスクロール
         function scrollToBottom() {
             if (!container) return;
             const scrollAction = () => {
@@ -791,7 +795,7 @@
                 loadOlderBtn.disabled = true;
                 loadOlderBtn.style.opacity = '0.6';
 
-                // 追加前の位置を保存。過去レスを上に追加しても読んでいた場所を維持する。
+                // 追加前の位置を保存。過去レスを上に追加しても読んでいた場所を維持
                 const oldScrollHeight = container.scrollHeight;
                 const oldScrollTop = container.scrollTop;
 
@@ -862,7 +866,7 @@
             bbsForm.dataset.submitHandlerBound = '1';
             let isSubmitting = false;
 
-            // Ctrl + Enter (Macは Cmd + Enter) でフォーム送信
+            // Ctrl + Enter でフォーム送信(熟鷹からのリクエスト)
             const contentInput = bbsForm.querySelector('textarea[name="content"]');
             if (contentInput) {
                 contentInput.addEventListener('keydown', (e) => {
