@@ -23,10 +23,10 @@
     <!-- WebPファビコン -->
     <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
 
-    <!-- iOS (iPhone) ホーム画面用アイコン -->
+    <!-- iOSホーム画面用アイコン -->
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
 
-    <!-- Android用 Web App Manifest -->
+    <!-- Android用-->
     <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
 
     
@@ -59,8 +59,8 @@
             --card-bg: #FFFFFF;
             --card-border: #E5E7EB;
             --text: #111827;
-            --text-muted: #475569; /* より濃く読みやすい色に変更 (#6B7280 -> #475569) */
-            --text-faint: #64748B; /* 薄すぎる文字を改善 (#9CA3AF -> #64748B) */
+            --text-muted: #475569; 
+            --text-faint: #64748B; 
             --primary: #2563EB;
             --primary-hover: #1D4ED8;
             --primary-soft: #EFF4FE;
@@ -81,7 +81,7 @@
             --card-bg: #16181D;
             --card-border: #2A2D34;
             --text: #E5E7EB;
-            --text-muted: #CBD5E1; /* ダークモード時もくっきり読めるように変更 */
+            --text-muted: #CBD5E1; 
             --text-faint: #94A3B8;
             --primary: #5B93F5;
             --primary-hover: #7CA8F8;
@@ -104,8 +104,12 @@
         a { color: inherit; }
 
         /* ==================================================
-           全体レイアウト（サイドバー + トップバー + 本文2カラム）
-           ================================================== */
+           全体レイアウト
+
+          <(･ 彡 )з三 ｽﾞｻｰ                A  A
+       　　　　　　<(･ 彡 )з三 ｽﾞｻｰ       ヽ(￣д￣;)ノ=3=3=3
+       　　　　　<(･ 彡 )з三 ｽﾞｻｰ.          \     \
+　　　　　　　 ================================================== */
         .app-shell {
             display: flex;
             align-items: flex-start;
@@ -183,7 +187,7 @@
         .side-collapsible-body { display: flex; flex-direction: column; gap: 1px; }
         .side-collapsible-body.collapsed { display: none; }
 
-        /* ---- 右側：トップバー＋本文 ---- */
+        /* ---- 右側 ---- */
         .main-wrap {
             flex: 1 1 auto;
             min-width: 0;
