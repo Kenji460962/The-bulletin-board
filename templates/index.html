@@ -55,7 +55,7 @@
 
     <style>
           :root {
-            --bg: #FAFAFA;
+            --bg: #F6F8FA;
             --card-bg: #FFFFFF;
             --card-border: #E5E7EB;
             --text: #111827;
@@ -192,6 +192,7 @@
             flex: 1 1 auto;
             min-width: 0;
             padding: 18px 24px 40px;
+            background-color: var(--card-bg);
         }
 
         .topbar {
@@ -527,10 +528,19 @@
         .category-row:hover .category-row-title { color: var(--primary); }
         .category-tag {
             flex: 0 0 auto;
-            width: 8px;
-            height: 8px;
-            border-radius: 2px;
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
         }
+        /* カテゴリ一覧のアイコンは、バッジより彩度の高い色で発色をはっきりさせる */
+        .category-tag.cat-red    { background: #DC2626; }
+        .category-tag.cat-blue   { background: var(--primary); }
+        .category-tag.cat-purple { background: #7C3AED; }
+        .category-tag.cat-slate  { background: #64748B; }
+        .category-tag.cat-pink   { background: #DB2777; }
+        .category-tag.cat-teal   { background: #059669; }
+        .category-tag.cat-indigo { background: #4F46E5; }
+        .category-tag.cat-amber  { background: #B45309; }
         .category-row-text { min-width: 0; flex: 1 1 auto; }
         .category-row-title { font-weight: 700; font-size: 15.5px; color: var(--text); line-height: 1.6; }
         .category-row-desc { font-size: 14px; color: var(--text-muted); margin-top: 2px; line-height: 1.6; }
@@ -546,8 +556,27 @@
         }
         .popular-rank {
             flex: 0 0 auto;
-            width: 16px;
-            font-size: 12px; font-weight: 700; color: var(--text-faint);
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-faint);
+            background: transparent;
+        }
+        /* 1位：アクセントカラーで塗りつぶし */
+        .popular-list li:nth-child(1) .popular-rank {
+            background: var(--primary);
+            color: #fff;
+        }
+        /* 2〜3位：控えめな色（アクセントの薄色＋文字色） */
+        .popular-list li:nth-child(2) .popular-rank,
+        .popular-list li:nth-child(3) .popular-rank {
+            background: var(--primary-soft);
+            color: var(--primary);
         }
         .popular-title {
             flex: 1 1 auto; min-width: 0;
