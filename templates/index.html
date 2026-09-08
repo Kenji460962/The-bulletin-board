@@ -604,6 +604,49 @@
         .menu-list-title { font-weight: 600; font-size: 15px; line-height: 1.6; }
         .menu-list-desc { font-size: 14px; color: var(--text-muted); margin-top: 2px; line-height: 1.6; }
         .menu-list-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 15px; }
+        .menu-list-item-btn {
+            width: 100%;
+            background: transparent;
+            border: none;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        /* ---- ゲームタブ ---- */
+        .game-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+        .game-card-item {
+            display: flex; align-items: center; gap: 14px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            text-decoration: none;
+            color: var(--text);
+            transition: border-color 0.15s ease;
+        }
+        .game-card-item:hover { border-color: var(--primary); }
+        .game-card-item:hover .game-card-title { color: var(--primary); }
+        .game-card-icon {
+            flex: 0 0 auto;
+            width: 44px; height: 44px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+            background: var(--primary-soft);
+            border-radius: var(--radius-sm);
+        }
+        .game-card-koma {
+            width: 30px; height: 30px;
+            background: linear-gradient(180deg, #f0d9ab, #d9b477);
+            clip-path: polygon(50% 0%, 88% 22%, 100% 100%, 0% 100%, 12% 22%);
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+            font-weight: 700; font-size: 14px; color: #3b2610;
+        }
+        .game-card-text { min-width: 0; flex: 1 1 auto; }
+        .game-card-title { font-weight: 700; font-size: 15.5px; color: var(--text); line-height: 1.6; }
+        .game-card-desc { font-size: 14px; color: var(--text-muted); margin-top: 2px; line-height: 1.6; }
+        .game-card-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 15px; }
 
         /* ---- フッター ---- */
         .site-footer {
@@ -715,7 +758,7 @@
             <nav class="side-nav">
                 <button class="side-nav-item active" data-tab="lobby-tab" onclick="switchTab('lobby-tab', this)">ロビー</button>
                 <button class="side-nav-item" data-tab="threads-tab" onclick="switchTab('threads-tab', this)">スレ一覧</button>
-                <a class="side-nav-item" href="{{ url_for('games_hub') }}">ゲーム</a>
+                <button class="side-nav-item" data-tab="games-tab" onclick="switchTab('games-tab', this)">ゲーム</button>
                 <button class="side-nav-item" data-tab="guide-tab" onclick="switchTab('guide-tab', this)">使い方</button>
             </nav>
 
@@ -1008,7 +1051,7 @@
                             <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
                                 <li><strong style="color: var(--text);">ダークモード切り替え:</strong> 右上の「ダーク表示 / ライト表示」ボタンで画面デザインを切り替えられます。</li>
                                 <li><strong style="color: var(--text);">スレ番号ジャンプ:</strong> スレ一覧にある「スレ番号でジャンプ」にID番号を入力すると、目的のスレに一発で移動できます。</li>
-                                <li><strong style="color: var(--text);">ミニゲーム:</strong> サイドバーの「ゲーム」から、ブラウザで遊べるオセロやチェスを楽しめます。</li>
+                                <li><strong style="color: var(--text);">ミニゲーム:</strong> サイドバーの「ゲーム」タブから、ブラウザで遊べるオセロ・チェス・将棋を楽しめます。</li>
                             </ul>
                         </div>
 
@@ -1034,19 +1077,64 @@
                         </div>
                     </div>
 
+                    <!-- 4. ゲームタブ -->
+                    <div id="games-tab" class="content-section">
+                        <div class="glass-panel lobby-hero">
+                            <h1 class="lobby-title" style="font-size: 20px;">🎮 ゲーム</h1>
+                            <p class="lobby-desc">
+                                友達と部屋コードで対戦できます（登録不要・匿名）
+                            </p>
+                        </div>
+
+                        <div class="glass-panel">
+                            <ul class="game-card-list">
+                                <li>
+                                    <a class="game-card-item" href="{{ url_for('game_lobby') }}">
+                                        <div class="game-card-icon">⚫⚪</div>
+                                        <div class="game-card-text">
+                                            <div class="game-card-title">オンラインオセロ</div>
+                                            <div class="game-card-desc">部屋を作って、リンクを共有して対戦しよう</div>
+                                        </div>
+                                        <div class="game-card-chevron">›</div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="game-card-item" href="{{ url_for('chess_lobby') }}">
+                                        <div class="game-card-icon">♟️</div>
+                                        <div class="game-card-text">
+                                            <div class="game-card-title">オンラインチェス</div>
+                                            <div class="game-card-desc">王手・キャスリングにも対応した本格対戦</div>
+                                        </div>
+                                        <div class="game-card-chevron">›</div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="game-card-item" href="{{ url_for('shogi_lobby') }}">
+                                        <div class="game-card-icon"><div class="game-card-koma">歩</div></div>
+                                        <div class="game-card-text">
+                                            <div class="game-card-title">オンライン将棋</div>
+                                            <div class="game-card-desc">持ち駒・成りにも対応した本格対戦</div>
+                                        </div>
+                                        <div class="game-card-chevron">›</div>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
                     <!-- 3. 「その他」タブ -->
                     <div id="other-tab" class="content-section">
                         <div class="glass-panel">
                             <h3 class="panel-title" style="margin-top: 0;">ゲーム</h3>
                             <ul class="menu-list">
                                 <li>
-                                    <a class="menu-list-item" href="{{ url_for('games_hub') }}">
+                                    <button type="button" class="menu-list-item menu-list-item-btn" onclick="switchTab('games-tab', document.querySelector('.side-nav-item[data-tab=\'games-tab\']'))">
                                         <div class="menu-list-text">
-                                            <div class="menu-list-title">ゲームハブ（オセロ・チェス）</div>
-                                            <div class="menu-list-desc">ブラウザで今すぐ遊べるリバーシ＆チェス対戦</div>
+                                            <div class="menu-list-title">ゲームハブ（オセロ・チェス・将棋）</div>
+                                            <div class="menu-list-desc">ブラウザで今すぐ遊べるオンライン対戦</div>
                                         </div>
                                         <div class="menu-list-chevron">›</div>
-                                    </a>
+                                    </button>
                                 </li>
                             </ul>
                         </div>
@@ -1443,6 +1531,14 @@
             for (var k = 0; k < btns.length; k++) {
                 if (btns[k].getAttribute('data-tab') === 'guide-tab') {
                     switchTab('guide-tab', btns[k]);
+                    break;
+                }
+            }
+        } else if (tabParam === 'games') {
+            var btns = document.querySelectorAll('.side-nav-item[data-tab]');
+            for (var k = 0; k < btns.length; k++) {
+                if (btns[k].getAttribute('data-tab') === 'games-tab') {
+                    switchTab('games-tab', btns[k]);
                     break;
                 }
             }
