@@ -88,24 +88,30 @@
             --primary-hover: #7CA8F8;
             --primary-soft: rgba(91, 147, 245, 0.12);
             --amber-soft: rgba(180, 83, 9, 0.15);
-            --bg-image: url("{{ url_for('static', filename='IMG_0566.png') }}");
+            --bg-image: url("{{ url_for('static', filename='IMG_0565.png') }}");
         }
 
         * { box-sizing: border-box; }
 
         body {
             background-color: var(--bg);
-            background-image: var(--bg-image);
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
             color: var(--text);
             font-family: 'Inter', "Hiragino Kaku Gothic ProN", "Yu Gothic", "MS PGothic", sans-serif;
             margin: 0;
             min-height: 100vh;
             font-size: 16px;
             line-height: 1.65;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background-image: var(--bg-image);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: -1;
         }
 
         a { color: inherit; }
