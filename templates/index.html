@@ -74,6 +74,7 @@
             --radius-sm: 4px;
             --radius-pill: 4px;
             --sidebar-w: 240px;
+            --bg-image: url("{{ url_for('static', filename='haikei1.png') }}");
         }
 
         html[data-theme="dark"] {
@@ -87,12 +88,18 @@
             --primary-hover: #7CA8F8;
             --primary-soft: rgba(91, 147, 245, 0.12);
             --amber-soft: rgba(180, 83, 9, 0.15);
+            --bg-image: url("{{ url_for('static', filename='haikei2.png') }}");
         }
 
         * { box-sizing: border-box; }
 
         body {
             background-color: var(--bg);
+            background-image: var(--bg-image);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
             color: var(--text);
             font-family: 'Inter', "Hiragino Kaku Gothic ProN", "Yu Gothic", "MS PGothic", sans-serif;
             margin: 0;
@@ -120,7 +127,7 @@
         .sidebar {
             width: var(--sidebar-w);
             flex: 0 0 var(--sidebar-w);
-            background: var(--card-bg);
+            background: transparent;
             border-right: 1px solid var(--card-border);
             min-height: 100vh;
             padding: 18px 14px 24px;
@@ -199,7 +206,7 @@
             flex: 1 1 auto;
             min-width: 0;
             padding: 18px 24px 40px;
-            background-color: var(--card-bg);
+            background-color: transparent;
         }
 
         .topbar {
