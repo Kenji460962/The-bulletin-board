@@ -1,4 +1,8 @@
-from flask import Flask, render_template, request, redirect, url_for, make_response, session
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, PlainTextResponse, Response
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 from datetime import datetime, timedelta
 import json
 import html
@@ -14,18 +18,53 @@ import boto3
 import psutil
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-from werkzeug.middleware.proxy_fix import ProxyFix
+import uvicorn
 
 load_dotenv()
 
-app = Flask(__name__)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 7
+app = FastAPI()
 
-# Nginx1台のみの場合: x_for=1
-# Cloudflare + Nginx の場合: x_for=2
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2, x_proto=1, x_host=1, x_prefix=1)
+# --- Jinja2テンプレート ---
+templates = Jinja2Templates(directory="templates")
+
+# --- 静的ファイル配信（Flaskの /static 相当） ---
+if os.path.isdir("static"):
+    app.mount("/static", StaticFiles(directory="static", max_age=60 * 60 * 24 * 7), name="static")
+
+FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345')
+
+# --- セッション（Flaskのsession相当。itsdangerousで署名したクッキーに保存） ---
+app.add_middleware(SessionMiddleware, secret_key=FLASK_SECRET_KEY)
+
+# Nginx1台のみの場合: --proxy-headers 付きでuvicornを起動し forwarded-allow-ips を設定
+# Cloudflare + Nginx の場合も同様。X-Forwarded-*の解決はASGIサーバー側(uvicorn --proxy-headers)
+# もしくはリバースプロキシ側で行う。アプリ側はCF-Connecting-IPを直接信頼する実装のまま。
 
 psutil.cpu_percent(interval=None)
+
+
+def json_resp(content, status_code: int = 200):
+    return JSONResponse(content=content, status_code=status_code)
+
+
+def text_resp(content, status_code: int = 200):
+    return HTMLResponse(content=content, status_code=status_code)
+
+
+async def get_json_silent(request: Request):
+    try:
+        return await request.json()
+    except Exception:
+        return {}
+
+
+# --- HEADリクエストに常に200を返す（Flaskのbefore_request相当） ---
+@app.middleware("http")
+async def response_to_uptimerobot(request: Request, call_next):
+    if request.method == 'HEAD':
+        return Response(content='', status_code=200)
+    return await call_next(request)
+
 
 # --- スレッドのカテゴリ定義（value, 表示ラベル, バッジ配色キー） ---
 THREAD_CATEGORIES = [
@@ -61,10 +100,11 @@ CF_D1_ACCOUNT_ID = os.environ.get('CF_D1_ACCOUNT_ID')
 CF_D1_DATABASE_ID = os.environ.get('CF_D1_DATABASE_ID')
 CF_D1_API_TOKEN = os.environ.get('CF_D1_API_TOKEN')
 
+
 def query_d1(sql, params=None):
     if not CF_D1_ACCOUNT_ID or not CF_D1_DATABASE_ID or not CF_D1_API_TOKEN:
         return []
-        
+
     url = f"https://api.cloudflare.com/client/v4/accounts/{CF_D1_ACCOUNT_ID}/d1/database/{CF_D1_DATABASE_ID}/query"
     headers = {
         "Authorization": f"Bearer {CF_D1_API_TOKEN}",
@@ -83,11 +123,11 @@ def query_d1(sql, params=None):
         print(f"D1 API通信エラー: {e}")
     return []
 
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345')
 
 # ---- サーバー状況（CPU/メモリ/ネットワーク）計測用 ----
 _last_cpu_usage_usec = None
 _last_cpu_check_time = None
+
 
 def read_cgroup_memory():
     try:
@@ -109,6 +149,7 @@ def read_cgroup_memory():
         return used, limit
     except Exception:
         return None, None
+
 
 def read_cgroup_cpu_percent():
     global _last_cpu_usage_usec, _last_cpu_check_time
@@ -148,9 +189,11 @@ def read_cgroup_cpu_percent():
     except Exception:
         return None
 
+
 _last_net_rx_bytes = None
 _last_net_tx_bytes = None
 _last_net_check_time = None
+
 
 def read_network_speed():
     global _last_net_rx_bytes, _last_net_tx_bytes, _last_net_check_time
@@ -185,12 +228,8 @@ def read_network_speed():
     except Exception:
         return None, None
 
-CF_SHARED_SECRET = os.environ.get('CF_SHARED_SECRET')
 
-@app.before_request
-def response_to_uptimerobot():
-    if request.method == 'HEAD':
-        return make_response('', 200)
+CF_SHARED_SECRET = os.environ.get('CF_SHARED_SECRET')
 
 s3_client = boto3.client(
     's3',
@@ -200,12 +239,13 @@ s3_client = boto3.client(
     region_name='auto'
 )
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
-R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')  
+R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 
 
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
 LAST_REPLY_SIGNATURES = {}
+
 
 def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
@@ -214,26 +254,25 @@ def get_daily_user_id(ip_address):
     return hashed[:8]
 
 
-
-def get_client_ip():
+def get_client_ip(request: Request):
     # サーバーIPへの直接アクセスは不可にしてあるため、リクエストは必ず
     # Cloudflareを経由する。よってCF-Connecting-IP(Cloudflareが書き換える
     # 正規のクライアントIP)をそのまま信頼してよい。
     ip = request.headers.get('CF-Connecting-IP')
 
     # CF-Connecting-IPが無い場合(ローカル開発環境など)のフォールバック。
-    # ProxyFix(x_for=2)が信頼するプロキシ段数を考慮して正しく解決した
-    # request.remote_addrを使う。
-    # (生のX-Forwarded-Forヘッダーの先頭値を自前で取ると、その値は
-    #  クライアントが自由に偽装できてしまうため不正確)
+    # uvicornを--proxy-headersで起動していれば request.client.host は
+    # 正しく解決されたクライアントIPになる。
     if not ip:
-        ip = request.remote_addr
+        ip = request.client.host if request.client else None
 
     return ip
+
 
 PROXYCHECK_API_KEY = os.environ.get('PROXYCHECK_API_KEY', '')
 _PROXY_CHECK_CACHE = {}
 _PROXY_CACHE_TTL = 60 * 60 * 24
+
 
 def is_proxy_or_vpn(ip):
     if not ip:
@@ -262,6 +301,7 @@ def is_proxy_or_vpn(ip):
     _PROXY_CHECK_CACHE[ip] = {"is_proxy": is_proxy, "checked_at": now}
     return is_proxy
 
+
 def is_banned_ip(ip):
     if not ip:
         return False
@@ -272,41 +312,50 @@ def is_banned_ip(ip):
         print(f"BANチェックエラー: {e}")
         return False
 
-def get_staff_role():
-    return session.get('staff_role')
 
-def can_manage_board():
-    return session.get('staff_role') in ['admin', 'sub_admin']
+def get_staff_role(request: Request):
+    return request.session.get('staff_role')
 
-@app.route('/login_secret_8823', methods=['GET', 'POST'])
-def staff_login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        try:
-            res = query_d1("SELECT * FROM staff_users WHERE username = ?", [username])
-            if res:
-                user = res[0]
-                if user['password'] == password: 
-                    session['staff_id'] = user['id']
-                    session['staff_role'] = user['role']
-                    session['staff_name'] = user['display_name']
-                    return redirect(url_for('index'))
-        except Exception as e:
-            print(f"Login error: {e}")
-        return "ログイン失敗", 401
-    return '''
+
+def can_manage_board(request: Request):
+    return request.session.get('staff_role') in ['admin', 'sub_admin']
+
+
+@app.get('/login_secret_8823')
+async def staff_login_form():
+    return HTMLResponse('''
         <form method="post">
             ID: <input type="text" name="username"><br>
             PW: <input type="password" name="password"><br>
             <input type="submit" value="Enter">
         </form>
-    '''
+    ''')
 
-@app.route('/staff_logout')
-def staff_logout():
-    session.clear()
-    return redirect(url_for('index'))
+
+@app.post('/login_secret_8823')
+async def staff_login(request: Request):
+    form = await request.form()
+    username = form.get('username')
+    password = form.get('password')
+    try:
+        res = query_d1("SELECT * FROM staff_users WHERE username = ?", [username])
+        if res:
+            user = res[0]
+            if user['password'] == password:
+                request.session['staff_id'] = user['id']
+                request.session['staff_role'] = user['role']
+                request.session['staff_name'] = user['display_name']
+                return RedirectResponse(url='/', status_code=303)
+    except Exception as e:
+        print(f"Login error: {e}")
+    return text_resp("ログイン失敗", 401)
+
+
+@app.get('/staff_logout')
+async def staff_logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url='/')
+
 
 NG_WORDS = {
     'ﾀﾋ': 'タヒ',
@@ -328,12 +377,12 @@ NG_WORDS = {
     'れいぷ': 'れ〇ぷ',
     'バカ': 'バ*',
     'アホ': 'ア*',
-    'シコシコ':'4545',
-    'オナニー':'0721',
-    '射精':'身寸米青',
-    '精子':'米青子',
-    
+    'シコシコ': '4545',
+    'オナニー': '0721',
+    '射精': '身寸米青',
+    '精子': '米青子',
 }
+
 
 def filter_ng_words(text):
     if not text:
@@ -342,6 +391,7 @@ def filter_ng_words(text):
         if ng_word in text:
             text = text.replace(ng_word, replaced_word)
     return text
+
 
 def update_and_get_user_counts(current_token, location):
     now = datetime.utcnow()
@@ -364,47 +414,59 @@ def update_and_get_user_counts(current_token, location):
 
     return count
 
-@app.route('/api/lobby/active_count')
-def api_lobby_active_count():
+
+@app.get('/api/lobby/active_count')
+async def api_lobby_active_count(request: Request):
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
     if not user_token:
         user_token = str(uuid.uuid4())
         is_new_user = True
     count = update_and_get_user_counts(user_token, "lobby")
-    resp = make_response({'success': True, 'active_count': count, 'count': count})
+    resp = json_resp({'success': True, 'active_count': count, 'count': count})
     if is_new_user:
-        resp.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
+        resp.set_cookie('user_bbs_token', user_token, max_age=60 * 60 * 24 * 365, httponly=True)
     return resp
 
-@app.route('/privacy')
-def privacy():
-    return render_template('privacy.html')
 
-@app.route('/terms')
-def terms():
-    return render_template('terms.html')
+@app.get('/privacy')
+async def privacy(request: Request):
+    return templates.TemplateResponse(request, 'privacy.html', {})
 
-    
-@app.route('/roles')
-def roles():
-    return render_template('roles.html')
+
+@app.get('/terms')
+async def terms(request: Request):
+    return templates.TemplateResponse(request, 'terms.html', {})
+
+
+@app.get('/roles')
+async def roles(request: Request):
+    return templates.TemplateResponse(request, 'roles.html', {})
+
 
 # =========================
-# D1版 ゲーム機能（オセロ・チェス・アーカイブ）
+# D1版 ゲーム機能（オセロ・チェス・将棋）
 # =========================
 
-def _game_token():
+def _game_token(request: Request):
     token = request.cookies.get('game_player_token') or request.cookies.get('user_bbs_token')
     if not token:
         token = str(uuid.uuid4())
     return token
 
-def _game_name(default='名無しさん'):
-    name = request.form.get('name')
-    if not name and request.is_json:
-        body = request.get_json(silent=True) or {}
-        name = body.get('name')
+
+async def _game_name(request: Request, default='名無しさん'):
+    name = None
+    content_type = request.headers.get('content-type', '')
+    try:
+        if 'application/json' in content_type:
+            body = await request.json()
+            name = body.get('name')
+        else:
+            form = await request.form()
+            name = form.get('name')
+    except Exception:
+        name = None
     if not name:
         raw = request.cookies.get('bbs_saved_author')
         if raw:
@@ -414,6 +476,7 @@ def _game_name(default='名無しさん'):
                 name = raw
     name = html.escape(str(name or default).strip())[:20]
     return name or default
+
 
 def _new_room_code():
     alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -425,116 +488,135 @@ def _new_room_code():
             return code
     return uuid.uuid4().hex[:6].upper()
 
+
 def _initial_othello():
     b = ['.'] * 64
-    b[3*8+3] = 'W'; b[3*8+4] = 'B'; b[4*8+3] = 'B'; b[4*8+4] = 'W'
+    b[3 * 8 + 3] = 'W'; b[3 * 8 + 4] = 'B'; b[4 * 8 + 3] = 'B'; b[4 * 8 + 4] = 'W'
     return ''.join(b)
+
 
 def _othello_valid(board, player):
     opp = 'W' if player == 'B' else 'B'
-    dirs = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
-    out=[]
+    dirs = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+    out = []
     for r in range(8):
         for c in range(8):
-            if board[r*8+c] != '.': continue
-            ok=False
-            for dr,dc in dirs:
-                rr,cc=r+dr,c+dc; seen=False
-                while 0<=rr<8 and 0<=cc<8 and board[rr*8+cc]==opp:
-                    seen=True; rr+=dr; cc+=dc
-                if seen and 0<=rr<8 and 0<=cc<8 and board[rr*8+cc]==player:
-                    ok=True; break
-            if ok: out.append((r,c))
+            if board[r * 8 + c] != '.':
+                continue
+            ok = False
+            for dr, dc in dirs:
+                rr, cc = r + dr, c + dc; seen = False
+                while 0 <= rr < 8 and 0 <= cc < 8 and board[rr * 8 + cc] == opp:
+                    seen = True; rr += dr; cc += dc
+                if seen and 0 <= rr < 8 and 0 <= cc < 8 and board[rr * 8 + cc] == player:
+                    ok = True; break
+            if ok:
+                out.append((r, c))
     return out
 
+
 def _othello_apply(board, player, r, c):
-    if (r,c) not in _othello_valid(board, player): return None
-    a=list(board); a[r*8+c]=player; opp='W' if player=='B' else 'B'
-    dirs=[(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
-    for dr,dc in dirs:
-        rr,cc=r+dr,c+dc; flips=[]
-        while 0<=rr<8 and 0<=cc<8 and a[rr*8+cc]==opp:
-            flips.append((rr,cc)); rr+=dr; cc+=dc
-        if flips and 0<=rr<8 and 0<=cc<8 and a[rr*8+cc]==player:
-            for fr,fc in flips: a[fr*8+fc]=player
+    if (r, c) not in _othello_valid(board, player):
+        return None
+    a = list(board); a[r * 8 + c] = player; opp = 'W' if player == 'B' else 'B'
+    dirs = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+    for dr, dc in dirs:
+        rr, cc = r + dr, c + dc; flips = []
+        while 0 <= rr < 8 and 0 <= cc < 8 and a[rr * 8 + cc] == opp:
+            flips.append((rr, cc)); rr += dr; cc += dc
+        if flips and 0 <= rr < 8 and 0 <= cc < 8 and a[rr * 8 + cc] == player:
+            for fr, fc in flips:
+                a[fr * 8 + fc] = player
     return ''.join(a)
 
 
 def _initial_chess():
     # 64要素のリストを作成し、JSON文字列にシリアライズして返す
     board_list = [
-        'bR','bN','bB','bQ','bK','bB','bN','bR',
-        'bP','bP','bP','bP','bP','bP','bP','bP',
-        '','','','','','','','',
-        '','','','','','','','',
-        '','','','','','','','',
-        '','','','','','','','',
-        'wP','wP','wP','wP','wP','wP','wP','wP',
-        'wR','wN','wB','wQ','wK','wB','wN','wR'
+        'bR', 'bN', 'bB', 'bQ', 'bK', 'bB', 'bN', 'bR',
+        'bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP', 'bP',
+        '', '', '', '', '', '', '', '',
+        '', '', '', '', '', '', '', '',
+        '', '', '', '', '', '', '', '',
+        '', '', '', '', '', '', '', '',
+        'wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP', 'wP',
+        'wR', 'wN', 'wB', 'wQ', 'wK', 'wB', 'wN', 'wR'
     ]
     return json.dumps(board_list)
+
 
 def _chess_board():
     return _initial_chess()
 
-def _chess_pseudo(board, r, c, castling='', en_passant=None):
-    p=board[r*8+c]
-    if not p: return []
-    color,typ=p[0],p[1]; out=[]
-    dirs=[]
-    if typ=='N': dirs=[(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]
-    elif typ=='K': dirs=[(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
-    elif typ in 'BRQ':
-        if typ in 'BQ': dirs += [(-1,-1),(-1,1),(1,-1),(1,1)]
-        if typ in 'RQ': dirs += [(-1,0),(1,0),(0,-1),(0,1)]
-    if typ in 'NK':
-        for dr,dc in dirs:
-            rr,cc=r+dr,c+dc
-            if 0<=rr<8 and 0<=cc<8 and (not board[rr*8+cc] or board[rr*8+cc][0]!=color): out.append((rr,cc))
-    elif typ in 'BRQ':
-        for dr,dc in dirs:
-            rr,cc=r+dr,c+dc
-            while 0<=rr<8 and 0<=cc<8:
-                t=board[rr*8+cc]
-                if not t: out.append((rr,cc))
-                else:
-                    if t[0]!=color: out.append((rr,cc))
-                    break
-                rr+=dr; cc+=dc
-    elif typ=='P':
-        d=-1 if color=='w' else 1; start=6 if color=='w' else 1
-        rr=r+d
-        if 0<=rr<8 and not board[rr*8+c]:
-            out.append((rr,c))
-            rr2=r+2*d
-            if r==start and not board[rr2*8+c]: out.append((rr2,c))
-        for dc in (-1,1):
-            rr,cc=r+d,c+dc
-            if 0<=rr<8 and 0<=cc<8:
-                if board[rr*8+cc] and board[rr*8+cc][0]!=color:
-                    out.append((rr,cc))
-                elif en_passant and en_passant==(rr,cc):
-                    out.append((rr,cc))
 
-    if typ=='K':
-        row = 7 if color=='w' else 0
-        if r==row and c==4:
-            k_flag = 'K' if color=='w' else 'k'
-            q_flag = 'Q' if color=='w' else 'q'
-            opp = 'b' if color=='w' else 'w'
-            if (k_flag in castling and not board[row*8+5] and not board[row*8+6]
-                    and board[row*8+7]==color+'R'
-                    and not _chess_attacked(board,row,4,opp)
-                    and not _chess_attacked(board,row,5,opp)
-                    and not _chess_attacked(board,row,6,opp)):
-                out.append((row,6))
-            if (q_flag in castling and not board[row*8+3] and not board[row*8+2] and not board[row*8+1]
-                    and board[row*8+0]==color+'R'
-                    and not _chess_attacked(board,row,4,opp)
-                    and not _chess_attacked(board,row,3,opp)
-                    and not _chess_attacked(board,row,2,opp)):
-                out.append((row,2))
+def _chess_pseudo(board, r, c, castling='', en_passant=None):
+    p = board[r * 8 + c]
+    if not p:
+        return []
+    color, typ = p[0], p[1]; out = []
+    dirs = []
+    if typ == 'N':
+        dirs = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
+    elif typ == 'K':
+        dirs = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+    elif typ in 'BRQ':
+        if typ in 'BQ':
+            dirs += [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        if typ in 'RQ':
+            dirs += [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    if typ in 'NK':
+        for dr, dc in dirs:
+            rr, cc = r + dr, c + dc
+            if 0 <= rr < 8 and 0 <= cc < 8 and (not board[rr * 8 + cc] or board[rr * 8 + cc][0] != color):
+                out.append((rr, cc))
+    elif typ in 'BRQ':
+        for dr, dc in dirs:
+            rr, cc = r + dr, c + dc
+            while 0 <= rr < 8 and 0 <= cc < 8:
+                t = board[rr * 8 + cc]
+                if not t:
+                    out.append((rr, cc))
+                else:
+                    if t[0] != color:
+                        out.append((rr, cc))
+                    break
+                rr += dr; cc += dc
+    elif typ == 'P':
+        d = -1 if color == 'w' else 1; start = 6 if color == 'w' else 1
+        rr = r + d
+        if 0 <= rr < 8 and not board[rr * 8 + c]:
+            out.append((rr, c))
+            rr2 = r + 2 * d
+            if r == start and not board[rr2 * 8 + c]:
+                out.append((rr2, c))
+        for dc in (-1, 1):
+            rr, cc = r + d, c + dc
+            if 0 <= rr < 8 and 0 <= cc < 8:
+                if board[rr * 8 + cc] and board[rr * 8 + cc][0] != color:
+                    out.append((rr, cc))
+                elif en_passant and en_passant == (rr, cc):
+                    out.append((rr, cc))
+
+    if typ == 'K':
+        row = 7 if color == 'w' else 0
+        if r == row and c == 4:
+            k_flag = 'K' if color == 'w' else 'k'
+            q_flag = 'Q' if color == 'w' else 'q'
+            opp = 'b' if color == 'w' else 'w'
+            if (k_flag in castling and not board[row * 8 + 5] and not board[row * 8 + 6]
+                    and board[row * 8 + 7] == color + 'R'
+                    and not _chess_attacked(board, row, 4, opp)
+                    and not _chess_attacked(board, row, 5, opp)
+                    and not _chess_attacked(board, row, 6, opp)):
+                out.append((row, 6))
+            if (q_flag in castling and not board[row * 8 + 3] and not board[row * 8 + 2] and not board[row * 8 + 1]
+                    and board[row * 8 + 0] == color + 'R'
+                    and not _chess_attacked(board, row, 4, opp)
+                    and not _chess_attacked(board, row, 3, opp)
+                    and not _chess_attacked(board, row, 2, opp)):
+                out.append((row, 2))
     return out
+
 
 def _chess_find_king(board, color):
     target = color + 'K'
@@ -543,78 +625,86 @@ def _chess_find_king(board, color):
             return i // 8, i % 8
     return None
 
+
 def _chess_attacked(board, r, c, by_color):
     # ポーンの攻撃
     d = 1 if by_color == 'w' else -1
     for dc in (-1, 1):
         pr, pc = r + d, c + dc
-        if 0 <= pr < 8 and 0 <= pc < 8 and board[pr*8+pc] == by_color + 'P':
+        if 0 <= pr < 8 and 0 <= pc < 8 and board[pr * 8 + pc] == by_color + 'P':
             return True
     # ナイトの攻撃
-    for dr, dc in [(-2,-1),(-2,1),(-1,-2),(-1,2),(1,-2),(1,2),(2,-1),(2,1)]:
+    for dr, dc in [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]:
         rr, cc = r + dr, c + dc
-        if 0 <= rr < 8 and 0 <= cc < 8 and board[rr*8+cc] == by_color + 'N':
+        if 0 <= rr < 8 and 0 <= cc < 8 and board[rr * 8 + cc] == by_color + 'N':
             return True
     # 王の攻撃(隣接マス)
     for dr in (-1, 0, 1):
         for dc in (-1, 0, 1):
-            if dr == 0 and dc == 0: continue
+            if dr == 0 and dc == 0:
+                continue
             rr, cc = r + dr, c + dc
-            if 0 <= rr < 8 and 0 <= cc < 8 and board[rr*8+cc] == by_color + 'K':
+            if 0 <= rr < 8 and 0 <= cc < 8 and board[rr * 8 + cc] == by_color + 'K':
                 return True
     # 直線(ルーク・クイーン)
-    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
         rr, cc = r + dr, c + dc
         while 0 <= rr < 8 and 0 <= cc < 8:
-            p = board[rr*8+cc]
+            p = board[rr * 8 + cc]
             if p:
-                if p[0] == by_color and p[1] in ('R', 'Q'): return True
+                if p[0] == by_color and p[1] in ('R', 'Q'):
+                    return True
                 break
             rr += dr; cc += dc
     # 斜め(ビショップ・クイーン)
-    for dr, dc in [(-1,-1),(-1,1),(1,-1),(1,1)]:
+    for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
         rr, cc = r + dr, c + dc
         while 0 <= rr < 8 and 0 <= cc < 8:
-            p = board[rr*8+cc]
+            p = board[rr * 8 + cc]
             if p:
-                if p[0] == by_color and p[1] in ('B', 'Q'): return True
+                if p[0] == by_color and p[1] in ('B', 'Q'):
+                    return True
                 break
             rr += dr; cc += dc
     return False
 
+
 def _chess_in_check(board, color):
     pos = _chess_find_king(board, color)
-    if not pos: return False
+    if not pos:
+        return False
     r, c = pos
     opp = 'b' if color == 'w' else 'w'
     return _chess_attacked(board, r, c, opp)
 
+
 def _chess_apply(board, r, c, tr, tc):
     """盤面をコピーして着手を適用した新しい盤面を返す(王手判定のシミュレーション用)"""
     nb = board[:]
-    piece = nb[r*8+c]
+    piece = nb[r * 8 + c]
     color, typ = piece[0], piece[1]
-    nb[r*8+c] = ''
+    nb[r * 8 + c] = ''
 
     if typ == 'K' and abs(tc - c) == 2:
         # キャスリング: 王が横に2マス動く手 -> ルークも一緒に動かす
-        nb[tr*8+tc] = piece
+        nb[tr * 8 + tc] = piece
         row = r
         if tc == 6:
-            nb[row*8+7] = ''
-            nb[row*8+5] = color + 'R'
+            nb[row * 8 + 7] = ''
+            nb[row * 8 + 5] = color + 'R'
         elif tc == 2:
-            nb[row*8+0] = ''
-            nb[row*8+3] = color + 'R'
-    elif typ == 'P' and c != tc and not board[tr*8+tc]:
+            nb[row * 8 + 0] = ''
+            nb[row * 8 + 3] = color + 'R'
+    elif typ == 'P' and c != tc and not board[tr * 8 + tc]:
         # アンパッサン: ポーンが斜めに動いたのに移動先が空 -> 通過されたポーンを取る
-        nb[tr*8+tc] = piece
-        nb[r*8+tc] = ''
+        nb[tr * 8 + tc] = piece
+        nb[r * 8 + tc] = ''
     elif typ == 'P' and tr in (0, 7):
-        nb[tr*8+tc] = color + 'Q'
+        nb[tr * 8 + tc] = color + 'Q'
     else:
-        nb[tr*8+tc] = piece
+        nb[tr * 8 + tc] = piece
     return nb
+
 
 def _chess_update_castling_rights(castling, typ, color, r, c, tr, tc):
     new_castling = castling or ''
@@ -624,6 +714,7 @@ def _chess_update_castling_rights(castling, typ, color, r, c, tr, tc):
         if (r, c) == (rr, cc) or (tr, tc) == (rr, cc):
             new_castling = new_castling.replace(flag, '')
     return new_castling
+
 
 def _chess_legal_moves(board, color, castling='', en_passant=None):
     """自分の王が王手にさらされる手を除いた、本当に指せる手の一覧"""
@@ -637,14 +728,18 @@ def _chess_legal_moves(board, color, castling='', en_passant=None):
                     moves.append((r, c, tr, tc))
     return moves
 
+
 SHOGI_HAND_TYPES = ['P', 'L', 'N', 'S', 'G', 'B', 'R']
 SHOGI_PROMOTABLE = ('P', 'L', 'N', 'S', 'B', 'R')
+
 
 def _shogi_empty_hands():
     return {'s': {t: 0 for t in SHOGI_HAND_TYPES}, 'g': {t: 0 for t in SHOGI_HAND_TYPES}}
 
+
 def _initial_shogi_hands_json():
     return json.dumps(_shogi_empty_hands())
+
 
 def _initial_shogi_board():
     # 9x9(81マス)の盤面をJSON文字列で返す。空マスは''、駒は 手番色('s'=先手/'g'=後手) + 種類 の2文字。
@@ -662,12 +757,15 @@ def _initial_shogi_board():
     board[7 * 9 + 7] = 'sB'
     return json.dumps(board)
 
+
 def _shogi_forward(color):
     return -1 if color == 's' else 1
+
 
 def _shogi_zone(color, r):
     """成れる範囲(敵陣3段)かどうか"""
     return r <= 2 if color == 's' else r >= 6
+
 
 def _shogi_forced_promotion(base_typ, color, tr):
     """そのまま進むと二度と動けなくなる駒は、強制的に成る"""
@@ -676,6 +774,7 @@ def _shogi_forced_promotion(base_typ, color, tr):
     if base_typ == 'N':
         return tr <= 1 if color == 's' else tr >= 7
     return False
+
 
 def _shogi_piece_moves(board, r, c):
     """(王手を考慮しない)疑似合法手の移動先マス一覧"""
@@ -741,12 +840,14 @@ def _shogi_piece_moves(board, r, c):
             step(*d)
     return out
 
+
 def _shogi_find_king(board, color):
     target = color + 'K'
     for i, p in enumerate(board):
         if p == target:
             return i // 9, i % 9
     return None
+
 
 def _shogi_attacked(board, r, c, by_color):
     for i, p in enumerate(board):
@@ -756,6 +857,7 @@ def _shogi_attacked(board, r, c, by_color):
                 return True
     return False
 
+
 def _shogi_in_check(board, color):
     pos = _shogi_find_king(board, color)
     if not pos:
@@ -763,6 +865,7 @@ def _shogi_in_check(board, color):
     r, c = pos
     opp = 'g' if color == 's' else 's'
     return _shogi_attacked(board, r, c, opp)
+
 
 def _shogi_apply_move(board, r, c, tr, tc, promote=False):
     """盤面をコピーして着手を適用した新しい盤面を返す"""
@@ -775,6 +878,7 @@ def _shogi_apply_move(board, r, c, tr, tc, promote=False):
         new_typ = '+' + typ
     nb[tr * 9 + tc] = color + new_typ
     return nb
+
 
 def _shogi_drop_allowed(board, color, ptype, r, c):
     if board[r * 9 + c]:
@@ -797,6 +901,7 @@ def _shogi_drop_allowed(board, color, ptype, r, c):
             return False
     return True
 
+
 def _shogi_legal_board_moves(board, color):
     """自分の王が王手にさらされる手を除いた、盤上の駒を動かす合法手の一覧"""
     moves = []
@@ -808,6 +913,7 @@ def _shogi_legal_board_moves(board, color):
                 if not _shogi_in_check(simulated, color):
                     moves.append((r, c, tr, tc))
     return moves
+
 
 def _shogi_legal_drop_moves(board, color, hand):
     """持ち駒を打てる合法手が1つでもあるかを調べるための一覧"""
@@ -827,19 +933,24 @@ def _shogi_legal_drop_moves(board, color, hand):
                 moves.append((ptype, r, c))
     return moves
 
-def _cookie_response(resp, token):
+
+def _cookie_response(request: Request, resp, token):
     if not request.cookies.get('game_player_token'):
-        resp.set_cookie('game_player_token', token, max_age=60*60*24*365, httponly=True, samesite='Lax')
+        resp.set_cookie('game_player_token', token, max_age=60 * 60 * 24 * 365, httponly=True, samesite='Lax')
     return resp
 
 
-@app.route('/games')
-def games_hub():
-    return render_template('games_hub.html')
+@app.get('/games')
+async def games_hub(request: Request):
+    return templates.TemplateResponse(request, 'games_hub.html', {})
 
-@app.route('/archive')
-def archive_list():
-    page = request.args.get('page', default=1, type=int)
+
+@app.get('/archive')
+async def archive_list(request: Request):
+    try:
+        page = int(request.query_params.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
     per_page = 20
     offset = (page - 1) * per_page
     rows = query_d1(
@@ -848,17 +959,20 @@ def archive_list():
     )
     archived_threads = rows or []
     has_next = len(archived_threads) == per_page
-    return render_template('archive_list.html', archived_threads=archived_threads, current_page=page, has_next=has_next)
+    return templates.TemplateResponse(request, 'archive_list.html', {
+        'archived_threads': archived_threads, 'current_page': page, 'has_next': has_next
+    })
 
-@app.route('/archive/<int:thread_id>')
-def archive_view(thread_id):
+
+@app.get('/archive/{thread_id}')
+async def archive_view(request: Request, thread_id: int):
     archive_key = f"archive/thread_{thread_id}.json"
     try:
         obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=archive_key)
         payload = json.loads(obj['Body'].read().decode('utf-8'))
     except Exception as e:
         print(f"過去ログ取得エラー(thread_id={thread_id}): {e}")
-        return "この過去ログは見つかりませんでした", 404
+        return text_resp("この過去ログは見つかりませんでした", 404)
 
     thread = payload.get('thread', {})
     replies = payload.get('replies', [])
@@ -874,10 +988,14 @@ def archive_view(thread_id):
         if r.get('content'):
             r['content'] = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', str(r['content']))
 
-    return render_template('archive_view.html', thread=thread, replies=replies, archived_at=payload.get('archived_at'))
+    return templates.TemplateResponse(request, 'archive_view.html', {
+        'thread': thread, 'replies': replies, 'archived_at': payload.get('archived_at')
+    })
+
 
 ARCHIVE_SECRET = os.environ.get('ARCHIVE_SECRET')
 ARCHIVE_PINNED_IDS = [1, 2, 3, 4]
+
 
 def _fetch_all_from_supabase(sb_url, sb_key, table, columns):
     """PostgRESTのRangeヘッダーでページ送りしながら全件取得する(1000件の壁を回避)"""
@@ -905,6 +1023,7 @@ def _fetch_all_from_supabase(sb_url, sb_key, table, columns):
         offset += page_size
     return all_rows
 
+
 def _d1_batch_insert(table, columns, rows, chunk_size):
     """複数行をまとめたINSERT OR IGNOREをchunk_size件ずつD1に流し込む"""
     inserted = 0
@@ -921,21 +1040,22 @@ def _d1_batch_insert(table, columns, rows, chunk_size):
         inserted += len(chunk)
     return inserted
 
-@app.route('/internal/migrate-from-supabase', methods=['POST'])
-def migrate_from_supabase():
+
+@app.post('/internal/migrate-from-supabase')
+async def migrate_from_supabase(request: Request):
     if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
-        return {"error": "unauthorized"}, 403
+        return json_resp({"error": "unauthorized"}, 403)
 
     sb_url = request.headers.get('X-Supabase-Url')
     sb_key = request.headers.get('X-Supabase-Key')
     if not sb_url or not sb_key:
-        return {"error": "X-Supabase-Url / X-Supabase-Key ヘッダーが必要です"}, 400
+        return json_resp({"error": "X-Supabase-Url / X-Supabase-Key ヘッダーが必要です"}, 400)
 
     try:
         threads = _fetch_all_from_supabase(sb_url, sb_key, 'threads', 'id,title,created_at,ip_address')
         replies = _fetch_all_from_supabase(sb_url, sb_key, 'replies', 'id,thread_id,author,content,user_id,is_admin,image_url,ip_address,date,role')
     except Exception as e:
-        return {"error": f"Supabaseからの取得に失敗しました: {e}"}, 500
+        return json_resp({"error": f"Supabaseからの取得に失敗しました: {e}"}, 500)
 
     try:
         threads_inserted = _d1_batch_insert(
@@ -945,7 +1065,7 @@ def migrate_from_supabase():
             'replies', ['id', 'thread_id', 'author', 'content', 'user_id', 'is_admin', 'image_url', 'ip_address', 'date', 'role'], replies, chunk_size=90
         )
     except Exception as e:
-        return {"error": f"D1への書き込みに失敗しました: {e}"}, 500
+        return json_resp({"error": f"D1への書き込みに失敗しました: {e}"}, 500)
 
     return {
         "threads_fetched": len(threads),
@@ -954,16 +1074,17 @@ def migrate_from_supabase():
         "replies_inserted_or_ignored": replies_inserted
     }
 
-@app.route('/internal/migrate-from-supabase-safe', methods=['POST'])
-def migrate_from_supabase_safe():
+
+@app.post('/internal/migrate-from-supabase-safe')
+async def migrate_from_supabase_safe(request: Request):
     # ID衝突を避けるため、今のD1の最大IDより確実に大きい番号にずらしてから追加する版
     if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
-        return {"error": "unauthorized"}, 403
+        return json_resp({"error": "unauthorized"}, 403)
 
     sb_url = request.headers.get('X-Supabase-Url')
     sb_key = request.headers.get('X-Supabase-Key')
     if not sb_url or not sb_key:
-        return {"error": "X-Supabase-Url / X-Supabase-Key ヘッダーが必要です"}, 400
+        return json_resp({"error": "X-Supabase-Url / X-Supabase-Key ヘッダーが必要です"}, 400)
 
     try:
         max_tid_res = query_d1("SELECT MAX(id) as m FROM threads", [])
@@ -971,7 +1092,7 @@ def migrate_from_supabase_safe():
         current_max_tid = (max_tid_res[0]['m'] if max_tid_res and max_tid_res[0]['m'] is not None else 0)
         current_max_rid = (max_rid_res[0]['m'] if max_rid_res and max_rid_res[0]['m'] is not None else 0)
     except Exception as e:
-        return {"error": f"現在のD1の最大IDの取得に失敗しました: {e}"}, 500
+        return json_resp({"error": f"現在のD1の最大IDの取得に失敗しました: {e}"}, 500)
 
     thread_offset = current_max_tid + 10000
     reply_offset = current_max_rid + 10000
@@ -980,7 +1101,7 @@ def migrate_from_supabase_safe():
         threads = _fetch_all_from_supabase(sb_url, sb_key, 'threads', 'id,title,created_at,ip_address')
         replies = _fetch_all_from_supabase(sb_url, sb_key, 'replies', 'id,thread_id,author,content,user_id,is_admin,image_url,ip_address,date,role')
     except Exception as e:
-        return {"error": f"Supabaseからの取得に失敗しました: {e}"}, 500
+        return json_resp({"error": f"Supabaseからの取得に失敗しました: {e}"}, 500)
 
     # ID・thread_idをまとめてずらす
     for t in threads:
@@ -997,7 +1118,7 @@ def migrate_from_supabase_safe():
             'replies', ['id', 'thread_id', 'author', 'content', 'user_id', 'is_admin', 'image_url', 'ip_address', 'date', 'role'], replies, chunk_size=90
         )
     except Exception as e:
-        return {"error": f"D1への書き込みに失敗しました: {e}"}, 500
+        return json_resp({"error": f"D1への書き込みに失敗しました: {e}"}, 500)
 
     return {
         "thread_offset": thread_offset,
@@ -1008,11 +1129,12 @@ def migrate_from_supabase_safe():
         "replies_inserted_or_ignored": replies_inserted
     }
 
-@app.route('/internal/rebuild-archive-index', methods=['POST'])
-def rebuild_archive_index():
+
+@app.post('/internal/rebuild-archive-index')
+async def rebuild_archive_index(request: Request):
     # R2に実在するJSONから、D1の索引テーブル(archived_threads_index)を作り直す
     if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
-        return {"error": "unauthorized"}, 403
+        return json_resp({"error": "unauthorized"}, 403)
 
     rebuilt = []
     errors = []
@@ -1025,7 +1147,7 @@ def rebuild_archive_index():
                 if obj['Key'].endswith('.json'):
                     keys.append(obj['Key'])
     except Exception as e:
-        return {"error": f"R2一覧の取得に失敗しました: {e}"}, 500
+        return json_resp({"error": f"R2一覧の取得に失敗しました: {e}"}, 500)
 
     for key in keys:
         try:
@@ -1052,10 +1174,11 @@ def rebuild_archive_index():
 
     return {"rebuilt_count": len(rebuilt), "rebuilt_thread_ids": rebuilt, "errors": errors}
 
-@app.route('/internal/archive-old-threads', methods=['POST'])
-def archive_old_threads():
+
+@app.post('/internal/archive-old-threads')
+async def archive_old_threads(request: Request):
     if not ARCHIVE_SECRET or request.headers.get('X-Archive-Secret') != ARCHIVE_SECRET:
-        return {"error": "unauthorized"}, 403
+        return json_resp({"error": "unauthorized"}, 403)
 
     days = int(os.environ.get('ARCHIVE_AFTER_DAYS', '30') or 30)
     cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
@@ -1065,7 +1188,7 @@ def archive_old_threads():
     try:
         all_threads = query_d1("SELECT * FROM threads", []) or []
     except Exception as e:
-        return {"error": f"スレッド一覧の取得に失敗しました: {e}"}, 500
+        return json_resp({"error": f"スレッド一覧の取得に失敗しました: {e}"}, 500)
 
     for t in all_threads:
         tid = int(t['id'])
@@ -1119,15 +1242,17 @@ def archive_old_threads():
         "errors": errors
     }
 
-@app.route('/game')
-def game_lobby():
-    resp=make_response(render_template('game.html', room=None, my_color=None))
-    return _cookie_response(resp, _game_token())
 
-@app.route('/game/create', methods=['POST'])
-def game_create():
-    token = _game_token()
-    name = _game_name()
+@app.get('/game')
+async def game_lobby(request: Request):
+    resp = templates.TemplateResponse(request, 'game.html', {'room': None, 'my_color': None})
+    return _cookie_response(request, resp, _game_token(request))
+
+
+@app.post('/game/create')
+async def game_create(request: Request):
+    token = _game_token(request)
+    name = await _game_name(request)
     code = _new_room_code()
     now = datetime.utcnow().isoformat()
     query_d1(
@@ -1136,46 +1261,49 @@ def game_create():
            VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
         [code, token, name, None, None, _initial_othello(), 'B', 'waiting', None, now, now]
     )
-    resp = redirect(url_for('game_room', room_code=code))
-    return _cookie_response(resp, token)
+    resp = RedirectResponse(url=f'/game/{code}', status_code=303)
+    return _cookie_response(request, resp, token)
 
-@app.route('/game/<room_code>')
-def game_room(room_code):
+
+@app.get('/game/{room_code}')
+async def game_room(request: Request, room_code: str):
     rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
-        return redirect(url_for('game_lobby'))
+        return RedirectResponse(url='/game')
     room = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     my_color = 'B' if room.get('black_token') == token else ('W' if room.get('white_token') == token else None)
-    resp = make_response(render_template('game.html', room=room, my_color=my_color))
-    return _cookie_response(resp, token)
+    resp = templates.TemplateResponse(request, 'game.html', {'room': room, 'my_color': my_color})
+    return _cookie_response(request, resp, token)
 
-@app.route('/game/<room_code>/join', methods=['POST'])
-def game_join(room_code):
+
+@app.post('/game/{room_code}/join')
+async def game_join(request: Request, room_code: str):
     code = room_code.upper()
     rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
-        return {'success': False, 'error': '部屋が見つかりません'}, 404
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     room = rows[0]
-    token = _game_token()
-    name = _game_name()
+    token = _game_token(request)
+    name = await _game_name(request)
     if room.get('black_token') == token or room.get('white_token') == token:
         return {'success': True}
     if room.get('white_token'):
-        return {'success': False, 'error': 'この部屋は満員です'}, 409
+        return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
     query_d1(
         'UPDATE othello_rooms SET white_token=?,white_name=?,status=?,updated_at=? WHERE room_code=?',
         [token, name, 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
-@app.route('/api/game/<room_code>/state')
-def game_state(room_code):
+
+@app.get('/api/game/{room_code}/state')
+async def game_state(request: Request, room_code: str):
     rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
-        return {'error': 'not found'}, 404
+        return json_resp({'error': 'not found'}, 404)
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     my = 'B' if r.get('black_token') == token else ('W' if r.get('white_token') == token else None)
     board = r['board']
     black_count = board.count('B')
@@ -1199,23 +1327,24 @@ def game_state(room_code):
         'valid_moves': valid_moves,
     }
 
-@app.route('/game/<room_code>/move', methods=['POST'])
-def game_move(room_code):
+
+@app.post('/game/{room_code}/move')
+async def game_move(request: Request, room_code: str):
     code = room_code.upper()
     rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
-        return {'success': False, 'error': '部屋が見つかりません'}, 404
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     player = 'B' if r.get('black_token') == token else ('W' if r.get('white_token') == token else None)
     if not player:
-        return {'success': False, 'error': '観戦者は着手できません'}, 403
+        return json_resp({'success': False, 'error': '観戦者は着手できません'}, 403)
     if r['status'] != 'playing':
         return {'success': False, 'error': '対局は終了しています'}
     if r['turn'] != player:
         return {'success': False, 'error': '相手のターンです'}
 
-    body = request.get_json(silent=True) or {}
+    body = await get_json_silent(request)
     row = int(body.get('row', -1))
     col = int(body.get('col', -1))
     new_board = _othello_apply(r['board'], player, row, col)
@@ -1242,15 +1371,17 @@ def game_move(room_code):
     )
     return {'success': True}
 
-@app.route('/chess')
-def chess_lobby():
-    resp = make_response(render_template('chess.html', room=None, my_color=None))
-    return _cookie_response(resp, _game_token())
 
-@app.route('/chess/create', methods=['POST'])
-def chess_create():
-    token = _game_token()
-    name = _game_name()
+@app.get('/chess')
+async def chess_lobby(request: Request):
+    resp = templates.TemplateResponse(request, 'chess.html', {'room': None, 'my_color': None})
+    return _cookie_response(request, resp, _game_token(request))
+
+
+@app.post('/chess/create')
+async def chess_create(request: Request):
+    token = _game_token(request)
+    name = await _game_name(request)
     code = _new_room_code()
     now = datetime.utcnow().isoformat()
     query_d1(
@@ -1259,46 +1390,49 @@ def chess_create():
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
         [code, token, name, None, None, _chess_board(), 'w', 'waiting', None, None, 'KQkq', None, now, now]
     )
-    resp = redirect(url_for('chess_room', room_code=code))
-    return _cookie_response(resp, token)
+    resp = RedirectResponse(url=f'/chess/{code}', status_code=303)
+    return _cookie_response(request, resp, token)
 
-@app.route('/chess/<room_code>')
-def chess_room(room_code):
+
+@app.get('/chess/{room_code}')
+async def chess_room(request: Request, room_code: str):
     rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
-        return redirect(url_for('chess_lobby'))
+        return RedirectResponse(url='/chess')
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     my = 'w' if r.get('white_token') == token else ('b' if r.get('black_token') == token else None)
-    resp = make_response(render_template('chess.html', room=r, my_color=my))
-    return _cookie_response(resp, token)
+    resp = templates.TemplateResponse(request, 'chess.html', {'room': r, 'my_color': my})
+    return _cookie_response(request, resp, token)
 
-@app.route('/chess/<room_code>/join', methods=['POST'])
-def chess_join(room_code):
+
+@app.post('/chess/{room_code}/join')
+async def chess_join(request: Request, room_code: str):
     code = room_code.upper()
     rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
-        return {'success': False, 'error': '部屋が見つかりません'}, 404
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
-    token = _game_token()
-    name = _game_name()
+    token = _game_token(request)
+    name = await _game_name(request)
     if r.get('white_token') == token or r.get('black_token') == token:
         return {'success': True}
     if r.get('black_token'):
-        return {'success': False, 'error': 'この部屋は満員です'}, 409
+        return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
     query_d1(
         'UPDATE chess_rooms SET black_token=?,black_name=?,status=?,updated_at=? WHERE room_code=?',
         [token, name, 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
-@app.route('/api/chess/<room_code>/state')
-def chess_state(room_code):
+
+@app.get('/api/chess/{room_code}/state')
+async def chess_state(request: Request, room_code: str):
     rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
-        return {'error': 'not found'}, 404
+        return json_resp({'error': 'not found'}, 404)
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     my = 'w' if r.get('white_token') == token else ('b' if r.get('black_token') == token else None)
 
     # DBに保存されたJSON文字列を配列に変換してフロントに渡す
@@ -1328,35 +1462,36 @@ def chess_state(room_code):
         'my_color': my,
     }
 
-@app.route('/chess/<room_code>/move', methods=['POST'])
-def chess_move(room_code):
+
+@app.post('/chess/{room_code}/move')
+async def chess_move(request: Request, room_code: str):
     code = room_code.upper()
     rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
-        return {'success': False, 'error': '部屋が見つかりません'}, 404
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     color = 'w' if r.get('white_token') == token else ('b' if r.get('black_token') == token else None)
     if not color:
-        return {'success': False, 'error': '観戦者は着手できません'}, 403
+        return json_resp({'success': False, 'error': '観戦者は着手できません'}, 403)
     if r['status'] != 'playing':
         return {'success': False, 'error': '対局は終了しています'}
     if r['turn'] != color:
         return {'success': False, 'error': '相手のターンです'}
 
-    body = request.get_json(silent=True) or {}
+    body = await get_json_silent(request)
     try:
         fr, fc, tr, tc = [int(body[k]) for k in ('from_row', 'from_col', 'to_row', 'to_col')]
     except Exception:
-        return {'success': False, 'error': '着手情報が不正です'}, 400
+        return json_resp({'success': False, 'error': '着手情報が不正です'}, 400)
     if not all(0 <= x < 8 for x in (fr, fc, tr, tc)):
-        return {'success': False, 'error': '着手位置が不正です'}, 400
+        return json_resp({'success': False, 'error': '着手位置が不正です'}, 400)
 
     # JSON文字列をリストに読み込んで操作する
     try:
         board = json.loads(r['board'])
     except Exception:
-        return {'success': False, 'error': '盤面データの読み込みに失敗しました'}, 500
+        return json_resp({'success': False, 'error': '盤面データの読み込みに失敗しました'}, 500)
 
     castling = r.get('castling') or 'KQkq'
     en_passant_raw = r.get('en_passant')
@@ -1403,15 +1538,17 @@ def chess_move(room_code):
     )
     return {'success': True}
 
-@app.route('/shogi')
-def shogi_lobby():
-    resp = make_response(render_template('syogi.html', room=None, my_color=None))
-    return _cookie_response(resp, _game_token())
 
-@app.route('/shogi/create', methods=['POST'])
-def shogi_create():
-    token = _game_token()
-    name = _game_name()
+@app.get('/shogi')
+async def shogi_lobby(request: Request):
+    resp = templates.TemplateResponse(request, 'syogi.html', {'room': None, 'my_color': None})
+    return _cookie_response(request, resp, _game_token(request))
+
+
+@app.post('/shogi/create')
+async def shogi_create(request: Request):
+    token = _game_token(request)
+    name = await _game_name(request)
     code = _new_room_code()
     now = datetime.utcnow().isoformat()
     query_d1(
@@ -1420,46 +1557,49 @@ def shogi_create():
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
         [code, token, name, None, None, _initial_shogi_board(), _initial_shogi_hands_json(), 's', 'waiting', None, None, now, now]
     )
-    resp = redirect(url_for('shogi_room', room_code=code))
-    return _cookie_response(resp, token)
+    resp = RedirectResponse(url=f'/shogi/{code}', status_code=303)
+    return _cookie_response(request, resp, token)
 
-@app.route('/shogi/<room_code>')
-def shogi_room(room_code):
+
+@app.get('/shogi/{room_code}')
+async def shogi_room(request: Request, room_code: str):
     rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
-        return redirect(url_for('shogi_lobby'))
+        return RedirectResponse(url='/shogi')
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     my = 's' if r.get('sente_token') == token else ('g' if r.get('gote_token') == token else None)
-    resp = make_response(render_template('syogi.html', room=r, my_color=my))
-    return _cookie_response(resp, token)
+    resp = templates.TemplateResponse(request, 'syogi.html', {'room': r, 'my_color': my})
+    return _cookie_response(request, resp, token)
 
-@app.route('/shogi/<room_code>/join', methods=['POST'])
-def shogi_join(room_code):
+
+@app.post('/shogi/{room_code}/join')
+async def shogi_join(request: Request, room_code: str):
     code = room_code.upper()
     rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
-        return {'success': False, 'error': '部屋が見つかりません'}, 404
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
-    token = _game_token()
-    name = _game_name()
+    token = _game_token(request)
+    name = await _game_name(request)
     if r.get('sente_token') == token or r.get('gote_token') == token:
         return {'success': True}
     if r.get('gote_token'):
-        return {'success': False, 'error': 'この部屋は満員です'}, 409
+        return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
     query_d1(
         'UPDATE shogi_rooms SET gote_token=?,gote_name=?,status=?,updated_at=? WHERE room_code=?',
         [token, name, 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
-@app.route('/api/shogi/<room_code>/state')
-def shogi_state(room_code):
+
+@app.get('/api/shogi/{room_code}/state')
+async def shogi_state(request: Request, room_code: str):
     rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
-        return {'error': 'not found'}, 404
+        return json_resp({'error': 'not found'}, 404)
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     my = 's' if r.get('sente_token') == token else ('g' if r.get('gote_token') == token else None)
 
     try:
@@ -1488,35 +1628,36 @@ def shogi_state(room_code):
         'my_color': my,
     }
 
-@app.route('/shogi/<room_code>/move', methods=['POST'])
-def shogi_move(room_code):
+
+@app.post('/shogi/{room_code}/move')
+async def shogi_move(request: Request, room_code: str):
     code = room_code.upper()
     rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
-        return {'success': False, 'error': '部屋が見つかりません'}, 404
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     color = 's' if r.get('sente_token') == token else ('g' if r.get('gote_token') == token else None)
     if not color:
-        return {'success': False, 'error': '観戦者は着手できません'}, 403
+        return json_resp({'success': False, 'error': '観戦者は着手できません'}, 403)
     if r['status'] != 'playing':
         return {'success': False, 'error': '対局は終了しています'}
     if r['turn'] != color:
         return {'success': False, 'error': '相手のターンです'}
 
-    body = request.get_json(silent=True) or {}
+    body = await get_json_silent(request)
     try:
         fr, fc, tr, tc = [int(body[k]) for k in ('from_row', 'from_col', 'to_row', 'to_col')]
     except Exception:
-        return {'success': False, 'error': '着手情報が不正です'}, 400
+        return json_resp({'success': False, 'error': '着手情報が不正です'}, 400)
     if not all(0 <= x < 9 for x in (fr, fc, tr, tc)):
-        return {'success': False, 'error': '着手位置が不正です'}, 400
+        return json_resp({'success': False, 'error': '着手位置が不正です'}, 400)
     want_promote = bool(body.get('promote'))
 
     try:
         board = json.loads(r['board'])
     except Exception:
-        return {'success': False, 'error': '盤面データの読み込みに失敗しました'}, 500
+        return json_resp({'success': False, 'error': '盤面データの読み込みに失敗しました'}, 500)
     try:
         hands = json.loads(r['hands'])
     except Exception:
@@ -1570,37 +1711,38 @@ def shogi_move(room_code):
     )
     return {'success': True}
 
-@app.route('/shogi/<room_code>/drop', methods=['POST'])
-def shogi_drop(room_code):
+
+@app.post('/shogi/{room_code}/drop')
+async def shogi_drop(request: Request, room_code: str):
     code = room_code.upper()
     rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
-        return {'success': False, 'error': '部屋が見つかりません'}, 404
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
-    token = _game_token()
+    token = _game_token(request)
     color = 's' if r.get('sente_token') == token else ('g' if r.get('gote_token') == token else None)
     if not color:
-        return {'success': False, 'error': '観戦者は着手できません'}, 403
+        return json_resp({'success': False, 'error': '観戦者は着手できません'}, 403)
     if r['status'] != 'playing':
         return {'success': False, 'error': '対局は終了しています'}
     if r['turn'] != color:
         return {'success': False, 'error': '相手のターンです'}
 
-    body = request.get_json(silent=True) or {}
+    body = await get_json_silent(request)
     ptype = str(body.get('piece', '')).upper()
     try:
         tr, tc = int(body['row']), int(body['col'])
     except Exception:
-        return {'success': False, 'error': '着手情報が不正です'}, 400
+        return json_resp({'success': False, 'error': '着手情報が不正です'}, 400)
     if ptype not in SHOGI_HAND_TYPES:
-        return {'success': False, 'error': '不正な駒です'}, 400
+        return json_resp({'success': False, 'error': '不正な駒です'}, 400)
     if not (0 <= tr < 9 and 0 <= tc < 9):
-        return {'success': False, 'error': '着手位置が不正です'}, 400
+        return json_resp({'success': False, 'error': '着手位置が不正です'}, 400)
 
     try:
         board = json.loads(r['board'])
     except Exception:
-        return {'success': False, 'error': '盤面データの読み込みに失敗しました'}, 500
+        return json_resp({'success': False, 'error': '盤面データの読み込みに失敗しました'}, 500)
     try:
         hands = json.loads(r['hands'])
     except Exception:
@@ -1635,6 +1777,7 @@ def shogi_drop(room_code):
     )
     return {'success': True}
 
+
 def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
     """threads を、レス数・最終更新日時・現在の閲覧人数つきで取得する共通ヘルパー"""
     active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
@@ -1662,26 +1805,29 @@ def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, of
     return query_d1(sql, params)
 
 
-@app.route('/', methods=['GET', 'HEAD'])
-def index():
-    client_ip = get_client_ip()
+@app.api_route('/', methods=['GET', 'HEAD'])
+async def index(request: Request):
+    client_ip = get_client_ip(request)
     if is_banned_ip(client_ip):
-        return "あなたはアクセス禁止（BAN）されています。", 403
+        return text_resp("あなたはアクセス禁止（BAN）されています。", 403)
 
     if request.method == 'HEAD':
-        return make_response('', 200)
+        return Response(content='', status_code=200)
 
-    page = request.args.get('page', default=1, type=int)
+    try:
+        page = int(request.query_params.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
     per_page = 20
     start_index = (page - 1) * per_page
 
-    search_query = request.args.get('q', default='', type=str).strip()
+    search_query = request.query_params.get('q', '').strip()
 
-    category = request.args.get('category', default='', type=str).strip()
+    category = request.query_params.get('category', '').strip()
     if category not in THREAD_CATEGORY_VALUES:
         category = ''
 
-    sort = request.args.get('sort', default=DEFAULT_THREAD_SORT, type=str).strip()
+    sort = request.query_params.get('sort', DEFAULT_THREAD_SORT).strip()
     if sort not in THREAD_SORT_SQL:
         sort = DEFAULT_THREAD_SORT
     order_sql = THREAD_SORT_SQL[sort]
@@ -1753,68 +1899,71 @@ def index():
         is_new_user = True
 
     active_count = update_and_get_user_counts(user_token, "lobby")
-    is_admin_user = can_manage_board()
+    is_admin_user = can_manage_board(request)
 
-    response = make_response(render_template(
-        'index.html', 
-        threads=threads, 
-        admin_message=admin_message, 
-        is_admin_user=is_admin_user, 
-        active_count=active_count,
-        current_page=page,      
-        has_next=has_next,
-        search_query=search_query,
-        thread_categories=THREAD_CATEGORIES,
-        thread_category_labels=THREAD_CATEGORY_LABELS,
-        thread_category_colors=THREAD_CATEGORY_COLORS,
-        current_category=category,
-        thread_sort_options=THREAD_SORT_OPTIONS,
-        current_sort=sort,
-        current_year=datetime.utcnow().year,
-        category_meta_json=json.dumps(
+    response = templates.TemplateResponse(request, 'index.html', {
+        'threads': threads,
+        'admin_message': admin_message,
+        'is_admin_user': is_admin_user,
+        'active_count': active_count,
+        'current_page': page,
+        'has_next': has_next,
+        'search_query': search_query,
+        'thread_categories': THREAD_CATEGORIES,
+        'thread_category_labels': THREAD_CATEGORY_LABELS,
+        'thread_category_colors': THREAD_CATEGORY_COLORS,
+        'current_category': category,
+        'thread_sort_options': THREAD_SORT_OPTIONS,
+        'current_sort': sort,
+        'current_year': datetime.utcnow().year,
+        'category_meta_json': json.dumps(
             {key: {'label': label, 'color': color} for key, label, color in THREAD_CATEGORIES},
             ensure_ascii=False
         ),
-    ))
-    
+    })
+
     if is_new_user:
-        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
-        
+        response.set_cookie('user_bbs_token', user_token, max_age=60 * 60 * 24 * 365, httponly=True)
+
     return response
 
-@app.route('/update_admin_message', methods=['POST'])
-def update_admin_message():
-    if not can_manage_board():
-        return "権限がありません", 403
-    message = request.form.get('message')
+
+@app.post('/update_admin_message')
+async def update_admin_message(request: Request):
+    if not can_manage_board(request):
+        return text_resp("権限がありません", 403)
+    form = await request.form()
+    message = form.get('message')
     if message:
         try:
             query_d1("UPDATE admin_messages SET message = ? WHERE id = ?", [message, 1])
         except Exception as e:
             print(f"メッセージ更新エラー: {e}")
-    return redirect(url_for('index'))
+    return RedirectResponse(url='/', status_code=303)
 
-@app.route('/create_thread', methods=['POST'])
-def create_thread():
-    client_ip = get_client_ip()
+
+@app.post('/create_thread')
+async def create_thread(request: Request):
+    client_ip = get_client_ip(request)
     if is_banned_ip(client_ip):
-        return {"error": "あなたはアクセス禁止（BAN）されています。"}, 403
+        return json_resp({"error": "あなたはアクセス禁止（BAN）されています。"}, 403)
 
-    title = request.form.get('title')
+    form = await request.form()
+    title = form.get('title')
     if not title:
-        return {"error": "タイトルが必要です"}, 400
-        
-    title = filter_ng_words(title)
-    title = html.escape(title)    
-    
-    if len(title) > 30:
-        return {"error": "スレッド名は30文字以内で入力してください"}, 400
+        return json_resp({"error": "タイトルが必要です"}, 400)
 
-    category = request.form.get('category', default=DEFAULT_THREAD_CATEGORY, type=str)
+    title = filter_ng_words(title)
+    title = html.escape(title)
+
+    if len(title) > 30:
+        return json_resp({"error": "スレッド名は30文字以内で入力してください"}, 400)
+
+    category = form.get('category', DEFAULT_THREAD_CATEGORY)
     if category not in THREAD_CATEGORY_VALUES:
         category = DEFAULT_THREAD_CATEGORY
-    
-    is_admin = can_manage_board()
+
+    is_admin = can_manage_board(request)
     now = time.time()
 
     thread_cooldown = 300
@@ -1826,10 +1975,10 @@ def create_thread():
             remaining_time = int(thread_cooldown - (now - LAST_THREAD_TIMES[client_ip]))
             minutes = remaining_time // 60
             seconds = remaining_time % 60
-            return {"error": f"スレッド作成は5分に1回までです。(proxy,VPNは15分）あと {minutes}分 {seconds}秒 お待ちください。"}, 429
-            
-    LAST_THREAD_TIMES[client_ip] = now 
-    
+            return json_resp({"error": f"スレッド作成は5分に1回までです。(proxy,VPNは15分）あと {minutes}分 {seconds}秒 お待ちください。"}, 429)
+
+    LAST_THREAD_TIMES[client_ip] = now
+
     try:
         query_d1(
             "INSERT INTO threads (title, ip_address, category) VALUES (?, ?, ?)",
@@ -1841,20 +1990,25 @@ def create_thread():
             new_thread['category'] = category
     except Exception as e:
         print(f"スレッド作成エラー: {e}")
-        return {"error": "データベースエラーが発生しました"}, 500
-        
+        return json_resp({"error": "データベースエラーが発生しました"}, 500)
+
     return {"success": True, "thread": new_thread}
 
-# --- 「もっと見る」用: 過去のレスを追加読み込みするAPI ---
-@app.route('/thread/<int:thread_id>/get_older_replies')
-def get_older_replies(thread_id):
-    client_ip = get_client_ip()
-    if is_banned_ip(client_ip):
-        return {"success": False, "error": "Banned"}, 403
 
-    before_id = request.args.get('before_id', type=int)
+# --- 「もっと見る」用: 過去のレスを追加読み込みするAPI ---
+@app.get('/thread/{thread_id}/get_older_replies')
+async def get_older_replies(request: Request, thread_id: int):
+    client_ip = get_client_ip(request)
+    if is_banned_ip(client_ip):
+        return json_resp({"success": False, "error": "Banned"}, 403)
+
+    before_id_raw = request.query_params.get('before_id')
+    try:
+        before_id = int(before_id_raw) if before_id_raw is not None else None
+    except (TypeError, ValueError):
+        before_id = None
     if not before_id:
-        return {"success": False, "error": "before_idが必要です", "replies": [], "has_more": False}, 400
+        return json_resp({"success": False, "error": "before_idが必要です", "replies": [], "has_more": False}, 400)
 
     try:
         count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ? AND id < ?", [thread_id, before_id])
@@ -1895,19 +2049,23 @@ def get_older_replies(thread_id):
             reply_dict['post_num'] = start_num + i
             formatted_replies.append(reply_dict)
 
-        return {"success": True, "replies": formatted_replies, "has_more": count_before > len(older_replies)}, 200
+        return {"success": True, "replies": formatted_replies, "has_more": count_before > len(older_replies)}
     except Exception as e:
         print(f"過去レス取得エラー: {e}")
-        return {"success": False, "error": "データベースエラー", "replies": [], "has_more": False}, 500
+        return json_resp({"success": False, "error": "データベースエラー", "replies": [], "has_more": False}, 500)
+
 
 # --- リアルタイム自動更新用API ---
-@app.route('/thread/<int:thread_id>/get_new_replies')
-def get_new_replies(thread_id):
-    client_ip = get_client_ip()
+@app.get('/thread/{thread_id}/get_new_replies')
+async def get_new_replies(request: Request, thread_id: int):
+    client_ip = get_client_ip(request)
     if is_banned_ip(client_ip):
-        return {"success": False, "error": "Banned"}, 403
+        return json_resp({"success": False, "error": "Banned"}, 403)
 
-    after_id = request.args.get('after_id', default=0, type=int)
+    try:
+        after_id = int(request.query_params.get('after_id', 0))
+    except (TypeError, ValueError):
+        after_id = 0
     try:
         replies = query_d1(
             "SELECT * FROM replies WHERE thread_id = ? AND id > ? ORDER BY id ASC",
@@ -1936,7 +2094,6 @@ def get_new_replies(thread_id):
                 except Exception:
                     pass
 
-
             if reply_dict.get('content'):
                 try:
                     content_str = str(reply_dict['content'])
@@ -1955,29 +2112,31 @@ def get_new_replies(thread_id):
                     reply_dict['content'] = content_str
                 except Exception:
                     pass
-            
+
             reply_dict['is_op'] = bool(op_user_id) and reply_dict.get('user_id') == op_user_id
             reply_dict['post_num'] = start_num + idx
             formatted_replies.append(reply_dict)
 
-        return {"success": True, "replies": formatted_replies}, 200
+        return {"success": True, "replies": formatted_replies}
     except Exception as e:
         print(f"新着レス取得エラー: {e}")
-        return {"success": False, "error": "データベースエラー", "replies": []}, 500
+        return json_resp({"success": False, "error": "データベースエラー", "replies": []}, 500)
 
-@app.route('/thread/<int:thread_id>', methods=['GET', 'POST'])
-def thread_view(thread_id):
-    client_ip = get_client_ip()
+
+@app.api_route('/thread/{thread_id}', methods=['GET', 'POST'])
+async def thread_view(request: Request, thread_id: int):
+    client_ip = get_client_ip(request)
     if is_banned_ip(client_ip):
-        return "あなたはアクセス禁止（BAN）されています。", 403
+        return text_resp("あなたはアクセス禁止（BAN）されています。", 403)
 
     if request.method == 'POST':
-        content = request.form.get('content') or ""
-        
+        form = await request.form()
+        content = form.get('content') or ""
+
         if len(content) > 500:
-            return {"success": False, "error": "500文字以内で入力してください。"}, 400
-        
-        author_input = request.form.get('author') or "名無しさん"
+            return json_resp({"success": False, "error": "500文字以内で入力してください。"}, 400)
+
+        author_input = form.get('author') or "名無しさん"
 
         if "#" in author_input:
             parts = author_input.split("#", 1)
@@ -1992,12 +2151,12 @@ def thread_view(thread_id):
 
         content = filter_ng_words(content)
         author_input = filter_ng_words(author_input)
-        
-        staff_role = get_staff_role()
-        
+
+        staff_role = get_staff_role(request)
+
         if staff_role:
-            author_input = session.get('staff_name')
-            is_admin = can_manage_board()
+            author_input = request.session.get('staff_name')
+            is_admin = can_manage_board(request)
             user_id = "STAFF"
             role_to_save = staff_role
         else:
@@ -2017,21 +2176,20 @@ def thread_view(thread_id):
         if not staff_role:
             reply_cooldown = 3
             if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < reply_cooldown:
-                return {"success": False, "error": f"連続投稿はできません。{reply_cooldown}秒お待ちください。"}, 429
+                return json_resp({"success": False, "error": f"連続投稿はできません。{reply_cooldown}秒お待ちください。"}, 429)
             LAST_REPLY_TIMES[client_ip] = now
 
         image_url = ""
-        if 'image' in request.files:
-            file = request.files['image']
-            if file and file.filename != '':
-                try:
-                    orig_filename = secure_filename(file.filename)
-                    ext = os.path.splitext(orig_filename)[1]
-                    unique_filename = f"{uuid.uuid4()}{ext}"
-                    s3_client.upload_fileobj(file, R2_BUCKET_NAME, unique_filename, ExtraArgs={'ContentType': file.content_type})
-                    image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
-                except Exception as e:
-                    print(f"R2 Upload Error: {e}")
+        upload = form.get('image')
+        if upload is not None and getattr(upload, 'filename', ''):
+            try:
+                orig_filename = secure_filename(upload.filename)
+                ext = os.path.splitext(orig_filename)[1]
+                unique_filename = f"{uuid.uuid4()}{ext}"
+                s3_client.upload_fileobj(upload.file, R2_BUCKET_NAME, unique_filename, ExtraArgs={'ContentType': upload.content_type})
+                image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
+            except Exception as e:
+                print(f"R2 Upload Error: {e}")
 
         if content.strip() or image_url:
             # 同一クライアントから同じレスが短時間に二重送信された場合を防止。
@@ -2042,7 +2200,7 @@ def thread_view(thread_id):
             signature_now = time.time()
             previous_signature_time = LAST_REPLY_SIGNATURES.get(reply_signature)
             if previous_signature_time is not None and signature_now - previous_signature_time < 5:
-                return {"success": False, "duplicate": True, "error": "同じ内容が連続して送信されたため、重複投稿を防止しました。"}, 409
+                return json_resp({"success": False, "duplicate": True, "error": "同じ内容が連続して送信されたため、重複投稿を防止しました。"}, 409)
 
             try:
                 query_d1(
@@ -2059,13 +2217,12 @@ def thread_view(thread_id):
                         dt_jst = dt_utc + timedelta(hours=9)
                         new_reply['date'] = dt_jst.strftime('%Y-%m-%d %H:%M:%S')
 
-
                     if new_reply.get('content'):
                         content_str = str(new_reply['content'])
                         content_str = re.sub(r'(https?://[^\s<>]+)', r'<a href="\1" target="_blank" style="color: #38bdf8; text-decoration: underline;">\1</a>', content_str)
                         content_str = re.sub(r'&gt;&gt;(\d+)|>>(\d+)', r'<a href="#post-\1\2" class="post-anchor" onclick="scrollToPost(\1\2); return false;">&gt;&gt;\1\2</a>', content_str)
                         new_reply['content'] = content_str
-                    
+
                     try:
                         thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
                         op_ip = thread_res[0]['ip_address'] if thread_res else None
@@ -2083,15 +2240,14 @@ def thread_view(thread_id):
                     return {"success": True, "reply": new_reply}
             except Exception as e:
                 print(f"レス保存エラー: {e}")
-                return {"success": False, "error": "データベースエラーが発生しました。"}, 500
-        return {"success": False, "error": "書き込み内容が空です。"}, 400
+                return json_resp({"success": False, "error": "データベースエラーが発生しました。"}, 500)
+        return json_resp({"success": False, "error": "書き込み内容が空です。"}, 400)
 
     try:
         thread_res = query_d1("SELECT * FROM threads WHERE id = ?", [thread_id])
         if not thread_res:
-            return "スレッドが見つかりません", 404
+            return text_resp("スレッドが見つかりません", 404)
         thread = thread_res[0]
-
 
         # 合計レス数を取得(通し番号の計算とページングに使う)
         count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
@@ -2123,17 +2279,14 @@ def thread_view(thread_id):
                 content_str = re.sub(r'&gt;&gt;(\d+)|>>(\d+)', r'<a href="#post-\1\2" class="post-anchor" onclick="scrollToPost(\1\2); return false;">&gt;&gt;\1\2</a>', content_str)
                 r['content'] = content_str
 
-
-        
-
         op_user_id = get_daily_user_id(thread.get('ip_address', '')) if thread.get('ip_address') else None
         for r in thread['replies']:
             r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
-        return "データベースエラーが発生しました", 500
+        return text_resp("データベースエラーが発生しました", 500)
 
-    is_admin_user = can_manage_board()
+    is_admin_user = can_manage_board(request)
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
     if not user_token:
@@ -2143,34 +2296,35 @@ def thread_view(thread_id):
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
 
-    response = make_response(render_template(
-        'thread.html', 
-        thread=thread, 
-        is_admin_user=is_admin_user, 
-        active_count=active_count,
-        back_to_board="/?tab=threads",
-        op_user_id=op_user_id
-    ))
-    
+    response = templates.TemplateResponse(request, 'thread.html', {
+        'thread': thread,
+        'is_admin_user': is_admin_user,
+        'active_count': active_count,
+        'back_to_board': "/?tab=threads",
+        'op_user_id': op_user_id
+    })
+
     if is_new_user:
-        response.set_cookie('user_bbs_token', user_token, max_age=60*60*24*365, httponly=True)
-        
+        response.set_cookie('user_bbs_token', user_token, max_age=60 * 60 * 24 * 365, httponly=True)
+
     return response
 
-@app.route('/thread/<int:thread_id>/delete_thread', methods=['POST'])
-def delete_thread(thread_id):
-    if not can_manage_board():
-        return "権限がありません", 403
+
+@app.post('/thread/{thread_id}/delete_thread')
+async def delete_thread(request: Request, thread_id: int):
+    if not can_manage_board(request):
+        return text_resp("権限がありません", 403)
     try:
         query_d1("DELETE FROM threads WHERE id = ?", [thread_id])
     except Exception as e:
         print(f"スレッド削除エラー: {e}")
-    return redirect(url_for('index'))
+    return RedirectResponse(url='/', status_code=303)
 
-@app.route('/thread/<int:thread_id>/delete/<int:reply_id>', methods=['POST'])
-def delete_reply(thread_id, reply_id):
-    if not can_manage_board():
-        return "権限がありません", 403
+
+@app.post('/thread/{thread_id}/delete/{reply_id}')
+async def delete_reply(request: Request, thread_id: int, reply_id: int):
+    if not can_manage_board(request):
+        return text_resp("権限がありません", 403)
     try:
         query_d1(
             """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
@@ -2179,12 +2333,13 @@ def delete_reply(thread_id, reply_id):
         )
     except Exception as e:
         print(f"レス削除エラー: {e}")
-    return redirect(url_for('thread_view', thread_id=thread_id))
+    return RedirectResponse(url=f'/thread/{thread_id}', status_code=303)
 
-@app.route('/ban_user/<int:reply_id>', methods=['POST'])
-def ban_user(reply_id):
-    if not can_manage_board():
-        return "権限がありません", 403
+
+@app.post('/ban_user/{reply_id}')
+async def ban_user(request: Request, reply_id: int):
+    if not can_manage_board(request):
+        return text_resp("権限がありません", 403)
     try:
         reply_res = query_d1("SELECT ip_address FROM replies WHERE id = ?", [reply_id])
         if reply_res and reply_res[0].get('ip_address'):
@@ -2195,15 +2350,17 @@ def ban_user(reply_id):
                    WHERE id = ?""",
                 ['あぼーん', 'この書き込みは管理員によってBANされました。', '???', 0, '', reply_id]
             )
-        return redirect(request.referrer or url_for('index'))
+        referer = request.headers.get('referer') or '/'
+        return RedirectResponse(url=referer, status_code=303)
     except Exception as e:
         print(f"BANエラー: {e}")
-        return f"エラーが発生しました: {e}", 500
+        return text_resp(f"エラーが発生しました: {e}", 500)
 
-@app.route('/ban_thread_owner/<int:thread_id>', methods=['POST'])
-def ban_thread_owner(thread_id):
-    if not can_manage_board():
-        return "権限がありません", 403
+
+@app.post('/ban_thread_owner/{thread_id}')
+async def ban_thread_owner(request: Request, thread_id: int):
+    if not can_manage_board(request):
+        return text_resp("権限がありません", 403)
     try:
         thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
         if thread_res and thread_res[0].get('ip_address'):
@@ -2216,13 +2373,14 @@ def ban_thread_owner(thread_id):
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 [thread_id, 'あぼーん', 'このスレッドの作成者はBANされました。', '???', 0, None, '', owner_ip]
             )
-        return redirect(url_for('index'))
+        return RedirectResponse(url='/', status_code=303)
     except Exception as e:
         print(f"スレッドオーナーBANエラー: {e}")
-        return f"エラーが発生しました: {e}", 500
+        return text_resp(f"エラーが発生しました: {e}", 500)
 
-@app.route('/api/server_stats')
-def server_metrics():
+
+@app.get('/api/server_stats')
+async def server_metrics():
     mem_used, mem_limit = read_cgroup_memory()
     if mem_used is not None:
         if mem_limit and mem_limit > 0:
@@ -2257,6 +2415,7 @@ def server_metrics():
         "timestamp": time.time()
     }
 
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    uvicorn.run(app, host='0.0.0.0', port=port)
