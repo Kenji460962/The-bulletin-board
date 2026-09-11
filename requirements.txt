@@ -12,3 +12,14 @@ python-socketio
 eventlet
 flask-socketio
 eventlet
+
+fastapi
+uvicorn[standard]
+itsdangerous
+jinja2
+python-multipart
+httpx
+boto3
+psutil
+werkzeug
+python-dotenv
