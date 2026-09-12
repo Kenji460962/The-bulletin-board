@@ -1158,10 +1158,10 @@ def _initial_shogi_board():
         board[8 * 9 + c] = 's' + back_rank[c]
         board[2 * 9 + c] = 'gP'
         board[6 * 9 + c] = 'sP'
-    board[1 * 9 + 1] = 'gB'
-    board[1 * 9 + 7] = 'gR'
-    board[7 * 9 + 1] = 'sR'
-    board[7 * 9 + 7] = 'sB'
+    board[1 * 9 + 1] = 'gR'
+    board[1 * 9 + 7] = 'gB'
+    board[7 * 9 + 1] = 'sB'
+    board[7 * 9 + 7] = 'sR'
     return json.dumps(board)
 
 
