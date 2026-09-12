@@ -792,6 +792,13 @@
 
             .hamburger-btn { display: inline-flex; }
 
+            /* 富士山の背景画像：スマホだと縦長画面のせいで中央より上、
+               「人気スレ」あたりに重なって見えてしまうので、表示位置を上寄りにして
+               (=見えている山の部分は下にずれる) 本文と被りにくくする */
+            body::before {
+                background-position: 70% 15%;
+            }
+
             .sidebar {
                 position: fixed;
                 top: 0;
