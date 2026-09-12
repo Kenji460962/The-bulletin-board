@@ -829,6 +829,11 @@
                 
                 <a class="side-nav-item" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報窓口、お問い合わせ</a>
                 <a class="side-nav-item" href="{{ url_for('roles') }}" target="_blank">運営体制・役職</a>
+                {% if current_member %}
+                <a class="side-nav-item" href="{{ url_for('member_logout') }}">ログアウト（{{ current_member.username }}）</a>
+                {% else %}
+                <a class="side-nav-item" href="{{ url_for('member_login_form') }}">ログイン / 新規登録</a>
+                {% endif %}
             </nav>
         </aside>
 
@@ -1527,6 +1532,10 @@
                 
 
 
+            } else if (result.login_required) {
+                if (confirm(result.error + '\nログインページに移動しますか？')) {
+                    window.location.href = '/login';
+                }
             } else if (result.error) {
                
                 alert(result.error);
