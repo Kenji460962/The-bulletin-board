@@ -515,6 +515,19 @@ def _consume_token(token: str, purpose: str):
     return user_res[0] if user_res else None
 
 
+def _staff_password_matches(stored: str, password: str) -> bool:
+    """パスワード照合。ハッシュ化済み(werkzeugの ':' 区切り形式)ならハッシュ比較、
+    まだ平文のまま保存されている旧アカウントなら単純比較する(移行用フォールバック)。"""
+    if not stored:
+        return False
+    if ':' in stored:
+        try:
+            return check_password_hash(stored, password)
+        except Exception:
+            return False
+    return stored == password
+
+
 @app.get('/login_secret_8823')
 async def staff_login_form():
     return HTMLResponse('''
@@ -535,7 +548,14 @@ async def staff_login(request: Request):
         res = query_d1("SELECT * FROM staff_users WHERE username = ?", [username])
         if res:
             user = res[0]
-            if user['password'] == password:
+            stored = user.get('password') or ''
+            if _staff_password_matches(stored, password):
+                if ':' not in stored:
+                    # 平文で保存されていた旧アカウント: ログイン成功を機にハッシュ化して保存し直す
+                    query_d1(
+                        "UPDATE staff_users SET password = ? WHERE id = ?",
+                        [generate_password_hash(password), user['id']]
+                    )
                 request.session['staff_id'] = user['id']
                 request.session['staff_role'] = user['role']
                 request.session['staff_name'] = user['display_name']
