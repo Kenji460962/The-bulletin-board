@@ -287,13 +287,17 @@
         
         /* 役職ごとの色設定(文字の周りを少し濃い同系色で縁取りして見やすく) */
         .post-name { color: var(--text-main) !important; font-weight: 500; }
-        .role-admin { color: #ff2233 !important; font-weight: 700; text-shadow: -1px -1px 0 #7f1119, 1px -1px 0 #7f1119, -1px 1px 0 #7f1119, 1px 1px 0 #7f1119; }
-        .role-sub-admin { color: #ff2233 !important; font-weight: 700; text-shadow: -1px -1px 0 #7f1119, 1px -1px 0 #7f1119, -1px 1px 0 #7f1119, 1px 1px 0 #7f1119; }
-        .role-moderator { color: #34d399 !important; font-weight: 700; text-shadow: -1px -1px 0 #1a694c, 1px -1px 0 #1a694c, -1px 1px 0 #1a694c, 1px 1px 0 #1a694c; }
-        .role-pr { color: #00FFE4 !important; font-weight: 700; text-shadow: -1px -1px 0 #007f72, 1px -1px 0 #007f72, -1px 1px 0 #007f72, 1px 1px 0 #007f72; }
-        .role-proposal { color: #FF7F50 !important; font-weight: 700; text-shadow: -1px -1px 0 #7f3f28, 1px -1px 0 #7f3f28, -1px 1px 0 #7f3f28, 1px 1px 0 #7f3f28; }
-        .role-log { color: #4570FF !important; font-weight: 700; text-shadow: -1px -1px 0 #22387f, 1px -1px 0 #22387f, -1px 1px 0 #22387f, 1px 1px 0 #22387f; }
-        .role-patrol { color: #9333EA !important; font-weight: 700; text-shadow: -1px -1px 0 #491975, 1px -1px 0 #491975, -1px 1px 0 #491975, 1px 1px 0 #491975; }
+        .role-admin, .role-sub-admin, .role-moderator, .role-pr, .role-proposal, .role-log, .role-patrol {
+            font-weight: 700;
+            paint-order: stroke fill;
+        }
+        .role-admin { color: #ff2233 !important; -webkit-text-stroke: 2px #7f1119; text-shadow: 0 -1px 0 #7f1119, 0 1px 0 #7f1119, -1px 0 0 #7f1119, 1px 0 0 #7f1119, -1px -1px 0 #7f1119, 1px -1px 0 #7f1119, -1px 1px 0 #7f1119, 1px 1px 0 #7f1119; }
+        .role-sub-admin { color: #ff2233 !important; -webkit-text-stroke: 2px #7f1119; text-shadow: 0 -1px 0 #7f1119, 0 1px 0 #7f1119, -1px 0 0 #7f1119, 1px 0 0 #7f1119, -1px -1px 0 #7f1119, 1px -1px 0 #7f1119, -1px 1px 0 #7f1119, 1px 1px 0 #7f1119; }
+        .role-moderator { color: #34d399 !important; -webkit-text-stroke: 2px #1a694c; text-shadow: 0 -1px 0 #1a694c, 0 1px 0 #1a694c, -1px 0 0 #1a694c, 1px 0 0 #1a694c, -1px -1px 0 #1a694c, 1px -1px 0 #1a694c, -1px 1px 0 #1a694c, 1px 1px 0 #1a694c; }
+        .role-pr { color: #00FFE4 !important; -webkit-text-stroke: 2px #007f72; text-shadow: 0 -1px 0 #007f72, 0 1px 0 #007f72, -1px 0 0 #007f72, 1px 0 0 #007f72, -1px -1px 0 #007f72, 1px -1px 0 #007f72, -1px 1px 0 #007f72, 1px 1px 0 #007f72; }
+        .role-proposal { color: #FF7F50 !important; -webkit-text-stroke: 2px #7f3f28; text-shadow: 0 -1px 0 #7f3f28, 0 1px 0 #7f3f28, -1px 0 0 #7f3f28, 1px 0 0 #7f3f28, -1px -1px 0 #7f3f28, 1px -1px 0 #7f3f28, -1px 1px 0 #7f3f28, 1px 1px 0 #7f3f28; }
+        .role-log { color: #4570FF !important; -webkit-text-stroke: 2px #22387f; text-shadow: 0 -1px 0 #22387f, 0 1px 0 #22387f, -1px 0 0 #22387f, 1px 0 0 #22387f, -1px -1px 0 #22387f, 1px -1px 0 #22387f, -1px 1px 0 #22387f, 1px 1px 0 #22387f; }
+        .role-patrol { color: #9333EA !important; -webkit-text-stroke: 2px #491975; text-shadow: 0 -1px 0 #491975, 0 1px 0 #491975, -1px 0 0 #491975, 1px 0 0 #491975, -1px -1px 0 #491975, 1px -1px 0 #491975, -1px 1px 0 #491975, 1px 1px 0 #491975; }
 
         input[type="text"], textarea {
             background: var(--bg-color);
