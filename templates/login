@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ログイン | talk-ch</title>
+<style>
+  :root {
+    --bg: #F6F8FA; --card-bg: #FFFFFF; --card-border: #E5E7EB;
+    --text: #111827; --text-muted: #475569; --primary: #2563EB;
+    --primary-hover: #1D4ED8; --red: #DC2626; --radius: 6px;
+  }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  .card { background:var(--card-bg); border:1px solid var(--card-border); border-radius:var(--radius);
+          padding:32px; width:100%; max-width:360px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+  h1 { font-size:20px; margin:0 0 20px; }
+  label { display:block; font-size:13px; color:var(--text-muted); margin-bottom:4px; }
+  input { width:100%; box-sizing:border-box; padding:10px 12px; margin-bottom:16px; border:1px solid var(--card-border);
+          border-radius:var(--radius); font-size:14px; }
+  button { width:100%; padding:10px; background:var(--primary); color:#fff; border:none; border-radius:var(--radius);
+           font-size:14px; font-weight:600; cursor:pointer; }
+  button:hover { background:var(--primary-hover); }
+  .error { background:#FEF2F2; color:var(--red); padding:10px 12px; border-radius:var(--radius); font-size:13px; margin-bottom:16px; }
+  .links { margin-top:16px; font-size:13px; text-align:center; }
+  .links a { color:var(--primary); text-decoration:none; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>ログイン</h1>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <label>ユーザー名</label>
+      <input type="text" name="username" required autofocus>
+      <label>パスワード</label>
+      <input type="password" name="password" required>
+      <button type="submit">ログイン</button>
+    </form>
+    <div class="links">
+      <a href="/forgot_password">パスワードをお忘れですか？</a><br><br>
+      アカウントをお持ちでないですか？ <a href="/register">新規登録</a>
+    </div>
+  </div>
+</body>
+</html>
