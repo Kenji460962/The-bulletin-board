@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -41,6 +41,55 @@ app.add_middleware(SessionMiddleware, secret_key=FLASK_SECRET_KEY)
 # もしくはリバースプロキシ側で行う。アプリ側はCF-Connecting-IPを直接信頼する実装のまま。
 
 psutil.cpu_percent(interval=None)
+
+
+# --- ウェブソケット接続管理（スレッドごとの新着レス配信） ---
+# 注意: gunicornのワーカーは1つ(--workers 1)であることが前提。
+# ワーカーが複数だと、書き込みを受けたワーカーと接続を持つワーカーが別プロセスになり、
+# このメモリ上の管理だけでは他ワーカーの接続者に配信できない。
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: dict[int, list[WebSocket]] = {}
+
+    async def connect(self, thread_id: int, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.setdefault(thread_id, []).append(websocket)
+
+    def disconnect(self, thread_id: int, websocket: WebSocket):
+        conns = self.active_connections.get(thread_id)
+        if conns and websocket in conns:
+            conns.remove(websocket)
+            if not conns:
+                del self.active_connections[thread_id]
+
+    async def broadcast(self, thread_id: int, reply: dict):
+        conns = list(self.active_connections.get(thread_id, []))
+        if not conns:
+            return
+        dead = []
+        for ws in conns:
+            try:
+                await ws.send_json({"type": "new_reply", "reply": reply})
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(thread_id, ws)
+
+
+manager = ConnectionManager()
+
+
+@app.websocket('/ws/thread/{thread_id}')
+async def thread_ws(websocket: WebSocket, thread_id: int):
+    await manager.connect(thread_id, websocket)
+    try:
+        while True:
+            # クライアント側からは基本何も送ってこない想定。接続維持のためだけに待ち受ける
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(thread_id, websocket)
+    except Exception:
+        manager.disconnect(thread_id, websocket)
 
 
 def json_resp(content, status_code: int = 200):
@@ -2237,6 +2286,7 @@ async def thread_view(request: Request, thread_id: int):
                     except Exception:
                         new_reply['post_num'] = None
 
+                    await manager.broadcast(thread_id, new_reply)
                     return {"success": True, "reply": new_reply}
             except Exception as e:
                 print(f"レス保存エラー: {e}")
