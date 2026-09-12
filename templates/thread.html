@@ -489,7 +489,6 @@
         const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
 
         let currentMode = 'realtime'; // 初期状態: リアルタイム
-        let pollingTimer = null;
         let unreadCount = 0; // 未読件数
         let lastCheckedReplyId = 0; // 新着確認済みの最新ID
         let realtimeFetchBusy = false;
@@ -610,8 +609,7 @@
                 // 開いた直後も最下部から開始
                 scrollToBottom();
                 // 表示モード中に溜まった新着もまとめて取得して最下部へ
-                fetchNewReplies(true);
-                startPolling();
+                catchUpReplies();
             } else {
                 if (btnView) {
                     btnView.style.background = '#0284c7';
@@ -623,91 +621,94 @@
                     btnRealtime.style.color = 'var(--text-main)';
                     btnRealtime.style.fontWeight = 'normal';
                 }
-                stopPolling();
                 // 表示モードに入った時点の最新IDから監視を開始
                 lastCheckedReplyId = Math.max(lastCheckedReplyId, getDomMaxReplyId());
-                startPolling();
             }
         }
 
         if (btnView) btnView.addEventListener('click', () => setMode('view'));
         if (btnRealtime) btnRealtime.addEventListener('click', () => setMode('realtime'));
 
-        // 2秒ごとの定期取得（ポーリング）
-        function startPolling() {
-            stopPolling();
-            pollingTimer = setInterval(fetchNewReplies, 2000);
-        }
+        // ---- ウェブソケットによるリアルタイム受信 ----
+        let ws = null;
+        let wsReconnectTimer = null;
+        let wsReconnectDelay = 1000;
 
-        function stopPolling() {
-            if (pollingTimer) {
-                clearInterval(pollingTimer);
-                pollingTimer = null;
+        // 新着レス1件を画面に反映（モードによって挙動を変える）
+        function handleNewReply(reply) {
+            if (!reply || reply.id === undefined) return;
+            lastCheckedReplyId = Math.max(lastCheckedReplyId, Number(reply.id) || 0);
+            if (document.querySelector(`[data-reply-id="${reply.id}"]`)) return;
+
+            appendReply(reply);
+
+            if (currentMode === 'realtime') {
+                // リアルタイムモードでは新着を滑らかに最下部へ表示
+                smoothScrollToBottom();
+                unreadCount = 0;
+                updateBadge();
+                updateButtonVisibility();
+            } else {
+                // 閲覧モードではスクロール位置を維持し、件数だけ右上のバッジに表示
+                unreadCount += 1;
+                updateBadge();
+                if (scrollBtn) scrollBtn.style.display = 'flex';
             }
         }
 
-        // 新着レスを取得
-        async function fetchNewReplies(forceRealtime = false) {
+        // ウェブソケット接続の瞬間（再接続時含む）に、繋がっていなかった間の新着を
+        // HTTP経由で一度だけ取りこぼしなく補完する
+        async function catchUpReplies() {
             if (realtimeFetchBusy) return;
             realtimeFetchBusy = true;
-
-            // リアルタイム時はDOMに表示済みの最新IDから取得。
-            // 閲覧時は「確認済みID」から取得して件数だけ通知する。
-            const afterId = (currentMode === 'realtime' || forceRealtime)
-                ? getDomMaxReplyId()
-                : lastCheckedReplyId;
-
+            const afterId = getDomMaxReplyId();
             try {
                 const res = await fetch(`/thread/${threadId}/get_new_replies?after_id=${afterId}`);
                 if (!res.ok) return;
                 const data = await res.json();
-                const newReplies = data.replies || data.new_replies || [];
-                if (!Array.isArray(newReplies) || newReplies.length === 0) return;
-
-                const newestId = Math.max(...newReplies.map(r => Number(r.id) || 0));
-                lastCheckedReplyId = Math.max(lastCheckedReplyId, newestId);
-
-                if (currentMode === 'realtime' || forceRealtime) {
-                    let addedCount = 0;
-                    newReplies.forEach(reply => {
-                        if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
-                            appendReply(reply);
-                            addedCount++;
-                        }
-                    });
-
-                    if (addedCount > 0) {
-                        // リアルタイムモードでは新着を滑らかに最下部へ表示
-                        smoothScrollToBottom();
-                        unreadCount = 0;
-                        updateBadge();
-                        updateButtonVisibility();
-                    }
-                } else {
-                    // 閲覧モードでも新着レス自体は画面に追加する。
-                    // ただしスクロール位置は一切動かさず、現在読んでいる場所を維持する。
-                    let addedCount = 0;
-                    newReplies.forEach(reply => {
-                        if (!document.querySelector(`[data-reply-id="${reply.id}"]`)) {
-                            appendReply(reply);
-                            addedCount++;
-                        }
-                    });
-
-                    if (addedCount > 0) {
-                        // 新着件数だけ右上のバッジに表示。
-                        // scrollToBottom / smoothScrollToBottom はここでは呼ばない。
-                        unreadCount += addedCount;
-                        updateBadge();
-                        if (scrollBtn) scrollBtn.style.display = 'flex';
-                    }
-                }
+                const replies = Array.isArray(data.replies) ? data.replies : [];
+                replies.forEach(handleNewReply);
             } catch (e) {
-                console.error('新着レス取得エラー:', e);
+                console.error('新着レス補完取得エラー:', e);
             } finally {
                 realtimeFetchBusy = false;
             }
         }
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/thread/${threadId}`);
+
+            ws.addEventListener('open', () => {
+                wsReconnectDelay = 1000;
+                catchUpReplies();
+            });
+
+            ws.addEventListener('message', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'new_reply' && data.reply) {
+                        handleNewReply(data.reply);
+                    }
+                } catch (e) {
+                    console.error('WSメッセージ処理エラー:', e);
+                }
+            });
+
+            ws.addEventListener('close', () => {
+                wsReconnectTimer = setTimeout(connectWebSocket, wsReconnectDelay);
+                wsReconnectDelay = Math.min(wsReconnectDelay * 2, 15000);
+            });
+
+            ws.addEventListener('error', () => {
+                if (ws) ws.close();
+            });
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+            if (ws) ws.close();
+        });
 
         // 新規レス要素のDOM描画
         function appendReply(reply) {
@@ -924,6 +925,9 @@
                 }
             });
         }
+
+        // ウェブソケット接続を開始（モードに関わらず常時接続したままにする）
+        connectWebSocket();
 
         // 初期表示時は常にリアルタイムモード
         setMode('realtime');
