@@ -318,6 +318,37 @@
         }
         .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
 
+        .icon-btn-primary {
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--primary);
+            background: var(--primary);
+            color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12.5px;
+            font-weight: 600;
+            padding: 7px 12px;
+            cursor: pointer;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .icon-btn-primary:hover { background: var(--primary-hover); }
+
+        a.icon-btn { text-decoration: none; white-space: nowrap; }
+
+        .member-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--primary-soft);
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            font-weight: 600;
+            font-size: 12.5px;
+            padding: 7px 12px;
+            border-radius: var(--radius-sm);
+            white-space: nowrap;
+        }
+
         /* ---- 本文 ----
            PC/iPad（広い画面）: ロビータブのみ「中央エリア＋右サイドバー」の
            2カラムCSS Gridにする。他のタブ（スレ一覧・使い方）は従来どおり単一カラム。
@@ -829,11 +860,6 @@
                 
                 <a class="side-nav-item" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報窓口、お問い合わせ</a>
                 <a class="side-nav-item" href="{{ url_for('roles') }}" target="_blank">運営体制・役職</a>
-                {% if current_member %}
-                <a class="side-nav-item" href="{{ url_for('member_logout') }}">ログアウト（{{ current_member.username }}）</a>
-                {% else %}
-                <a class="side-nav-item" href="{{ url_for('member_login_form') }}">ログイン / 新規登録</a>
-                {% endif %}
             </nav>
         </aside>
 
@@ -850,6 +876,12 @@
                         オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
                     </div>
                     <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
+                    {% if current_member %}
+                    <div class="member-pill">{{ current_member.username }} さん <a href="{{ url_for('member_logout') }}" style="color: inherit; text-decoration: underline; margin-left: 4px;">ログアウト</a></div>
+                    {% else %}
+                    <a href="{{ url_for('member_login_form') }}" class="icon-btn">ログイン</a>
+                    <a href="{{ url_for('register_form') }}" class="icon-btn-primary">新規登録</a>
+                    {% endif %}
                 </div>
             </div>
 
