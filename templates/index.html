@@ -21,13 +21,13 @@
 
 
     <!-- WebPファビコン -->
-    <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
+    <link rel="icon" href="{{ url_for('static', path='favicon.webp') }}" type="image/webp">
 
     <!-- iOSホーム画面用アイコン -->
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', path='apple-touch-icon.png') }}">
 
     <!-- Android用-->
-    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <link rel="manifest" href="{{ url_for('static', path='site.webmanifest') }}">
 
     
 
@@ -74,7 +74,7 @@
             --radius-sm: 4px;
             --radius-pill: 4px;
             --sidebar-w: 240px;
-            --bg-image: url("{{ url_for('static', filename='IMG_0565.png') }}");
+            --bg-image: url("{{ url_for('static', path='IMG_0565.png') }}");
         }
 
         html[data-theme="dark"] {
@@ -88,7 +88,7 @@
             --primary-hover: #7CA8F8;
             --primary-soft: rgba(91, 147, 245, 0.12);
             --amber-soft: rgba(180, 83, 9, 0.15);
-            --bg-image: url("{{ url_for('static', filename='IMG_0565.png') }}");
+            --bg-image: url("{{ url_for('static', path='IMG_0565.png') }}");
         }
 
         * { box-sizing: border-box; }
@@ -804,7 +804,7 @@
         <aside class="sidebar" id="app-sidebar">
             <div class="brand-block">
                 <p class="brand-name">
-                    <img src="{{ url_for('static', filename='favicon.webp') }}" alt="talk-ch">
+                    <img src="{{ url_for('static', path='favicon.webp') }}" alt="talk-ch">
                     <span>talk<span class="accent">-ch</span></span>
                 </p>
                 <div class="brand-sub">Let's talk.</div>
