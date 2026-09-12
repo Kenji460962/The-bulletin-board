@@ -479,11 +479,15 @@
     <script>
     document.addEventListener('DOMContentLoaded', () => {
 
-        // 名前をローカルストレージから復元
+        // 名前をローカルストレージから復元。保存済みの名前がなければ、
+        // ログイン中の会員ユーザー名を自動で入れる。
         const nameInput = document.querySelector('input[name="author"]');
         const savedName = localStorage.getItem('user_name');
+        const currentMemberUsername = {% if current_member %}"{{ current_member.username }}"{% else %}null{% endif %};
         if (savedName) {
             nameInput.value = savedName;
+        } else if (currentMemberUsername) {
+            nameInput.value = currentMemberUsername;
         }
         const threadId = {{ thread.id }};
         const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
