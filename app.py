@@ -16,7 +16,9 @@ from urllib.parse import unquote
 import httpx
 import boto3
 import psutil
+import secrets
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 import uvicorn
 
@@ -290,6 +292,40 @@ s3_client = boto3.client(
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 
+# --- メール送信設定(Resend) ---
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
+RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'noreply@example.com')
+SITE_BASE_URL = os.environ.get('SITE_BASE_URL', 'http://localhost:8080')
+
+
+async def send_email(to_email: str, subject: str, html_body: str) -> bool:
+    """Resend API経由でメールを送信する。失敗してもアプリは落とさずFalseを返す。"""
+    if not RESEND_API_KEY:
+        print(f"[メール送信スキップ] RESEND_API_KEY未設定 -> {to_email}: {subject}")
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {RESEND_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": RESEND_FROM_EMAIL,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_body,
+                },
+            )
+            if resp.status_code >= 400:
+                print(f"Resend送信エラー: {resp.status_code} {resp.text}")
+                return False
+            return True
+    except Exception as e:
+        print(f"メール送信例外: {e}")
+        return False
+
 
 LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
@@ -301,6 +337,19 @@ def get_daily_user_id(ip_address):
     raw_str = f"{ip_address}_{today_str}"
     hashed = hashlib.md5(raw_str.encode('utf-8')).hexdigest()
     return hashed[:8]
+
+
+def resolve_op_user_id(thread_row: dict):
+    """スレの表示ID(ID:xxxxx)を決定する。
+    ログイン会員が立てたスレはthreads.user_idに固定IDが保存されているのでそれを使う。
+    それが無い(ログイン機能導入前の古いスレ)場合のみ、従来通りIPから日替わりIDを計算する。"""
+    if not thread_row:
+        return None
+    stored = thread_row.get('user_id')
+    if stored:
+        return stored
+    ip = thread_row.get('ip_address')
+    return get_daily_user_id(ip) if ip else None
 
 
 def get_client_ip(request: Request):
@@ -370,6 +419,98 @@ def can_manage_board(request: Request):
     return request.session.get('staff_role') in ['admin', 'sub_admin']
 
 
+# =========================
+# 会員ログイン機能(スレ立てに必要な一般ユーザーアカウント)
+# staff_role(運営)とは別枠。session内のキーも member_ で分けて衝突を避ける。
+# =========================
+
+USERNAME_RE = re.compile(r'^[A-Za-z0-9_]{3,20}$')
+EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+TOKEN_EXPIRE_HOURS_VERIFY = 24
+TOKEN_EXPIRE_HOURS_RESET = 1
+
+
+def get_current_member(request: Request):
+    """ログイン中の会員情報をsessionから取得(未ログインならNone)。"""
+    member_id = request.session.get('member_id')
+    if not member_id:
+        return None
+    return {
+        'id': member_id,
+        'username': request.session.get('member_username'),
+    }
+
+
+def is_member_logged_in(request: Request) -> bool:
+    return bool(request.session.get('member_id'))
+
+
+def _generate_public_id() -> str:
+    """投稿に表示される「ID:xxxxxxxx」用の、アカウントに紐づく固定ランダムID。
+    重複はほぼあり得ないが、念のため既存と衝突しないことを確認する。"""
+    for _ in range(5):
+        candidate = secrets.token_hex(4)
+        existing = query_d1("SELECT id FROM users WHERE public_id = ?", [candidate])
+        if not existing:
+            return candidate
+    return secrets.token_hex(6)
+
+
+def get_member_public_id(request: Request):
+    """ログイン中会員の固定表示ID。旧アカウント(public_id未発行)の場合はここで発行して保存する。"""
+    if not is_member_logged_in(request):
+        return None
+    cached = request.session.get('member_public_id')
+    if cached:
+        return cached
+    member_id = request.session.get('member_id')
+    try:
+        res = query_d1("SELECT public_id FROM users WHERE id = ?", [member_id])
+        public_id = res[0]['public_id'] if res else None
+        if not public_id:
+            public_id = _generate_public_id()
+            query_d1("UPDATE users SET public_id = ? WHERE id = ?", [public_id, member_id])
+        request.session['member_public_id'] = public_id
+        return public_id
+    except Exception as e:
+        print(f"public_id取得エラー: {e}")
+        return None
+
+
+def _make_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _issue_token(user_id: int, purpose: str, expire_hours: int) -> str:
+    token = _make_token()
+    expires_at = (datetime.utcnow() + timedelta(hours=expire_hours)).isoformat()
+    query_d1(
+        "INSERT INTO email_tokens (user_id, token, purpose, expires_at, used) VALUES (?, ?, ?, ?, 0)",
+        [user_id, token, purpose, expires_at]
+    )
+    return token
+
+
+def _consume_token(token: str, purpose: str):
+    """有効なトークンならユーザー行を返し、usedを1に更新する。無効ならNone。"""
+    res = query_d1(
+        "SELECT * FROM email_tokens WHERE token = ? AND purpose = ? AND used = 0",
+        [token, purpose]
+    )
+    if not res:
+        return None
+    row = res[0]
+    try:
+        expires_at = datetime.fromisoformat(row['expires_at'])
+    except Exception:
+        return None
+    if datetime.utcnow() > expires_at:
+        return None
+    query_d1("UPDATE email_tokens SET used = 1 WHERE id = ?", [row['id']])
+    user_res = query_d1("SELECT * FROM users WHERE id = ?", [row['user_id']])
+    return user_res[0] if user_res else None
+
+
 @app.get('/login_secret_8823')
 async def staff_login_form():
     return HTMLResponse('''
@@ -404,6 +545,198 @@ async def staff_login(request: Request):
 async def staff_logout(request: Request):
     request.session.clear()
     return RedirectResponse(url='/')
+
+
+@app.get('/register')
+async def register_form(request: Request):
+    if is_member_logged_in(request):
+        return RedirectResponse(url='/')
+    return templates.TemplateResponse(request, 'register.html', {'error': None})
+
+
+@app.post('/register')
+async def register_submit(request: Request):
+    form = await request.form()
+    username = (form.get('username') or '').strip()
+    password = form.get('password') or ''
+    password_confirm = form.get('password_confirm') or ''
+    email = (form.get('email') or '').strip()
+
+    def render_error(msg):
+        return templates.TemplateResponse(request, 'register.html', {'error': msg}, status_code=400)
+
+    if not USERNAME_RE.match(username):
+        return render_error('ユーザー名は半角英数字とアンダースコアで3〜20文字にしてください。')
+    if len(password) < 8:
+        return render_error('パスワードは8文字以上にしてください。')
+    if password != password_confirm:
+        return render_error('パスワードが一致しません。')
+    if email and not EMAIL_RE.match(email):
+        return render_error('メールアドレスの形式が正しくありません。')
+
+    try:
+        existing = query_d1("SELECT id FROM users WHERE username = ?", [username])
+        if existing:
+            return render_error('そのユーザー名はすでに使われています。')
+        if email:
+            existing_email = query_d1("SELECT id FROM users WHERE email = ?", [email])
+            if existing_email:
+                return render_error('そのメールアドレスはすでに登録されています。')
+
+        password_hash = generate_password_hash(password)
+        public_id = _generate_public_id()
+        query_d1(
+            "INSERT INTO users (username, password_hash, email, email_verified, public_id) VALUES (?, ?, ?, 0, ?)",
+            [username, password_hash, email or None, public_id]
+        )
+        new_user_res = query_d1("SELECT * FROM users WHERE username = ?", [username])
+        if not new_user_res:
+            return render_error('登録に失敗しました。もう一度お試しください。')
+        new_user = new_user_res[0]
+    except Exception as e:
+        print(f"会員登録エラー: {e}")
+        return render_error('データベースエラーが発生しました。')
+
+    if email:
+        token = _issue_token(new_user['id'], 'verify', TOKEN_EXPIRE_HOURS_VERIFY)
+        verify_url = f"{SITE_BASE_URL.rstrip('/')}/verify_email/{token}"
+        await send_email(
+            email,
+            "【掲示板】メールアドレスの確認",
+            f'<p>{html.escape(username)} 様</p>'
+            f'<p>ご登録ありがとうございます。以下のリンクからメールアドレスを確認してください(24時間有効)。</p>'
+            f'<p><a href="{verify_url}">{verify_url}</a></p>'
+        )
+
+    request.session['member_id'] = new_user['id']
+    request.session['member_username'] = new_user['username']
+    request.session['member_public_id'] = public_id
+    return RedirectResponse(url='/', status_code=303)
+
+
+@app.get('/login')
+async def member_login_form(request: Request):
+    if is_member_logged_in(request):
+        return RedirectResponse(url='/')
+    return templates.TemplateResponse(request, 'login.html', {'error': None})
+
+
+@app.post('/login')
+async def member_login_submit(request: Request):
+    form = await request.form()
+    username = (form.get('username') or '').strip()
+    password = form.get('password') or ''
+
+    try:
+        res = query_d1("SELECT * FROM users WHERE username = ?", [username])
+    except Exception as e:
+        print(f"ログインエラー: {e}")
+        res = []
+
+    user = res[0] if res else None
+    if not user or not check_password_hash(user['password_hash'], password):
+        return templates.TemplateResponse(
+            request, 'login.html', {'error': 'ユーザー名またはパスワードが違います。'}, status_code=401
+        )
+
+    request.session['member_id'] = user['id']
+    request.session['member_username'] = user['username']
+    return RedirectResponse(url='/', status_code=303)
+
+
+@app.get('/logout')
+async def member_logout(request: Request):
+    request.session.pop('member_id', None)
+    request.session.pop('member_username', None)
+    return RedirectResponse(url='/')
+
+
+@app.get('/verify_email/{token}')
+async def verify_email(request: Request, token: str):
+    user = _consume_token(token, 'verify')
+    if not user:
+        return text_resp("確認リンクが無効か、有効期限が切れています。", 400)
+    try:
+        query_d1("UPDATE users SET email_verified = 1 WHERE id = ?", [user['id']])
+    except Exception as e:
+        print(f"メール確認エラー: {e}")
+        return text_resp("データベースエラーが発生しました。", 500)
+    return templates.TemplateResponse(request, 'email_verified.html', {})
+
+
+@app.get('/forgot_password')
+async def forgot_password_form(request: Request):
+    return templates.TemplateResponse(request, 'forgot_password.html', {'sent': False})
+
+
+@app.post('/forgot_password')
+async def forgot_password_submit(request: Request):
+    form = await request.form()
+    email = (form.get('email') or '').strip()
+
+    # メール登録の有無をユーザーに教えないため、結果に関わらず同じ成功画面を返す
+    if email:
+        try:
+            res = query_d1("SELECT * FROM users WHERE email = ?", [email])
+        except Exception as e:
+            print(f"パスワードリセット検索エラー: {e}")
+            res = []
+        if res:
+            user = res[0]
+            token = _issue_token(user['id'], 'reset', TOKEN_EXPIRE_HOURS_RESET)
+            reset_url = f"{SITE_BASE_URL.rstrip('/')}/reset_password/{token}"
+            await send_email(
+                email,
+                "【掲示板】パスワード再設定",
+                f'<p>{html.escape(user["username"])} 様</p>'
+                f'<p>以下のリンクからパスワードを再設定してください(1時間有効)。</p>'
+                f'<p><a href="{reset_url}">{reset_url}</a></p>'
+                f'<p>心当たりがない場合は、このメールは無視してください。</p>'
+            )
+
+    return templates.TemplateResponse(request, 'forgot_password.html', {'sent': True})
+
+
+@app.get('/reset_password/{token}')
+async def reset_password_form(request: Request, token: str):
+    return templates.TemplateResponse(request, 'reset_password.html', {'token': token, 'error': None})
+
+
+@app.post('/reset_password/{token}')
+async def reset_password_submit(request: Request, token: str):
+    form = await request.form()
+    password = form.get('password') or ''
+    password_confirm = form.get('password_confirm') or ''
+
+    if len(password) < 8:
+        return templates.TemplateResponse(
+            request, 'reset_password.html',
+            {'token': token, 'error': 'パスワードは8文字以上にしてください。'}, status_code=400
+        )
+    if password != password_confirm:
+        return templates.TemplateResponse(
+            request, 'reset_password.html',
+            {'token': token, 'error': 'パスワードが一致しません。'}, status_code=400
+        )
+
+    user = _consume_token(token, 'reset')
+    if not user:
+        return templates.TemplateResponse(
+            request, 'reset_password.html',
+            {'token': token, 'error': 'リンクが無効か、有効期限が切れています。もう一度パスワード再設定をお試しください。'},
+            status_code=400
+        )
+
+    try:
+        query_d1("UPDATE users SET password_hash = ? WHERE id = ?", [generate_password_hash(password), user['id']])
+    except Exception as e:
+        print(f"パスワード更新エラー: {e}")
+        return templates.TemplateResponse(
+            request, 'reset_password.html',
+            {'token': token, 'error': 'データベースエラーが発生しました。'}, status_code=500
+        )
+
+    return RedirectResponse(url='/login', status_code=303)
 
 
 NG_WORDS = {
@@ -1949,11 +2282,13 @@ async def index(request: Request):
 
     active_count = update_and_get_user_counts(user_token, "lobby")
     is_admin_user = can_manage_board(request)
+    current_member = get_current_member(request)
 
     response = templates.TemplateResponse(request, 'index.html', {
         'threads': threads,
         'admin_message': admin_message,
         'is_admin_user': is_admin_user,
+        'current_member': current_member,
         'active_count': active_count,
         'current_page': page,
         'has_next': has_next,
@@ -1997,6 +2332,9 @@ async def create_thread(request: Request):
     if is_banned_ip(client_ip):
         return json_resp({"error": "あなたはアクセス禁止（BAN）されています。"}, 403)
 
+    if not is_member_logged_in(request):
+        return json_resp({"error": "スレッドを作成するにはログインが必要です。", "login_required": True}, 401)
+
     form = await request.form()
     title = form.get('title')
     if not title:
@@ -2029,9 +2367,10 @@ async def create_thread(request: Request):
     LAST_THREAD_TIMES[client_ip] = now
 
     try:
+        member_public_id = get_member_public_id(request)
         query_d1(
-            "INSERT INTO threads (title, ip_address, category) VALUES (?, ?, ?)",
-            [title, client_ip, category]
+            "INSERT INTO threads (title, ip_address, category, user_id) VALUES (?, ?, ?, ?)",
+            [title, client_ip, category, member_public_id]
         )
         res = query_d1("SELECT * FROM threads ORDER BY id DESC LIMIT 1")
         new_thread = res[0] if res else None
@@ -2071,9 +2410,8 @@ async def get_older_replies(request: Request, thread_id: int):
         older_replies = list(reversed(older_res)) if older_res else []
         start_num = count_before - len(older_replies) + 1
 
-        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
-        op_ip = thread_res[0]['ip_address'] if thread_res else None
-        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+        thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
+        op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
 
         formatted_replies = []
         for i, r in enumerate(older_replies):
@@ -2123,9 +2461,8 @@ async def get_new_replies(request: Request, thread_id: int):
         if not replies:
             replies = []
 
-        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
-        op_ip = thread_res[0]['ip_address'] if thread_res else None
-        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+        thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
+        op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
 
         total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
         total_reply_count = total_count_res[0]['cnt'] if total_count_res else 0
@@ -2216,7 +2553,8 @@ async def thread_view(request: Request, thread_id: int):
                 author_input = html.escape(name_part) or "名無しさん"
             else:
                 author_input = html.escape(author_input)
-            user_id = get_daily_user_id(client_ip)
+            member_public_id = get_member_public_id(request)
+            user_id = member_public_id if member_public_id else get_daily_user_id(client_ip)
 
         content = html.escape(content)
         content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
@@ -2273,9 +2611,8 @@ async def thread_view(request: Request, thread_id: int):
                         new_reply['content'] = content_str
 
                     try:
-                        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
-                        op_ip = thread_res[0]['ip_address'] if thread_res else None
-                        op_user_id = get_daily_user_id(op_ip) if op_ip else None
+                        thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
+                        op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
                         new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
                     except Exception as ope:
                         new_reply['is_op'] = False
@@ -2329,7 +2666,7 @@ async def thread_view(request: Request, thread_id: int):
                 content_str = re.sub(r'&gt;&gt;(\d+)|>>(\d+)', r'<a href="#post-\1\2" class="post-anchor" onclick="scrollToPost(\1\2); return false;">&gt;&gt;\1\2</a>', content_str)
                 r['content'] = content_str
 
-        op_user_id = get_daily_user_id(thread.get('ip_address', '')) if thread.get('ip_address') else None
+        op_user_id = resolve_op_user_id(thread)
         for r in thread['replies']:
             r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
     except Exception as e:
@@ -2351,7 +2688,8 @@ async def thread_view(request: Request, thread_id: int):
         'is_admin_user': is_admin_user,
         'active_count': active_count,
         'back_to_board': "/?tab=threads",
-        'op_user_id': op_user_id
+        'op_user_id': op_user_id,
+        'current_member': get_current_member(request)
     })
 
     if is_new_user:
