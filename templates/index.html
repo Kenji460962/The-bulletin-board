@@ -88,7 +88,7 @@
             --primary-hover: #7CA8F8;
             --primary-soft: rgba(91, 147, 245, 0.12);
             --amber-soft: rgba(180, 83, 9, 0.15);
-            --bg-image: url("{{ url_for('static', path='IMG_0565.png') }}");
+            --bg-image: url("{{ url_for('static', path='IMG_0566.png') }}");
         }
 
         * { box-sizing: border-box; }
@@ -285,6 +285,8 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         .online-pill {
@@ -299,6 +301,7 @@
             padding: 7px 12px;
             border-radius: var(--radius-sm);
             white-space: nowrap;
+            flex-shrink: 0;
         }
         .online-dot {
             width: 7px; height: 7px; border-radius: 50%;
@@ -315,6 +318,8 @@
             font-weight: 600;
             padding: 7px 12px;
             cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
 
@@ -330,6 +335,7 @@
             cursor: pointer;
             text-decoration: none;
             white-space: nowrap;
+            flex-shrink: 0;
         }
         .icon-btn-primary:hover { background: var(--primary-hover); }
 
@@ -347,6 +353,7 @@
             padding: 7px 12px;
             border-radius: var(--radius-sm);
             white-space: nowrap;
+            flex-shrink: 0;
         }
 
         /* ---- 本文 ----
