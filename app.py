@@ -29,7 +29,7 @@ templates = Jinja2Templates(directory="templates")
 
 # --- 静的ファイル配信（Flaskの /static 相当） ---
 if os.path.isdir("static"):
-    app.mount("/static", StaticFiles(directory="static", max_age=60 * 60 * 24 * 7), name="static")
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345')
 
