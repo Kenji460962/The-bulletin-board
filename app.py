@@ -2336,8 +2336,8 @@ async def delete_reply(request: Request, thread_id: int, reply_id: int):
     return RedirectResponse(url=f'/thread/{thread_id}', status_code=303)
 
 
-@app.post('/ban_user/{reply_id}')
-async def ban_user(request: Request, reply_id: int):
+@app.post('/ban_user/{thread_id}/{reply_id}')
+async def ban_user(request: Request, thread_id: int, reply_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
