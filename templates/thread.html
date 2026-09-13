@@ -285,19 +285,14 @@
         .post-content { margin: 6px 0; word-break: break-all; white-space: pre-wrap; color: var(--text-main); line-height: 1.5; }
         .post-image { max-width: 280px; max-height: 280px; display: block; margin-top: 8px; border-radius: 6px; border: 1px solid var(--border-color); }
         
-        /* 役職ごとの色設定(文字の周りを少し濃い同系色で縁取りして見やすく) */
+        /* 役職ごとの色設定 */
         .post-name { color: var(--text-main) !important; font-weight: 500; }
-        .role-admin, .role-sub-admin, .role-moderator, .role-pr, .role-proposal, .role-log, .role-patrol {
-            font-weight: 500;
-            paint-order: stroke fill;
-        }
-        .role-admin { color: #ff2233 !important; -webkit-text-stroke: 0.6px #7f1119; text-shadow: 0 -1px 0 #7f1119, 0 1px 0 #7f1119, -1px 0 0 #7f1119, 1px 0 0 #7f1119; }
-        .role-sub-admin { color: #ff2233 !important; -webkit-text-stroke: 0.6px #7f1119; text-shadow: 0 -1px 0 #7f1119, 0 1px 0 #7f1119, -1px 0 0 #7f1119, 1px 0 0 #7f1119; }
-        .role-moderator { color: #34d399 !important; -webkit-text-stroke: 0.6px #1a694c; text-shadow: 0 -1px 0 #1a694c, 0 1px 0 #1a694c, -1px 0 0 #1a694c, 1px 0 0 #1a694c; }
-        .role-pr { color: #00FFE4 !important; -webkit-text-stroke: 0.6px #007f72; text-shadow: 0 -1px 0 #007f72, 0 1px 0 #007f72, -1px 0 0 #007f72, 1px 0 0 #007f72; }
-        .role-proposal { color: #FF7F50 !important; -webkit-text-stroke: 0.6px #7f3f28; text-shadow: 0 -1px 0 #7f3f28, 0 1px 0 #7f3f28, -1px 0 0 #7f3f28, 1px 0 0 #7f3f28; }
-        .role-log { color: #4570FF !important; -webkit-text-stroke: 0.6px #22387f; text-shadow: 0 -1px 0 #22387f, 0 1px 0 #22387f, -1px 0 0 #22387f, 1px 0 0 #22387f; }
-        .role-patrol { color: #9333EA !important; -webkit-text-stroke: 0.6px #491975; text-shadow: 0 -1px 0 #491975, 0 1px 0 #491975, -1px 0 0 #491975, 1px 0 0 #491975; }
+        .role-admin { color: #f87171 !important; font-weight: 700; }
+        .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
+        .role-moderator { color: #34d399 !important; font-weight: 700; }
+        .role-pr { color: #4ade80 !important; font-weight: 700; }
+        .role-proposal { color: #fbbf24 !important; font-weight: 700; }
+        .role-log { color: #38bdf8 !important; font-weight: 700; }
 
         input[type="text"], textarea {
             background: var(--bg-color);
@@ -390,11 +385,13 @@
                     {% set role_cls = 'role-proposal' %}
                 {% elif r.role == 'log' %}
                     {% set role_cls = 'role-log' %}
-                {% elif r.role == 'patrol' %}
-                    {% set role_cls = 'role-patrol' %}
                 {% endif %}
 
+                {% if r.profile_username %}
+                <a href="{{ url_for('profile_view', public_id=r.user_id) }}" target="_blank" class="{{ role_cls }}" style="text-decoration: none;">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</a>
+                {% else %}
                 <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                {% endif %}
                 {% if r.is_op %}
                 <span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>
                 {% endif %}
@@ -746,8 +743,6 @@
                 roleCls = 'role-proposal';
             } else if (reply.role === 'log') {
                 roleCls = 'role-log';
-            } else if (reply.role === 'patrol') {
-                roleCls = 'role-patrol';
             }
 
             const starHtml = (reply.is_admin || ['admin', 'sub_admin', 'moderator'].includes(reply.role)) ? '★' : '';
@@ -776,10 +771,14 @@
                 `;
             }
 
+            const nameHtml = reply.profile_username
+                ? `<a href="/profile/${reply.user_id}" target="_blank" class="${roleCls}" style="text-decoration: none;">${reply.author || '名無しさん'}${starHtml}</a>`
+                : `<span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>`;
+
             replyDiv.innerHTML = `
                 <div class="post-meta">
                     <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
-                    <span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>
+                    ${nameHtml}
                     ${opHtml}
                     <span>${reply.date || ''}</span>
                     <span style="color: var(--text-muted);">ID:${reply.user_id || '???'}</span>
