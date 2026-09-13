@@ -431,7 +431,7 @@ def can_manage_board(request: Request):
 # =========================
 
 USERNAME_RE = re.compile(
-    r'^[A-Za-z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uFF66-\uFF9F]{3,20}$'
+    r'^[A-Za-z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uFF66-\uFF9F]{2,20}$'
 )
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 TOKEN_EXPIRE_HOURS_VERIFY = 24
@@ -590,7 +590,7 @@ async def register_submit(request: Request):
         return templates.TemplateResponse(request, 'register.html', {'error': msg}, status_code=400)
 
     if not USERNAME_RE.match(username):
-        return render_error('ユーザー名は半角英数字・アンダースコア・日本語(ひらがな/カタカナ/漢字)で3〜20文字にしてください。')
+        return render_error('ユーザー名は半角英数字・アンダースコア・日本語(ひらがな/カタカナ/漢字)で2〜20文字にしてください。')
     if len(password) < 8:
         return render_error('パスワードは8文字以上にしてください。')
     if password != password_confirm:
@@ -886,7 +886,7 @@ async def profile_edit_submit(request: Request):
         )
 
     if not USERNAME_RE.match(username):
-        return render_error('ユーザー名は半角英数字・アンダースコア・日本語(ひらがな/カタカナ/漢字)で3〜20文字にしてください。')
+        return render_error('ユーザー名は半角英数字・アンダースコア・日本語(ひらがな/カタカナ/漢字)で2〜20文字にしてください。')
 
     try:
         existing = query_d1("SELECT id FROM users WHERE username = ? AND id != ?", [username, member_id])
@@ -1825,12 +1825,26 @@ async def game_create(request: Request):
 
 @app.get('/game/{room_code}')
 async def game_room(request: Request, room_code: str):
-    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    code = room_code.upper()
+    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return RedirectResponse(url='/game')
     room = rows[0]
     token = _game_token(request)
     my_color = 'B' if room.get('black_token') == token else ('W' if room.get('white_token') == token else None)
+
+    # 招待リンクを踏んだ2人目をその場で自動参加させる
+    if my_color is None and not room.get('white_token') and room.get('black_token') != token:
+        name = await _game_name(request)
+        query_d1(
+            'UPDATE othello_rooms SET white_token=?,white_name=?,white_member_id=?,status=?,updated_at=? '
+            'WHERE room_code=? AND white_token IS NULL',
+            [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+        )
+        rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
+        room = rows[0]
+        my_color = 'W' if room.get('white_token') == token else my_color
+
     resp = templates.TemplateResponse(request, 'game.html', {'room': room, 'my_color': my_color})
     return _cookie_response(request, resp, token)
 
@@ -1960,12 +1974,26 @@ async def chess_create(request: Request):
 
 @app.get('/chess/{room_code}')
 async def chess_room(request: Request, room_code: str):
-    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    code = room_code.upper()
+    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return RedirectResponse(url='/chess')
     r = rows[0]
     token = _game_token(request)
     my = 'w' if r.get('white_token') == token else ('b' if r.get('black_token') == token else None)
+
+    # 招待リンクを踏んだ2人目をその場で自動参加させる
+    if my is None and not r.get('black_token') and r.get('white_token') != token:
+        name = await _game_name(request)
+        query_d1(
+            'UPDATE chess_rooms SET black_token=?,black_name=?,black_member_id=?,status=?,updated_at=? '
+            'WHERE room_code=? AND black_token IS NULL',
+            [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+        )
+        rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
+        r = rows[0]
+        my = 'b' if r.get('black_token') == token else my
+
     resp = templates.TemplateResponse(request, 'chess.html', {'room': r, 'my_color': my})
     return _cookie_response(request, resp, token)
 
@@ -2133,12 +2161,26 @@ async def shogi_create(request: Request):
 
 @app.get('/shogi/{room_code}')
 async def shogi_room(request: Request, room_code: str):
-    rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    code = room_code.upper()
+    rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return RedirectResponse(url='/shogi')
     r = rows[0]
     token = _game_token(request)
     my = 's' if r.get('sente_token') == token else ('g' if r.get('gote_token') == token else None)
+
+    # 招待リンクを踏んだ2人目をその場で自動参加させる
+    if my is None and not r.get('gote_token') and r.get('sente_token') != token:
+        name = await _game_name(request)
+        query_d1(
+            'UPDATE shogi_rooms SET gote_token=?,gote_name=?,gote_member_id=?,status=?,updated_at=? '
+            'WHERE room_code=? AND gote_token IS NULL',
+            [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+        )
+        rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
+        r = rows[0]
+        my = 'g' if r.get('gote_token') == token else my
+
     resp = templates.TemplateResponse(request, 'syogi.html', {'room': r, 'my_color': my})
     return _cookie_response(request, resp, token)
 
