@@ -665,6 +665,7 @@ async def member_login_submit(request: Request):
 async def member_logout(request: Request):
     request.session.pop('member_id', None)
     request.session.pop('member_username', None)
+    request.session.pop('member_public_id', None)
     return RedirectResponse(url='/')
 
 
