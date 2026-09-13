@@ -415,8 +415,14 @@ def get_staff_role(request: Request):
     return request.session.get('staff_role')
 
 
+# スレッド削除・レス削除・BANなど「掲示板を管理できる」権限を持つロール。
+# 表示用の役職(moderator/pr/proposal/log/patrolなど)とは別物なので、
+# ここに含まれるロールだけが実際の管理操作を行える。
+BOARD_MANAGER_ROLES = ['admin', 'sub_admin']
+
+
 def can_manage_board(request: Request):
-    return request.session.get('staff_role') in ['admin', 'sub_admin']
+    return request.session.get('staff_role') in BOARD_MANAGER_ROLES
 
 
 # =========================
@@ -512,17 +518,12 @@ def _consume_token(token: str, purpose: str):
 
 
 
-# 運営権限を持つロール一覧(can_manage_boardの判定と揃える)。
-# usersテーブルのroleカラムがこの中に含まれていれば運営、'user'なら一般会員。
-STAFF_ROLES = ['admin', 'sub_admin']
-
-
 def _authenticate_user(username: str, password: str):
     """usersテーブルを1回引くだけで認証する。
     以前はスタッフ用に別テーブル(staff_users)を持ち、ログイン時に
     usersテーブルへ自動で紐付けアカウントを作る(ensure_staff_member_link)方式だったが、
     2つのテーブルが分かれていることで紐付け漏れ・二重作成などのバグの原因になっていたため、
-    usersテーブルに直接roleカラム('user' / 'admin' / 'sub_admin' など)を持たせる方式に変更した。"""
+    usersテーブルに直接roleカラム('user' / 'admin' / 'sub_admin' / 'moderator' など)を持たせる方式に変更した。"""
     try:
         res = query_d1("SELECT * FROM users WHERE username = ?", [username])
     except Exception as e:
@@ -535,13 +536,16 @@ def _authenticate_user(username: str, password: str):
 
 
 def _apply_login_session(request: Request, user: dict):
-    """認証済みのusers行の内容をセッションに反映する。roleが運営ロールなら運営セッションも張る。"""
+    """認証済みのusers行の内容をセッションに反映する。
+    role が 'user' 以外(admin/sub_admin/moderator/pr/proposal/log/patrolなど)なら、
+    運営セッション(staff_id/staff_role/staff_name)も張る。
+    実際に削除・BANなどの管理操作ができるかどうかは BOARD_MANAGER_ROLES / can_manage_board 側で別途判定する。"""
     role = user.get('role') or 'user'
 
     request.session['member_id'] = user['id']
     request.session['member_username'] = user['username']
 
-    if role in STAFF_ROLES:
+    if role != 'user':
         request.session['staff_id'] = user['id']
         request.session['staff_role'] = role
         request.session['staff_name'] = user['username']
