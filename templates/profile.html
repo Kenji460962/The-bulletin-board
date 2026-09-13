@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ profile_user.username }} のプロフィール | talk-ch</title>
+<style>
+  :root {
+    --bg: #F6F8FA; --card-bg: #FFFFFF; --card-border: #E5E7EB;
+    --text: #111827; --text-muted: #475569; --primary: #2563EB;
+    --primary-hover: #1D4ED8; --primary-soft: #EFF4FE; --radius: 6px;
+  }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",sans-serif; }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 28px 16px 60px; }
+  .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 24px; }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+  .username { font-size: 22px; font-weight: 800; margin: 0; }
+  .edit-link {
+    font-size: 12.5px; font-weight: 600; color: var(--primary); text-decoration: none;
+    border: 1px solid var(--primary); border-radius: var(--radius); padding: 6px 12px; white-space: nowrap;
+  }
+  .joined { font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; }
+  .bio { font-size: 14px; line-height: 1.7; white-space: pre-wrap; margin: 0 0 22px; color: var(--text); }
+  .bio.empty { color: var(--text-muted); font-style: italic; }
+  .section-title { font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; }
+  .game-rows { display: flex; flex-direction: column; gap: 8px; }
+  .game-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+    padding: 10px 14px; font-size: 13.5px;
+  }
+  .game-row .name { font-weight: 600; }
+  .game-row .rating { font-weight: 700; color: var(--primary); }
+  .game-row .record { color: var(--text-muted); font-size: 12.5px; }
+  .no-games { font-size: 13px; color: var(--text-muted); }
+  .back-link { display: inline-block; margin-top: 20px; font-size: 13px; color: var(--primary); text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        <h1 class="username">{{ profile_user.username }}</h1>
+        {% if is_own_profile %}
+        <a class="edit-link" href="{{ url_for('profile_edit_form') }}">プロフィールを編集</a>
+        {% endif %}
+      </div>
+      <div class="joined">{{ profile_user.created_at[:10] if profile_user.created_at else '' }} 登録</div>
+
+      {% if profile_user.bio %}
+      <p class="bio">{{ profile_user.bio }}</p>
+      {% else %}
+      <p class="bio empty">自己紹介はまだありません。</p>
+      {% endif %}
+
+      <div class="section-title">ゲーム成績</div>
+      {% set game_labels = {'othello': 'オセロ', 'chess': 'チェス', 'shogi': '将棋'} %}
+      {% if games.othello or games.chess or games.shogi %}
+      <div class="game-rows">
+        {% for key, label in game_labels.items() %}
+        {% if games[key] %}
+        <div class="game-row">
+          <span class="name">{{ label }}</span>
+          <span class="rating">R{{ games[key].rating }}</span>
+          <span class="record">{{ games[key].wins }}勝{{ games[key].losses }}敗{{ games[key].draws }}分</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="no-games">まだ対局記録がありません。</p>
+      {% endif %}
+    </div>
+
+    <a class="back-link" href="/">トップに戻る</a>
+  </div>
+</body>
+</html>
