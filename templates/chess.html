@@ -389,8 +389,11 @@
         function renderBoard(board, statusData) {
             const boardEl = document.getElementById('board');
             boardEl.innerHTML = '';
-            for (let r = 0; r < 8; r++) {
-                for (let c = 0; c < 8; c++) {
+            const flip = myColor === 'b';
+            for (let rr = 0; rr < 8; rr++) {
+                for (let cc = 0; cc < 8; cc++) {
+                    const r = flip ? 7 - rr : rr;
+                    const c = flip ? 7 - cc : cc;
                     const idx = r*8+c;
                     const piece = board[idx];
                     const cell = document.createElement('div');
@@ -485,13 +488,11 @@
             const box = document.getElementById('players-box');
             const whiteYou = (myColor === 'w') ? ' (あなた)' : '';
             const blackYou = (myColor === 'b') ? ' (あなた)' : '';
-            let html = `<div>⚪ ${escapeHtml(data.white_name)} <span style="opacity:0.7;">(ID:${data.white_id || '----'})</span>${whiteYou}</div>`;
-            if (data.has_black) {
-                html += `<div>⚫ ${escapeHtml(data.black_name)} <span style="opacity:0.7;">(ID:${data.black_id || '----'})</span>${blackYou}</div>`;
-            } else {
-                html += `<div style="opacity:0.6;">⚫ 対戦相手を待っています…</div>`;
-            }
-            box.innerHTML = html;
+            const whiteRow = `<div>⚪ ${escapeHtml(data.white_name)} <span style="opacity:0.7;">(ID:${data.white_id || '----'})</span>${whiteYou}</div>`;
+            const blackRow = data.has_black
+                ? `<div>⚫ ${escapeHtml(data.black_name)} <span style="opacity:0.7;">(ID:${data.black_id || '----'})</span>${blackYou}</div>`
+                : `<div style="opacity:0.6;">⚫ 対戦相手を待っています…</div>`;
+            box.innerHTML = (myColor === 'b') ? (blackRow + whiteRow) : (whiteRow + blackRow);
         }
 
         function updateStatusBar(data) {
