@@ -182,6 +182,9 @@
         <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">
             部屋を作って、リンクや部屋コードを相手に共有しよう。登録不要・匿名で対局できます。
         </div>
+        <label for="player-name-input">表示する名前（省略可）</label>
+        <input type="text" id="player-name-input" placeholder="名無しさん" maxlength="20">
+        <div class="hr"></div>
         <button class="btn" id="createBtn">対局部屋を作る</button>
         <div class="hr"></div>
         <label for="joinCode">部屋コードを入力して参加</label>
@@ -190,13 +193,46 @@
     </div>
 
     <script>
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) {
+                return decodeURIComponent(parts.pop().split(';').shift());
+            }
+            return '';
+        }
+
+        const nameInput = document.getElementById('player-name-input');
+        const savedAuthor = getCookie('bbs_saved_author');
+        if (savedAuthor) { nameInput.value = savedAuthor; }
+
         document.getElementById('createBtn').addEventListener('click', async () => {
-            const r = await fetch("{{ url_for('shogi_create') }}", { method: 'POST' });
+            const name = nameInput.value.trim();
+            const formData = new URLSearchParams();
+            formData.append('name', name);
+            const r = await fetch("{{ url_for('shogi_create') }}", { method: 'POST', body: formData });
             if (r.redirected) { window.location.href = r.url; }
         });
-        document.getElementById('joinBtn').addEventListener('click', () => {
+        document.getElementById('joinBtn').addEventListener('click', async () => {
             const code = document.getElementById('joinCode').value.trim().toUpperCase();
-            if (code.length > 0) { window.location.href = '/shogi/' + code; }
+            const name = nameInput.value.trim();
+            if (code.length === 0) return;
+            try {
+                const res = await fetch(`/shogi/${encodeURIComponent(code)}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = '/shogi/' + encodeURIComponent(code);
+                } else {
+                    alert(data.error || '参加できませんでした');
+                }
+            } catch (e) {
+                console.error(e);
+                alert('通信エラーが発生しました');
+            }
         });
     </script>
     {% else %}
