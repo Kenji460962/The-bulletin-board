@@ -424,14 +424,28 @@ def can_manage_board(request: Request):
 # staff_role(運営)とは別枠。session内のキーも member_ で分けて衝突を避ける。
 # =========================
 
-USERNAME_RE = re.compile(
-    r'^[A-Za-z0-9_\-\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3005\u30FC'
-    r'\u2600-\u27BF\U0001F300-\U0001F5FF\U0001F600-\U0001F64F'
-    r'\U0001F680-\U0001F6FF\U0001F900-\U0001F9FF\uFE0F\u200D]{3,20}$'
-)
+USERNAME_RE = re.compile(r'^[A-Za-z0-9_]{3,20}$')
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 TOKEN_EXPIRE_HOURS_VERIFY = 24
 TOKEN_EXPIRE_HOURS_RESET = 1
+
+
+def get_profile_username(user_id_value):
+    """投稿のuser_id(表示ID)が会員のpublic_idと一致するなら、そのユーザー名を返す(ゲスト/STAFFならNone)。"""
+    if not user_id_value or user_id_value == 'STAFF':
+        return None
+    res = query_d1("SELECT username FROM users WHERE public_id = ?", [user_id_value])
+    return res[0]['username'] if res else None
+
+
+def get_profile_usernames_map(user_id_values):
+    """複数のuser_idをまとめて会員名に解決する(スレ表示時の一括取得用)。"""
+    ids = [v for v in set(user_id_values) if v and v != 'STAFF']
+    if not ids:
+        return {}
+    placeholders = ','.join(['?'] * len(ids))
+    rows = query_d1(f"SELECT public_id, username FROM users WHERE public_id IN ({placeholders})", ids)
+    return {row['public_id']: row['username'] for row in rows} if rows else {}
 
 
 def get_current_member(request: Request):
@@ -515,19 +529,6 @@ def _consume_token(token: str, purpose: str):
     return user_res[0] if user_res else None
 
 
-def _staff_password_matches(stored: str, password: str) -> bool:
-    """パスワード照合。ハッシュ化済み(werkzeugの ':' 区切り形式)ならハッシュ比較、
-    まだ平文のまま保存されている旧アカウントなら単純比較する(移行用フォールバック)。"""
-    if not stored:
-        return False
-    if ':' in stored:
-        try:
-            return check_password_hash(stored, password)
-        except Exception:
-            return False
-    return stored == password
-
-
 @app.get('/login_secret_8823')
 async def staff_login_form():
     return HTMLResponse('''
@@ -539,6 +540,35 @@ async def staff_login_form():
     ''')
 
 
+def ensure_staff_member_link(staff_id, staff_name):
+    """スタッフアカウントにも会員としてのプロフィール・ゲームランキング参加ができるよう、
+    usersテーブルに紐付けアカウントを自動発行する(初回スタッフログイン時のみ)。"""
+    res = query_d1("SELECT linked_user_id FROM staff_users WHERE id = ?", [staff_id])
+    linked_id = res[0]['linked_user_id'] if res else None
+    if linked_id:
+        user_res = query_d1("SELECT id, username, public_id FROM users WHERE id = ?", [linked_id])
+        if user_res:
+            return user_res[0]
+
+    base_username = (staff_name or f"staff{staff_id}").strip() or f"staff{staff_id}"
+    username = base_username
+    suffix = 1
+    while query_d1("SELECT id FROM users WHERE username = ?", [username]):
+        suffix += 1
+        username = f"{base_username}{suffix}"
+
+    public_id = _generate_public_id()
+    random_password_hash = generate_password_hash(secrets.token_urlsafe(16))
+    query_d1(
+        "INSERT INTO users (username, password_hash, email, email_verified, public_id) VALUES (?, ?, NULL, 0, ?)",
+        [username, random_password_hash, public_id]
+    )
+    new_user_res = query_d1("SELECT id, username, public_id FROM users WHERE username = ?", [username])
+    new_user = new_user_res[0]
+    query_d1("UPDATE staff_users SET linked_user_id = ? WHERE id = ?", [new_user['id'], staff_id])
+    return new_user
+
+
 @app.post('/login_secret_8823')
 async def staff_login(request: Request):
     form = await request.form()
@@ -548,17 +578,16 @@ async def staff_login(request: Request):
         res = query_d1("SELECT * FROM staff_users WHERE username = ?", [username])
         if res:
             user = res[0]
-            stored = user.get('password') or ''
-            if _staff_password_matches(stored, password):
-                if ':' not in stored:
-                    # 平文で保存されていた旧アカウント: ログイン成功を機にハッシュ化して保存し直す
-                    query_d1(
-                        "UPDATE staff_users SET password = ? WHERE id = ?",
-                        [generate_password_hash(password), user['id']]
-                    )
+            if user['password'] == password:
                 request.session['staff_id'] = user['id']
                 request.session['staff_role'] = user['role']
                 request.session['staff_name'] = user['display_name']
+
+                linked_member = ensure_staff_member_link(user['id'], user['display_name'])
+                request.session['member_id'] = linked_member['id']
+                request.session['member_username'] = linked_member['username']
+                request.session['member_public_id'] = linked_member['public_id']
+
                 return RedirectResponse(url='/', status_code=303)
     except Exception as e:
         print(f"Login error: {e}")
@@ -590,7 +619,7 @@ async def register_submit(request: Request):
         return templates.TemplateResponse(request, 'register.html', {'error': msg}, status_code=400)
 
     if not USERNAME_RE.match(username):
-        return render_error('ユーザー名は半角英数字・アンダースコア・ハイフン・ひらがな・カタカナ・漢字で3〜20文字にしてください。')
+        return render_error('ユーザー名は半角英数字とアンダースコアで3〜20文字にしてください。')
     if len(password) < 8:
         return render_error('パスワードは8文字以上にしてください。')
     if password != password_confirm:
@@ -672,7 +701,6 @@ async def member_login_submit(request: Request):
 async def member_logout(request: Request):
     request.session.pop('member_id', None)
     request.session.pop('member_username', None)
-    request.session.pop('member_public_id', None)
     return RedirectResponse(url='/')
 
 
@@ -851,6 +879,86 @@ async def roles(request: Request):
     return templates.TemplateResponse(request, 'roles.html', {})
 
 
+@app.get('/rankings')
+async def rankings(request: Request):
+    def top_n(game, n=30):
+        return query_d1(
+            "SELECT display_name, rating, wins, losses, draws FROM game_ratings "
+            "WHERE game = ? ORDER BY rating DESC LIMIT ?",
+            [game, n]
+        ) or []
+
+    return templates.TemplateResponse(request, 'rankings.html', {
+        'othello_ranking': top_n('othello'),
+        'chess_ranking': top_n('chess'),
+        'shogi_ranking': top_n('shogi'),
+    })
+
+
+@app.get('/profile/{public_id}')
+async def profile_view(request: Request, public_id: str):
+    res = query_d1("SELECT id, username, public_id, bio, created_at FROM users WHERE public_id = ?", [public_id])
+    if not res:
+        return text_resp("そのユーザーは見つかりませんでした。", 404)
+    profile_user = res[0]
+    member_key = f"member:{profile_user['id']}"
+    games = {}
+    for g in ('othello', 'chess', 'shogi'):
+        gr = query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, g])
+        games[g] = gr[0] if gr else None
+
+    current_member = get_current_member(request)
+    is_own_profile = bool(current_member) and str(current_member['id']) == str(profile_user['id'])
+
+    return templates.TemplateResponse(request, 'profile.html', {
+        'profile_user': profile_user,
+        'games': games,
+        'is_own_profile': is_own_profile,
+    })
+
+
+@app.get('/profile/edit')
+async def profile_edit_form(request: Request):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login')
+    member_id = request.session.get('member_id')
+    res = query_d1("SELECT username, bio FROM users WHERE id = ?", [member_id])
+    user = res[0] if res else {'username': request.session.get('member_username'), 'bio': ''}
+    return templates.TemplateResponse(request, 'profile_edit.html', {'user': user, 'error': None})
+
+
+@app.post('/profile/edit')
+async def profile_edit_submit(request: Request):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login')
+    member_id = request.session.get('member_id')
+    form = await request.form()
+    username = (form.get('username') or '').strip()
+    bio = html.escape((form.get('bio') or '').strip()[:200])
+
+    def render_error(msg):
+        return templates.TemplateResponse(
+            request, 'profile_edit.html',
+            {'user': {'username': username, 'bio': bio}, 'error': msg}, status_code=400
+        )
+
+    if not USERNAME_RE.match(username):
+        return render_error('ユーザー名は半角英数字とアンダースコアで3〜20文字にしてください。')
+
+    try:
+        existing = query_d1("SELECT id FROM users WHERE username = ? AND id != ?", [username, member_id])
+        if existing:
+            return render_error('そのユーザー名はすでに使われています。')
+        query_d1("UPDATE users SET username = ?, bio = ? WHERE id = ?", [username, bio, member_id])
+    except Exception as e:
+        print(f"プロフィール更新エラー: {e}")
+        return render_error('データベースエラーが発生しました。')
+
+    request.session['member_username'] = username
+    public_id = get_member_public_id(request)
+    return RedirectResponse(url=f'/profile/{public_id}', status_code=303)
+
+
 # =========================
 # D1版 ゲーム機能（オセロ・チェス・将棋）
 # =========================
@@ -894,6 +1002,79 @@ def _new_room_code():
                 and not query_d1('SELECT 1 FROM shogi_rooms WHERE room_code = ? LIMIT 1', [code])):
             return code
     return uuid.uuid4().hex[:6].upper()
+
+
+# =========================
+# ゲームのレーティング(Elo)・ランキング機能
+# 会員はmember:<id>、ゲストはgame_player_token(実質user_bbs_token)をguest:<token>として
+# 集計キーに使う。ゲストも含めて全対局を集計する。
+# =========================
+
+ELO_K = 32
+ELO_DEFAULT_RATING = 1500
+
+
+def _game_member_id(request: Request):
+    """ログイン中ならそのmember idを文字列で返す(ゲストならNone)。部屋作成・参加時にrooms側へ保存しておく。"""
+    member = get_current_member(request)
+    return str(member['id']) if member else None
+
+
+def _rating_key(member_id_str, token: str) -> str:
+    return f"member:{member_id_str}" if member_id_str else f"guest:{token}"
+
+
+def _get_or_init_rating(player_key: str, game: str, display_name: str):
+    res = query_d1("SELECT * FROM game_ratings WHERE player_key = ? AND game = ?", [player_key, game])
+    if res:
+        return res[0]
+    now = datetime.utcnow().isoformat()
+    query_d1(
+        "INSERT INTO game_ratings (player_key, game, display_name, rating, wins, losses, draws, updated_at) "
+        "VALUES (?, ?, ?, ?, 0, 0, 0, ?)",
+        [player_key, game, display_name, ELO_DEFAULT_RATING, now]
+    )
+    return {'player_key': player_key, 'game': game, 'display_name': display_name,
+            'rating': ELO_DEFAULT_RATING, 'wins': 0, 'losses': 0, 'draws': 0}
+
+
+def apply_game_result(game: str, key_a: str, name_a: str, key_b: str, name_b: str, result_a: float):
+    """result_a: 1=Aの勝ち, 0=Aの負け, 0.5=引き分け。両者のEloレーティングと戦績を更新する。
+    失敗してもゲーム進行自体には影響させない(集計はベストエフォート)。"""
+    try:
+        a = _get_or_init_rating(key_a, game, name_a)
+        b = _get_or_init_rating(key_b, game, name_b)
+        ra, rb = a['rating'], b['rating']
+        expected_a = 1 / (1 + 10 ** ((rb - ra) / 400))
+        result_b = 1 - result_a
+        new_ra = round(ra + ELO_K * (result_a - expected_a))
+        new_rb = round(rb + ELO_K * (result_b - (1 - expected_a)))
+
+        def bump(row, result):
+            wins, losses, draws = row['wins'], row['losses'], row['draws']
+            if result == 1:
+                wins += 1
+            elif result == 0:
+                losses += 1
+            else:
+                draws += 1
+            return wins, losses, draws
+
+        wa, la, da = bump(a, result_a)
+        wb, lb, db = bump(b, result_b)
+        now = datetime.utcnow().isoformat()
+        query_d1(
+            "UPDATE game_ratings SET rating=?, wins=?, losses=?, draws=?, display_name=?, updated_at=? "
+            "WHERE player_key=? AND game=?",
+            [new_ra, wa, la, da, name_a, now, key_a, game]
+        )
+        query_d1(
+            "UPDATE game_ratings SET rating=?, wins=?, losses=?, draws=?, display_name=?, updated_at=? "
+            "WHERE player_key=? AND game=?",
+            [new_rb, wb, lb, db, name_b, now, key_b, game]
+        )
+    except Exception as e:
+        print(f"レーティング更新エラー({game}): {e}")
 
 
 def _initial_othello():
@@ -1158,10 +1339,10 @@ def _initial_shogi_board():
         board[8 * 9 + c] = 's' + back_rank[c]
         board[2 * 9 + c] = 'gP'
         board[6 * 9 + c] = 'sP'
-    board[1 * 9 + 1] = 'gR'
-    board[1 * 9 + 7] = 'gB'
-    board[7 * 9 + 1] = 'sB'
-    board[7 * 9 + 7] = 'sR'
+    board[1 * 9 + 1] = 'gB'
+    board[1 * 9 + 7] = 'gR'
+    board[7 * 9 + 1] = 'sR'
+    board[7 * 9 + 7] = 'sB'
     return json.dumps(board)
 
 
@@ -1660,13 +1841,14 @@ async def game_lobby(request: Request):
 async def game_create(request: Request):
     token = _game_token(request)
     name = await _game_name(request)
+    member_id = _game_member_id(request)
     code = _new_room_code()
     now = datetime.utcnow().isoformat()
     query_d1(
         '''INSERT INTO othello_rooms
-           (room_code, black_token, black_name, white_token, white_name, board, turn, status, winner, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
-        [code, token, name, None, None, _initial_othello(), 'B', 'waiting', None, now, now]
+           (room_code, black_token, black_name, black_member_id, white_token, white_name, board, turn, status, winner, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
+        [code, token, name, member_id, None, None, _initial_othello(), 'B', 'waiting', None, now, now]
     )
     resp = RedirectResponse(url=f'/game/{code}', status_code=303)
     return _cookie_response(request, resp, token)
@@ -1698,8 +1880,8 @@ async def game_join(request: Request, room_code: str):
     if room.get('white_token'):
         return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
     query_d1(
-        'UPDATE othello_rooms SET white_token=?,white_name=?,status=?,updated_at=? WHERE room_code=?',
-        [token, name, 'playing', datetime.utcnow().isoformat(), code]
+        'UPDATE othello_rooms SET white_token=?,white_name=?,white_member_id=?,status=?,updated_at=? WHERE room_code=?',
+        [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
@@ -1770,6 +1952,11 @@ async def game_move(request: Request, room_code: str):
             black_count = new_board.count('B')
             white_count = new_board.count('W')
             winner = 'B' if black_count > white_count else ('W' if white_count > black_count else 'draw')
+            black_key = _rating_key(r.get('black_member_id'), r.get('black_token'))
+            white_key = _rating_key(r.get('white_member_id'), r.get('white_token'))
+            result_black = 1 if winner == 'B' else (0 if winner == 'W' else 0.5)
+            apply_game_result('othello', black_key, r.get('black_name') or '名無しさん',
+                               white_key, r.get('white_name') or '名無しさん', result_black)
 
     now = datetime.utcnow().isoformat()
     query_d1(
@@ -1789,13 +1976,14 @@ async def chess_lobby(request: Request):
 async def chess_create(request: Request):
     token = _game_token(request)
     name = await _game_name(request)
+    member_id = _game_member_id(request)
     code = _new_room_code()
     now = datetime.utcnow().isoformat()
     query_d1(
         '''INSERT INTO chess_rooms
-           (room_code, white_token, white_name, black_token, black_name, board, turn, status, winner, in_check, castling, en_passant, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-        [code, token, name, None, None, _chess_board(), 'w', 'waiting', None, None, 'KQkq', None, now, now]
+           (room_code, white_token, white_name, white_member_id, black_token, black_name, board, turn, status, winner, in_check, castling, en_passant, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+        [code, token, name, member_id, None, None, _chess_board(), 'w', 'waiting', None, None, 'KQkq', None, now, now]
     )
     resp = RedirectResponse(url=f'/chess/{code}', status_code=303)
     return _cookie_response(request, resp, token)
@@ -1827,8 +2015,8 @@ async def chess_join(request: Request, room_code: str):
     if r.get('black_token'):
         return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
     query_d1(
-        'UPDATE chess_rooms SET black_token=?,black_name=?,status=?,updated_at=? WHERE room_code=?',
-        [token, name, 'playing', datetime.utcnow().isoformat(), code]
+        'UPDATE chess_rooms SET black_token=?,black_name=?,black_member_id=?,status=?,updated_at=? WHERE room_code=?',
+        [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
@@ -1935,6 +2123,11 @@ async def chess_move(request: Request, room_code: str):
     if not next_has_moves:
         new_status = 'finished'
         winner = 'draw' if not next_in_check else color
+        white_key = _rating_key(r.get('white_member_id'), r.get('white_token'))
+        black_key = _rating_key(r.get('black_member_id'), r.get('black_token'))
+        result_white = 0.5 if winner == 'draw' else (1 if winner == 'w' else 0)
+        apply_game_result('chess', white_key, r.get('white_name') or '名無しさん',
+                           black_key, r.get('black_name') or '名無しさん', result_white)
 
     new_board_json = json.dumps(board)
     new_ep_json = json.dumps(new_en_passant) if new_en_passant else None
@@ -1956,13 +2149,14 @@ async def shogi_lobby(request: Request):
 async def shogi_create(request: Request):
     token = _game_token(request)
     name = await _game_name(request)
+    member_id = _game_member_id(request)
     code = _new_room_code()
     now = datetime.utcnow().isoformat()
     query_d1(
         '''INSERT INTO shogi_rooms
-           (room_code, sente_token, sente_name, gote_token, gote_name, board, hands, turn, status, winner, in_check, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-        [code, token, name, None, None, _initial_shogi_board(), _initial_shogi_hands_json(), 's', 'waiting', None, None, now, now]
+           (room_code, sente_token, sente_name, sente_member_id, gote_token, gote_name, board, hands, turn, status, winner, in_check, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+        [code, token, name, member_id, None, None, _initial_shogi_board(), _initial_shogi_hands_json(), 's', 'waiting', None, None, now, now]
     )
     resp = RedirectResponse(url=f'/shogi/{code}', status_code=303)
     return _cookie_response(request, resp, token)
@@ -1994,8 +2188,8 @@ async def shogi_join(request: Request, room_code: str):
     if r.get('gote_token'):
         return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
     query_d1(
-        'UPDATE shogi_rooms SET gote_token=?,gote_name=?,status=?,updated_at=? WHERE room_code=?',
-        [token, name, 'playing', datetime.utcnow().isoformat(), code]
+        'UPDATE shogi_rooms SET gote_token=?,gote_name=?,gote_member_id=?,status=?,updated_at=? WHERE room_code=?',
+        [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
@@ -2110,6 +2304,11 @@ async def shogi_move(request: Request, room_code: str):
         # 詰み(合法手が1つもない)は着手した側の勝ち
         new_status = 'finished'
         winner = color
+        sente_key = _rating_key(r.get('sente_member_id'), r.get('sente_token'))
+        gote_key = _rating_key(r.get('gote_member_id'), r.get('gote_token'))
+        result_sente = 1 if winner == 's' else 0
+        apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
+                           gote_key, r.get('gote_name') or '名無しさん', result_sente)
 
     now = datetime.utcnow().isoformat()
     query_d1(
@@ -2176,6 +2375,11 @@ async def shogi_drop(request: Request, room_code: str):
     if not next_has_moves:
         new_status = 'finished'
         winner = color
+        sente_key = _rating_key(r.get('sente_member_id'), r.get('sente_token'))
+        gote_key = _rating_key(r.get('gote_member_id'), r.get('gote_token'))
+        result_sente = 1 if winner == 's' else 0
+        apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
+                           gote_key, r.get('gote_name') or '名無しさん', result_sente)
 
     now = datetime.utcnow().isoformat()
     query_d1(
@@ -2437,6 +2641,7 @@ async def get_older_replies(request: Request, thread_id: int):
 
         thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
         op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
+        member_map = get_profile_usernames_map([r.get('user_id') for r in older_replies] + [op_user_id])
 
         formatted_replies = []
         for i, r in enumerate(older_replies):
@@ -2458,6 +2663,7 @@ async def get_older_replies(request: Request, thread_id: int):
                 except Exception:
                     pass
             reply_dict['is_op'] = bool(op_user_id) and reply_dict.get('user_id') == op_user_id
+            reply_dict['profile_username'] = member_map.get(reply_dict.get('user_id'))
             reply_dict['post_num'] = start_num + i
             formatted_replies.append(reply_dict)
 
@@ -2492,6 +2698,7 @@ async def get_new_replies(request: Request, thread_id: int):
         total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
         total_reply_count = total_count_res[0]['cnt'] if total_count_res else 0
         start_num = total_reply_count - len(replies) + 1
+        member_map = get_profile_usernames_map([r.get('user_id') for r in replies] + [op_user_id])
 
         formatted_replies = []
         for idx, r in enumerate(replies):
@@ -2525,6 +2732,7 @@ async def get_new_replies(request: Request, thread_id: int):
                     pass
 
             reply_dict['is_op'] = bool(op_user_id) and reply_dict.get('user_id') == op_user_id
+            reply_dict['profile_username'] = member_map.get(reply_dict.get('user_id'))
             reply_dict['post_num'] = start_num + idx
             formatted_replies.append(reply_dict)
 
@@ -2642,6 +2850,8 @@ async def thread_view(request: Request, thread_id: int):
                     except Exception as ope:
                         new_reply['is_op'] = False
 
+                    new_reply['profile_username'] = get_profile_username(new_reply.get('user_id'))
+
                     try:
                         total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
                         new_reply['post_num'] = total_count_res[0]['cnt'] if total_count_res else None
@@ -2692,8 +2902,10 @@ async def thread_view(request: Request, thread_id: int):
                 r['content'] = content_str
 
         op_user_id = resolve_op_user_id(thread)
+        member_map = get_profile_usernames_map([r.get('user_id') for r in thread['replies']] + [op_user_id])
         for r in thread['replies']:
             r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
+            r['profile_username'] = member_map.get(r.get('user_id'))
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
         return text_resp("データベースエラーが発生しました", 500)
