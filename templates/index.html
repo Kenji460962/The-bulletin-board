@@ -568,7 +568,7 @@
             padding: 18px 0 20px;
         }
         .lobby-title {
-            font-size: 30px;
+            font-size: 34px;
             font-weight: 800;
             letter-spacing: -0.01em;
             margin: 0 0 6px;
@@ -782,7 +782,7 @@
             .main-wrap { padding: 18px 22px 40px; }
             .main-col { max-width: 100%; }
             .site-footer { max-width: 100%; }
-            .lobby-title { font-size: 26px; }
+            .lobby-title { font-size: 29px; }
             .glass-panel { padding: 18px 0; }
             .panel-title { font-size: 16.5px; }
         }
@@ -819,7 +819,7 @@
             .sidebar.open { transform: translateX(0); }
 
             .main-wrap { padding: 16px 14px 40px; }
-            .lobby-title { font-size: 19px; }
+            .lobby-title { font-size: 23px; }
             .thread-card { flex-direction: column; align-items: flex-start; }
             .thread-card-side { align-self: flex-end; }
             .thread-toolbar-row { flex-direction: column; align-items: stretch; }
@@ -892,7 +892,7 @@
                     </div>
                     <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
                     {% if current_member %}
-                    <div class="member-pill">{{ current_member.username }} さん <a href="{{ url_for('member_logout') }}" style="color: inherit; text-decoration: underline; margin-left: 4px;">ログアウト</a></div>
+                    <div class="member-pill"><a href="{{ url_for('profile_edit_form') }}" style="color: inherit; text-decoration: none;">{{ current_member.username }} さん</a> <a href="{{ url_for('member_logout') }}" style="color: inherit; text-decoration: underline; margin-left: 4px;">ログアウト</a></div>
                     {% else %}
                     <a href="{{ url_for('member_login_form') }}" class="icon-btn">ログイン</a>
                     <a href="{{ url_for('register_form') }}" class="icon-btn-primary">新規登録</a>
@@ -1222,6 +1222,16 @@
                                         <div class="game-card-text">
                                             <div class="game-card-title">オンライン将棋</div>
                                             <div class="game-card-desc">持ち駒・成りにも対応した本格対戦</div>
+                                        </div>
+                                        <div class="game-card-chevron">›</div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="game-card-item" href="{{ url_for('rankings') }}" target="_blank">
+                                        <div class="game-card-icon">🏆</div>
+                                        <div class="game-card-text">
+                                            <div class="game-card-title">ランキングを見る</div>
+                                            <div class="game-card-desc">オセロ・チェス・将棋のレーティング順位</div>
                                         </div>
                                         <div class="game-card-chevron">›</div>
                                     </a>
