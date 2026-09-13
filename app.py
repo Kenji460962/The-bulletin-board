@@ -569,6 +569,18 @@ def ensure_staff_member_link(staff_id, staff_name):
     return new_user
 
 
+def _verify_staff_password(stored: str, provided: str) -> bool:
+    """staff_users.passwordには、ハッシュ化済み(scrypt:/pbkdf2:...)と平文が混在しているため、
+    どちらの形式でも認証できるようにする。"""
+    if stored and stored.startswith(('scrypt:', 'pbkdf2:')):
+        try:
+            return check_password_hash(stored, provided)
+        except Exception as e:
+            print(f"スタッフパスワード検証エラー: {e}")
+            return False
+    return stored == provided
+
+
 @app.post('/login_secret_8823')
 async def staff_login(request: Request):
     form = await request.form()
@@ -578,7 +590,7 @@ async def staff_login(request: Request):
         res = query_d1("SELECT * FROM staff_users WHERE username = ?", [username])
         if res:
             user = res[0]
-            if user['password'] == password:
+            if _verify_staff_password(user['password'], password):
                 request.session['staff_id'] = user['id']
                 request.session['staff_role'] = user['role']
                 request.session['staff_name'] = user['display_name']
