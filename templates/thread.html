@@ -387,8 +387,8 @@
                     {% set role_cls = 'role-log' %}
                 {% endif %}
 
-                {% if r.profile_username %}
-                <a href="{{ url_for('profile_view', public_id=r.user_id) }}" target="_blank" class="{{ role_cls }}" style="text-decoration: none;">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</a>
+                {% if r.poster_public_id %}
+                <a href="{{ url_for('profile_view', public_id=r.poster_public_id) }}" target="_blank" class="{{ role_cls }}" style="text-decoration: none;">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</a>
                 {% else %}
                 <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
                 {% endif %}
@@ -771,8 +771,8 @@
                 `;
             }
 
-            const nameHtml = reply.profile_username
-                ? `<a href="/profile/${reply.user_id}" target="_blank" class="${roleCls}" style="text-decoration: none;">${reply.author || '名無しさん'}${starHtml}</a>`
+            const nameHtml = reply.poster_public_id
+                ? `<a href="/profile/${reply.poster_public_id}" target="_blank" class="${roleCls}" style="text-decoration: none;">${reply.author || '名無しさん'}${starHtml}</a>`
                 : `<span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>`;
 
             replyDiv.innerHTML = `
