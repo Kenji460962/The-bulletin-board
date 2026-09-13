@@ -857,28 +857,6 @@ async def rankings(request: Request):
     })
 
 
-@app.get('/profile/{public_id}')
-async def profile_view(request: Request, public_id: str):
-    res = query_d1("SELECT id, username, public_id, bio, created_at FROM users WHERE public_id = ?", [public_id])
-    if not res:
-        return text_resp("そのユーザーは見つかりませんでした。", 404)
-    profile_user = res[0]
-    member_key = f"member:{profile_user['id']}"
-    games = {}
-    for g in ('othello', 'chess', 'shogi'):
-        gr = query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, g])
-        games[g] = gr[0] if gr else None
-
-    current_member = get_current_member(request)
-    is_own_profile = bool(current_member) and str(current_member['id']) == str(profile_user['id'])
-
-    return templates.TemplateResponse(request, 'profile.html', {
-        'profile_user': profile_user,
-        'games': games,
-        'is_own_profile': is_own_profile,
-    })
-
-
 @app.get('/profile/edit')
 async def profile_edit_form(request: Request):
     if not is_member_logged_in(request):
@@ -919,6 +897,32 @@ async def profile_edit_submit(request: Request):
     request.session['member_username'] = username
     public_id = get_member_public_id(request)
     return RedirectResponse(url=f'/profile/{public_id}', status_code=303)
+
+
+# 注意: このルートは /profile/{public_id} という可変パスなので、
+# /profile/edit などの固定パスのルートは必ずこれより前に定義すること。
+# 後に定義すると "edit" がpublic_idとして扱われてしまい、
+# 「そのユーザーは見つかりませんでした」になってしまう。
+@app.get('/profile/{public_id}')
+async def profile_view(request: Request, public_id: str):
+    res = query_d1("SELECT id, username, public_id, bio, created_at FROM users WHERE public_id = ?", [public_id])
+    if not res:
+        return text_resp("そのユーザーは見つかりませんでした。", 404)
+    profile_user = res[0]
+    member_key = f"member:{profile_user['id']}"
+    games = {}
+    for g in ('othello', 'chess', 'shogi'):
+        gr = query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, g])
+        games[g] = gr[0] if gr else None
+
+    current_member = get_current_member(request)
+    is_own_profile = bool(current_member) and str(current_member['id']) == str(profile_user['id'])
+
+    return templates.TemplateResponse(request, 'profile.html', {
+        'profile_user': profile_user,
+        'games': games,
+        'is_own_profile': is_own_profile,
+    })
 
 
 # =========================
