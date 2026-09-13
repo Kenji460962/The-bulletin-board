@@ -511,81 +511,52 @@ def _consume_token(token: str, purpose: str):
     return user_res[0] if user_res else None
 
 
+
+# 運営権限を持つロール一覧(can_manage_boardの判定と揃える)。
+# usersテーブルのroleカラムがこの中に含まれていれば運営、'user'なら一般会員。
+STAFF_ROLES = ['admin', 'sub_admin']
+
+
+def _authenticate_user(username: str, password: str):
+    """usersテーブルを1回引くだけで認証する。
+    以前はスタッフ用に別テーブル(staff_users)を持ち、ログイン時に
+    usersテーブルへ自動で紐付けアカウントを作る(ensure_staff_member_link)方式だったが、
+    2つのテーブルが分かれていることで紐付け漏れ・二重作成などのバグの原因になっていたため、
+    usersテーブルに直接roleカラム('user' / 'admin' / 'sub_admin' など)を持たせる方式に変更した。"""
+    try:
+        res = query_d1("SELECT * FROM users WHERE username = ?", [username])
+    except Exception as e:
+        print(f"ログインエラー: {e}")
+        res = []
+    user = res[0] if res else None
+    if not user or not check_password_hash(user['password_hash'], password):
+        return None
+    return user
+
+
+def _apply_login_session(request: Request, user: dict):
+    """認証済みのusers行の内容をセッションに反映する。roleが運営ロールなら運営セッションも張る。"""
+    role = user.get('role') or 'user'
+
+    request.session['member_id'] = user['id']
+    request.session['member_username'] = user['username']
+
+    if role in STAFF_ROLES:
+        request.session['staff_id'] = user['id']
+        request.session['staff_role'] = role
+        request.session['staff_name'] = user['username']
+
+
 @app.get('/login_secret_8823')
 async def staff_login_form():
-    return HTMLResponse('''
-        <form method="post">
-            ID: <input type="text" name="username"><br>
-            PW: <input type="password" name="password"><br>
-            <input type="submit" value="Enter">
-        </form>
-    ''')
-
-
-def ensure_staff_member_link(staff_id, staff_name):
-    """スタッフアカウントにも会員としてのプロフィール・ゲームランキング参加ができるよう、
-    usersテーブルに紐付けアカウントを自動発行する(初回スタッフログイン時のみ)。"""
-    res = query_d1("SELECT linked_user_id FROM staff_users WHERE id = ?", [staff_id])
-    linked_id = res[0]['linked_user_id'] if res else None
-    if linked_id:
-        user_res = query_d1("SELECT id, username, public_id FROM users WHERE id = ?", [linked_id])
-        if user_res:
-            return user_res[0]
-
-    base_username = (staff_name or f"staff{staff_id}").strip() or f"staff{staff_id}"
-    username = base_username
-    suffix = 1
-    while query_d1("SELECT id FROM users WHERE username = ?", [username]):
-        suffix += 1
-        username = f"{base_username}{suffix}"
-
-    public_id = _generate_public_id()
-    random_password_hash = generate_password_hash(secrets.token_urlsafe(16))
-    query_d1(
-        "INSERT INTO users (username, password_hash, email, email_verified, public_id) VALUES (?, ?, NULL, 0, ?)",
-        [username, random_password_hash, public_id]
-    )
-    new_user_res = query_d1("SELECT id, username, public_id FROM users WHERE username = ?", [username])
-    new_user = new_user_res[0]
-    query_d1("UPDATE staff_users SET linked_user_id = ? WHERE id = ?", [new_user['id'], staff_id])
-    return new_user
-
-
-def _verify_staff_password(stored: str, provided: str) -> bool:
-    """staff_users.passwordには、ハッシュ化済み(scrypt:/pbkdf2:...)と平文が混在しているため、
-    どちらの形式でも認証できるようにする。"""
-    if stored and stored.startswith(('scrypt:', 'pbkdf2:')):
-        try:
-            return check_password_hash(stored, provided)
-        except Exception as e:
-            print(f"スタッフパスワード検証エラー: {e}")
-            return False
-    return stored == provided
+    # 運営ログインも通常の /login から行えるようになったため、このURLは後方互換用に残してあるだけ。
+    return RedirectResponse(url='/login')
 
 
 @app.post('/login_secret_8823')
 async def staff_login(request: Request):
-    form = await request.form()
-    username = form.get('username')
-    password = form.get('password')
-    try:
-        res = query_d1("SELECT * FROM staff_users WHERE username = ?", [username])
-        if res:
-            user = res[0]
-            if _verify_staff_password(user['password'], password):
-                request.session['staff_id'] = user['id']
-                request.session['staff_role'] = user['role']
-                request.session['staff_name'] = user['display_name']
-
-                linked_member = ensure_staff_member_link(user['id'], user['display_name'])
-                request.session['member_id'] = linked_member['id']
-                request.session['member_username'] = linked_member['username']
-                request.session['member_public_id'] = linked_member['public_id']
-
-                return RedirectResponse(url='/', status_code=303)
-    except Exception as e:
-        print(f"Login error: {e}")
-    return text_resp("ログイン失敗", 401)
+    # 中身は /login と同じ認証処理に統一(usersテーブルのroleで判定)。
+    return await member_login_submit(request)
 
 
 @app.get('/staff_logout')
@@ -633,7 +604,7 @@ async def register_submit(request: Request):
         password_hash = generate_password_hash(password)
         public_id = _generate_public_id()
         query_d1(
-            "INSERT INTO users (username, password_hash, email, email_verified, public_id) VALUES (?, ?, ?, 0, ?)",
+            "INSERT INTO users (username, password_hash, email, email_verified, public_id, role) VALUES (?, ?, ?, 0, ?, 'user')",
             [username, password_hash, email or None, public_id]
         )
         new_user_res = query_d1("SELECT * FROM users WHERE username = ?", [username])
@@ -674,20 +645,13 @@ async def member_login_submit(request: Request):
     username = (form.get('username') or '').strip()
     password = form.get('password') or ''
 
-    try:
-        res = query_d1("SELECT * FROM users WHERE username = ?", [username])
-    except Exception as e:
-        print(f"ログインエラー: {e}")
-        res = []
-
-    user = res[0] if res else None
-    if not user or not check_password_hash(user['password_hash'], password):
+    user = _authenticate_user(username, password)
+    if not user:
         return templates.TemplateResponse(
             request, 'login.html', {'error': 'ユーザー名またはパスワードが違います。'}, status_code=401
         )
 
-    request.session['member_id'] = user['id']
-    request.session['member_username'] = user['username']
+    _apply_login_session(request, user)
     return RedirectResponse(url='/', status_code=303)
 
 
