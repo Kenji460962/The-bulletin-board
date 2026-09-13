@@ -430,7 +430,9 @@ def can_manage_board(request: Request):
 # staff_role(運営)とは別枠。session内のキーも member_ で分けて衝突を避ける。
 # =========================
 
-USERNAME_RE = re.compile(r'^[A-Za-z0-9_]{3,20}$')
+USERNAME_RE = re.compile(
+    r'^[A-Za-z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uFF66-\uFF9F]{3,20}$'
+)
 EMAIL_RE = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 TOKEN_EXPIRE_HOURS_VERIFY = 24
 TOKEN_EXPIRE_HOURS_RESET = 1
@@ -588,7 +590,7 @@ async def register_submit(request: Request):
         return templates.TemplateResponse(request, 'register.html', {'error': msg}, status_code=400)
 
     if not USERNAME_RE.match(username):
-        return render_error('ユーザー名は半角英数字とアンダースコアで3〜20文字にしてください。')
+        return render_error('ユーザー名は半角英数字・アンダースコア・日本語(ひらがな/カタカナ/漢字)で3〜20文字にしてください。')
     if len(password) < 8:
         return render_error('パスワードは8文字以上にしてください。')
     if password != password_confirm:
@@ -883,7 +885,7 @@ async def profile_edit_submit(request: Request):
         )
 
     if not USERNAME_RE.match(username):
-        return render_error('ユーザー名は半角英数字とアンダースコアで3〜20文字にしてください。')
+        return render_error('ユーザー名は半角英数字・アンダースコア・日本語(ひらがな/カタカナ/漢字)で3〜20文字にしてください。')
 
     try:
         existing = query_d1("SELECT id FROM users WHERE username = ? AND id != ?", [username, member_id])
