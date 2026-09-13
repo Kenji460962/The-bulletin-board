@@ -291,8 +291,9 @@
         .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
         .role-moderator { color: #34d399 !important; font-weight: 700; }
         .role-pr { color: #4ade80 !important; font-weight: 700; }
-        .role-proposal { color: #fbbf24 !important; font-weight: 700; }
+        .role-proposal { color: #a78bfa !important; font-weight: 700; }
         .role-log { color: #38bdf8 !important; font-weight: 700; }
+        .role-patrol { color: #c084fc !important; font-weight: 700; }
 
         input[type="text"], textarea {
             background: var(--bg-color);
@@ -385,12 +386,14 @@
                     {% set role_cls = 'role-proposal' %}
                 {% elif r.role == 'log' %}
                     {% set role_cls = 'role-log' %}
+                {% elif r.role == 'patrol' %}
+                    {% set role_cls = 'role-patrol' %}
                 {% endif %}
 
                 {% if r.poster_public_id %}
-                <a href="{{ url_for('profile_view', public_id=r.poster_public_id) }}" target="_blank" class="{{ role_cls }}" style="text-decoration: none;">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</a>
+                <a href="{{ url_for('profile_view', public_id=r.poster_public_id) }}" target="_blank" class="{{ role_cls }}" style="text-decoration: none;">{{ r.author }}{% if r.role == 'admin' %}★{% endif %}</a>
                 {% else %}
-                <span class="{{ role_cls }}">{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                <span class="{{ role_cls }}">{{ r.author }}{% if r.role == 'admin' %}★{% endif %}</span>
                 {% endif %}
                 {% if r.is_op %}
                 <span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>
@@ -743,9 +746,11 @@
                 roleCls = 'role-proposal';
             } else if (reply.role === 'log') {
                 roleCls = 'role-log';
+            } else if (reply.role === 'patrol') {
+                roleCls = 'role-patrol';
             }
 
-            const starHtml = (reply.is_admin || ['admin', 'sub_admin', 'moderator'].includes(reply.role)) ? '★' : '';
+            const starHtml = (reply.role === 'admin') ? '★' : '';
             const opHtml = reply.is_op ? `<span style="color: var(--text-muted); font-size: 11px; opacity: 0.7;">(スレ主)</span>` : '';
 
             let imgHtml = '';
