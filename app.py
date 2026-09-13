@@ -430,24 +430,6 @@ TOKEN_EXPIRE_HOURS_VERIFY = 24
 TOKEN_EXPIRE_HOURS_RESET = 1
 
 
-def get_profile_username(user_id_value):
-    """投稿のuser_id(表示ID)が会員のpublic_idと一致するなら、そのユーザー名を返す(ゲスト/STAFFならNone)。"""
-    if not user_id_value or user_id_value == 'STAFF':
-        return None
-    res = query_d1("SELECT username FROM users WHERE public_id = ?", [user_id_value])
-    return res[0]['username'] if res else None
-
-
-def get_profile_usernames_map(user_id_values):
-    """複数のuser_idをまとめて会員名に解決する(スレ表示時の一括取得用)。"""
-    ids = [v for v in set(user_id_values) if v and v != 'STAFF']
-    if not ids:
-        return {}
-    placeholders = ','.join(['?'] * len(ids))
-    rows = query_d1(f"SELECT public_id, username FROM users WHERE public_id IN ({placeholders})", ids)
-    return {row['public_id']: row['username'] for row in rows} if rows else {}
-
-
 def get_current_member(request: Request):
     """ログイン中の会員情報をsessionから取得(未ログインならNone)。"""
     member_id = request.session.get('member_id')
@@ -2653,7 +2635,6 @@ async def get_older_replies(request: Request, thread_id: int):
 
         thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
         op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
-        member_map = get_profile_usernames_map([r.get('user_id') for r in older_replies] + [op_user_id])
 
         formatted_replies = []
         for i, r in enumerate(older_replies):
@@ -2675,7 +2656,6 @@ async def get_older_replies(request: Request, thread_id: int):
                 except Exception:
                     pass
             reply_dict['is_op'] = bool(op_user_id) and reply_dict.get('user_id') == op_user_id
-            reply_dict['profile_username'] = member_map.get(reply_dict.get('user_id'))
             reply_dict['post_num'] = start_num + i
             formatted_replies.append(reply_dict)
 
@@ -2710,7 +2690,6 @@ async def get_new_replies(request: Request, thread_id: int):
         total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
         total_reply_count = total_count_res[0]['cnt'] if total_count_res else 0
         start_num = total_reply_count - len(replies) + 1
-        member_map = get_profile_usernames_map([r.get('user_id') for r in replies] + [op_user_id])
 
         formatted_replies = []
         for idx, r in enumerate(replies):
@@ -2744,7 +2723,6 @@ async def get_new_replies(request: Request, thread_id: int):
                     pass
 
             reply_dict['is_op'] = bool(op_user_id) and reply_dict.get('user_id') == op_user_id
-            reply_dict['profile_username'] = member_map.get(reply_dict.get('user_id'))
             reply_dict['post_num'] = start_num + idx
             formatted_replies.append(reply_dict)
 
@@ -2801,6 +2779,8 @@ async def thread_view(request: Request, thread_id: int):
             member_public_id = get_member_public_id(request)
             user_id = member_public_id if member_public_id else get_daily_user_id(client_ip)
 
+        poster_public_id = get_member_public_id(request)
+
         content = html.escape(content)
         content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
 
@@ -2836,9 +2816,9 @@ async def thread_view(request: Request, thread_id: int):
 
             try:
                 query_d1(
-                    """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip]
+                    """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address, poster_public_id) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip, poster_public_id]
                 )
                 LAST_REPLY_SIGNATURES[reply_signature] = signature_now
                 res = query_d1("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
@@ -2861,8 +2841,6 @@ async def thread_view(request: Request, thread_id: int):
                         new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
                     except Exception as ope:
                         new_reply['is_op'] = False
-
-                    new_reply['profile_username'] = get_profile_username(new_reply.get('user_id'))
 
                     try:
                         total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
@@ -2914,10 +2892,8 @@ async def thread_view(request: Request, thread_id: int):
                 r['content'] = content_str
 
         op_user_id = resolve_op_user_id(thread)
-        member_map = get_profile_usernames_map([r.get('user_id') for r in thread['replies']] + [op_user_id])
         for r in thread['replies']:
             r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
-            r['profile_username'] = member_map.get(r.get('user_id'))
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
         return text_resp("データベースエラーが発生しました", 500)
