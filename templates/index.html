@@ -894,8 +894,8 @@
                     {% if current_member %}
                     <div class="member-pill"><a href="{{ url_for('profile_edit_form') }}" style="color: inherit; text-decoration: none;">{{ current_member.username }} さん</a> <a href="{{ url_for('member_logout') }}" style="color: inherit; text-decoration: underline; margin-left: 4px;">ログアウト</a></div>
                     {% else %}
-                    <a href="{{ url_for('member_login_form') }}" class="icon-btn">ログイン</a>
-                    <a href="{{ url_for('register_form') }}" class="icon-btn-primary">新規登録</a>
+                    <a href="{{ url_for('member_login_form') }}" class="icon-btn">login</a>
+                    <a href="{{ url_for('register_form') }}" class="icon-btn-primary">sign up</a>
                     {% endif %}
                 </div>
             </div>
