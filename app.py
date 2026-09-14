@@ -411,6 +411,28 @@ def is_banned_ip(ip):
         return False
 
 
+def is_banned_member_public_id(public_id):
+    if not public_id:
+        return False
+    try:
+        res = query_d1("SELECT * FROM banned_members WHERE public_id = ?", [public_id])
+        return len(res) > 0
+    except Exception as e:
+        print(f"会員BANチェックエラー: {e}")
+        return False
+
+
+def is_banned_request(request: Request, client_ip) -> bool:
+    """IPアドレスに加えて、ログイン中のアカウント(public_id)単位のBANも合わせて判定する。
+    IPが変わってもアカウントでのBANは維持されるため、こちらの方が精密に対象を絞れる。"""
+    if is_banned_ip(client_ip):
+        return True
+    public_id = get_member_public_id(request)
+    if public_id and is_banned_member_public_id(public_id):
+        return True
+    return False
+
+
 def get_staff_role(request: Request):
     return request.session.get('staff_role')
 
@@ -2430,7 +2452,7 @@ def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, of
 @app.api_route('/', methods=['GET', 'HEAD'])
 async def index(request: Request):
     client_ip = get_client_ip(request)
-    if is_banned_ip(client_ip):
+    if is_banned_request(request, client_ip):
         return text_resp("あなたはアクセス禁止（BAN）されています。", 403)
 
     if request.method == 'HEAD':
@@ -2569,7 +2591,7 @@ async def update_admin_message(request: Request):
 @app.post('/create_thread')
 async def create_thread(request: Request):
     client_ip = get_client_ip(request)
-    if is_banned_ip(client_ip):
+    if is_banned_request(request, client_ip):
         return json_resp({"error": "あなたはアクセス禁止（BAN）されています。"}, 403)
 
     if not is_member_logged_in(request):
@@ -2627,7 +2649,7 @@ async def create_thread(request: Request):
 @app.get('/thread/{thread_id}/get_older_replies')
 async def get_older_replies(request: Request, thread_id: int):
     client_ip = get_client_ip(request)
-    if is_banned_ip(client_ip):
+    if is_banned_request(request, client_ip):
         return json_resp({"success": False, "error": "Banned"}, 403)
 
     before_id_raw = request.query_params.get('before_id')
@@ -2686,7 +2708,7 @@ async def get_older_replies(request: Request, thread_id: int):
 @app.get('/thread/{thread_id}/get_new_replies')
 async def get_new_replies(request: Request, thread_id: int):
     client_ip = get_client_ip(request)
-    if is_banned_ip(client_ip):
+    if is_banned_request(request, client_ip):
         return json_resp({"success": False, "error": "Banned"}, 403)
 
     try:
@@ -2752,7 +2774,7 @@ async def get_new_replies(request: Request, thread_id: int):
 @app.api_route('/thread/{thread_id}', methods=['GET', 'POST'])
 async def thread_view(request: Request, thread_id: int):
     client_ip = get_client_ip(request)
-    if is_banned_ip(client_ip):
+    if is_banned_request(request, client_ip):
         return text_resp("あなたはアクセス禁止（BAN）されています。", 403)
 
     if request.method == 'POST':
@@ -2971,10 +2993,19 @@ async def ban_user(request: Request, thread_id: int, reply_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        reply_res = query_d1("SELECT ip_address FROM replies WHERE id = ?", [reply_id])
-        if reply_res and reply_res[0].get('ip_address'):
-            b_ip = reply_res[0]['ip_address']
-            query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
+        reply_res = query_d1("SELECT ip_address, poster_public_id FROM replies WHERE id = ?", [reply_id])
+        if reply_res:
+            b_ip = reply_res[0].get('ip_address')
+            b_public_id = reply_res[0].get('poster_public_id')
+            if b_ip:
+                query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
+            if b_public_id:
+                # ログイン中の会員による投稿の場合は、IPだけでなくアカウント自体もBANする。
+                # IPアドレスが変わっても(スマホの回線切り替え等)このアカウントでの投稿はブロックされる。
+                query_d1(
+                    "INSERT OR IGNORE INTO banned_members (public_id, reason, banned_at) VALUES (?, ?, ?)",
+                    [b_public_id, f'reply_id={reply_id}', datetime.utcnow().isoformat()]
+                )
             query_d1(
                 """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
                    WHERE id = ?""",
@@ -2992,10 +3023,18 @@ async def ban_thread_owner(request: Request, thread_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        thread_res = query_d1("SELECT ip_address FROM threads WHERE id = ?", [thread_id])
-        if thread_res and thread_res[0].get('ip_address'):
-            owner_ip = thread_res[0]['ip_address']
-            query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [owner_ip])
+        thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
+        if thread_res:
+            owner_ip = thread_res[0].get('ip_address')
+            owner_public_id = thread_res[0].get('user_id')
+            if owner_ip:
+                query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [owner_ip])
+            if owner_public_id and owner_public_id != 'STAFF':
+                # スレッド作成には必ずログインが必要なため、user_idは常に会員のpublic_id。
+                query_d1(
+                    "INSERT OR IGNORE INTO banned_members (public_id, reason, banned_at) VALUES (?, ?, ?)",
+                    [owner_public_id, f'thread_id={thread_id}', datetime.utcnow().isoformat()]
+                )
             query_d1("UPDATE threads SET title = ? WHERE id = ?", ['【このスレッドは管理員によってBANされました】', thread_id])
             query_d1("DELETE FROM replies WHERE thread_id = ?", [thread_id])
             query_d1(
