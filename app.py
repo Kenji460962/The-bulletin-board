@@ -26,29 +26,24 @@ load_dotenv()
 
 app = FastAPI()
 
-# --- Jinja2テンプレート ---
+
 templates = Jinja2Templates(directory="templates")
 
-# --- 静的ファイル配信（Flaskの /static 相当） ---
+
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
 
 FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345')
 
-# --- セッション（Flaskのsession相当。itsdangerousで署名したクッキーに保存） ---
+
 app.add_middleware(SessionMiddleware, secret_key=FLASK_SECRET_KEY)
 
-# Nginx1台のみの場合: --proxy-headers 付きでuvicornを起動し forwarded-allow-ips を設定
-# Cloudflare + Nginx の場合も同様。X-Forwarded-*の解決はASGIサーバー側(uvicorn --proxy-headers)
-# もしくはリバースプロキシ側で行う。アプリ側はCF-Connecting-IPを直接信頼する実装のまま。
+
 
 psutil.cpu_percent(interval=None)
 
 
-# --- ウェブソケット接続管理（スレッドごとの新着レス配信） ---
-# 注意: gunicornのワーカーは1つ(--workers 1)であることが前提。
-# ワーカーが複数だと、書き込みを受けたワーカーと接続を持つワーカーが別プロセスになり、
-# このメモリ上の管理だけでは他ワーカーの接続者に配信できない。
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[int, list[WebSocket]] = {}
@@ -109,7 +104,7 @@ async def get_json_silent(request: Request):
         return {}
 
 
-# --- HEADリクエストに常に200を返す（Flaskのbefore_request相当） ---
+
 @app.middleware("http")
 async def response_to_uptimerobot(request: Request, call_next):
     if request.method == 'HEAD':
@@ -117,7 +112,7 @@ async def response_to_uptimerobot(request: Request, call_next):
     return await call_next(request)
 
 
-# --- スレッドのカテゴリ定義（value, 表示ラベル, バッジ配色キー） ---
+
 THREAD_CATEGORIES = [
     ('announcement', 'お知らせ', 'red'),
     ('chat',         '雑談',      'blue'),
@@ -134,8 +129,7 @@ THREAD_CATEGORY_LABELS = {c[0]: c[1] for c in THREAD_CATEGORIES}
 THREAD_CATEGORY_COLORS = {c[0]: c[2] for c in THREAD_CATEGORIES}
 DEFAULT_THREAD_CATEGORY = 'other'
 
-# --- スレッド並び替えの定義（value, 表示ラベル, ORDER BY句） ---
-# ORDER BY句はホワイトリストの定数のみを使うため、SQLインジェクションの心配はない
+
 THREAD_SORT_OPTIONS = [
     ('latest_activity', '最終更新順',              'last_activity DESC'),
     ('id_desc',          'スレ番号（最新順）',       't.id DESC'),
@@ -146,7 +140,7 @@ THREAD_SORT_OPTIONS = [
 THREAD_SORT_SQL = {s[0]: s[2] for s in THREAD_SORT_OPTIONS}
 DEFAULT_THREAD_SORT = 'latest_activity'
 
-# --- Cloudflare D1 接続設定 ---
+
 CF_D1_ACCOUNT_ID = os.environ.get('CF_D1_ACCOUNT_ID')
 CF_D1_DATABASE_ID = os.environ.get('CF_D1_DATABASE_ID')
 CF_D1_API_TOKEN = os.environ.get('CF_D1_API_TOKEN')
@@ -175,7 +169,7 @@ def query_d1(sql, params=None):
     return []
 
 
-# ---- サーバー状況（CPU/メモリ/ネットワーク）計測用 ----
+
 _last_cpu_usage_usec = None
 _last_cpu_check_time = None
 
@@ -292,14 +286,14 @@ s3_client = boto3.client(
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 
-# --- メール送信設定(Resend) ---
+
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
 RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'noreply@example.com')
 SITE_BASE_URL = os.environ.get('SITE_BASE_URL', 'http://localhost:8080')
 
 
 async def send_email(to_email: str, subject: str, html_body: str) -> bool:
-    """Resend API経由でメールを送信する。失敗してもアプリは落とさずFalseを返す。"""
+    
     if not RESEND_API_KEY:
         print(f"[メール送信スキップ] RESEND_API_KEY未設定 -> {to_email}: {subject}")
         return False
@@ -353,14 +347,9 @@ def resolve_op_user_id(thread_row: dict):
 
 
 def get_client_ip(request: Request):
-    # サーバーIPへの直接アクセスは不可にしてあるため、リクエストは必ず
-    # Cloudflareを経由する。よってCF-Connecting-IP(Cloudflareが書き換える
-    # 正規のクライアントIP)をそのまま信頼してよい。
+
     ip = request.headers.get('CF-Connecting-IP')
 
-    # CF-Connecting-IPが無い場合(ローカル開発環境など)のフォールバック。
-    # uvicornを--proxy-headersで起動していれば request.client.host は
-    # 正しく解決されたクライアントIPになる。
     if not ip:
         ip = request.client.host if request.client else None
 
@@ -423,8 +412,7 @@ def is_banned_member_public_id(public_id):
 
 
 def is_banned_request(request: Request, client_ip) -> bool:
-    """IPアドレスに加えて、ログイン中のアカウント(public_id)単位のBANも合わせて判定する。
-    IPが変わってもアカウントでのBANは維持されるため、こちらの方が精密に対象を絞れる。"""
+
     if is_banned_ip(client_ip):
         return True
     public_id = get_member_public_id(request)
@@ -437,9 +425,7 @@ def get_staff_role(request: Request):
     return request.session.get('staff_role')
 
 
-# スレッド削除・レス削除・BANなど「掲示板を管理できる」権限を持つロール。
-# 表示用の役職(moderator/pr/proposal/log/patrolなど)とは別物なので、
-# ここに含まれるロールだけが実際の管理操作を行える。
+
 BOARD_MANAGER_ROLES = ['admin', 'sub_admin']
 
 
@@ -447,10 +433,7 @@ def can_manage_board(request: Request):
     return request.session.get('staff_role') in BOARD_MANAGER_ROLES
 
 
-# =========================
-# 会員ログイン機能(スレ立てに必要な一般ユーザーアカウント)
-# staff_role(運営)とは別枠。session内のキーも member_ で分けて衝突を避ける。
-# =========================
+=
 
 USERNAME_RE = re.compile(
     r'^[A-Za-z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uFF66-\uFF9F]{2,20}$'
@@ -461,7 +444,7 @@ TOKEN_EXPIRE_HOURS_RESET = 1
 
 
 def get_current_member(request: Request):
-    """ログイン中の会員情報をsessionから取得(未ログインならNone)。"""
+    
     member_id = request.session.get('member_id')
     if not member_id:
         return None
@@ -476,8 +459,7 @@ def is_member_logged_in(request: Request) -> bool:
 
 
 def _generate_public_id() -> str:
-    """投稿に表示される「ID:xxxxxxxx」用の、アカウントに紐づく固定ランダムID。
-    重複はほぼあり得ないが、念のため既存と衝突しないことを確認する。"""
+
     for _ in range(5):
         candidate = secrets.token_hex(4)
         existing = query_d1("SELECT id FROM users WHERE public_id = ?", [candidate])
@@ -487,7 +469,7 @@ def _generate_public_id() -> str:
 
 
 def get_member_public_id(request: Request):
-    """ログイン中会員の固定表示ID。旧アカウント(public_id未発行)の場合はここで発行して保存する。"""
+   
     if not is_member_logged_in(request):
         return None
     cached = request.session.get('member_public_id')
@@ -522,7 +504,7 @@ def _issue_token(user_id: int, purpose: str, expire_hours: int) -> str:
 
 
 def _consume_token(token: str, purpose: str):
-    """有効なトークンならユーザー行を返し、usedを1に更新する。無効ならNone。"""
+    
     res = query_d1(
         "SELECT * FROM email_tokens WHERE token = ? AND purpose = ? AND used = 0",
         [token, purpose]
@@ -543,11 +525,7 @@ def _consume_token(token: str, purpose: str):
 
 
 def _authenticate_user(username: str, password: str):
-    """usersテーブルを1回引くだけで認証する。
-    以前はスタッフ用に別テーブル(staff_users)を持ち、ログイン時に
-    usersテーブルへ自動で紐付けアカウントを作る(ensure_staff_member_link)方式だったが、
-    2つのテーブルが分かれていることで紐付け漏れ・二重作成などのバグの原因になっていたため、
-    usersテーブルに直接roleカラム('user' / 'admin' / 'sub_admin' / 'moderator' など)を持たせる方式に変更した。"""
+
     try:
         res = query_d1("SELECT * FROM users WHERE username = ?", [username])
     except Exception as e:
@@ -560,10 +538,6 @@ def _authenticate_user(username: str, password: str):
 
 
 def _apply_login_session(request: Request, user: dict):
-    """認証済みのusers行の内容をセッションに反映する。
-    role が 'user' 以外(admin/sub_admin/moderator/pr/proposal/log/patrolなど)なら、
-    運営セッション(staff_id/staff_role/staff_name)も張る。
-    実際に削除・BANなどの管理操作ができるかどうかは BOARD_MANAGER_ROLES / can_manage_board 側で別途判定する。"""
     role = user.get('role') or 'user'
 
     request.session['member_id'] = user['id']
@@ -577,13 +551,12 @@ def _apply_login_session(request: Request, user: dict):
 
 @app.get('/login_secret_8823')
 async def staff_login_form():
-    # 運営ログインも通常の /login から行えるようになったため、このURLは後方互換用に残してあるだけ。
+   
     return RedirectResponse(url='/login')
 
 
 @app.post('/login_secret_8823')
 async def staff_login(request: Request):
-    # 中身は /login と同じ認証処理に統一(usersテーブルのroleで判定)。
     return await member_login_submit(request)
 
 
@@ -713,8 +686,7 @@ async def forgot_password_form(request: Request):
 async def forgot_password_submit(request: Request):
     form = await request.form()
     email = (form.get('email') or '').strip()
-
-    # メール登録の有無をユーザーに教えないため、結果に関わらず同じ成功画面を返す
+    
     if email:
         try:
             res = query_d1("SELECT * FROM users WHERE email = ?", [email])
@@ -924,10 +896,7 @@ async def profile_edit_submit(request: Request):
     return RedirectResponse(url=f'/profile/{public_id}', status_code=303)
 
 
-# 注意: このルートは /profile/{public_id} という可変パスなので、
-# /profile/edit などの固定パスのルートは必ずこれより前に定義すること。
-# 後に定義すると "edit" がpublic_idとして扱われてしまい、
-# 「そのユーザーは見つかりませんでした」になってしまう。
+
 @app.get('/profile/{public_id}')
 async def profile_view(request: Request, public_id: str):
     res = query_d1("SELECT id, username, public_id, bio, created_at FROM users WHERE public_id = ?", [public_id])
@@ -997,8 +966,7 @@ def _new_room_code():
 
 # =========================
 # ゲームのレーティング(Elo)・ランキング機能
-# 会員はmember:<id>、ゲストはgame_player_token(実質user_bbs_token)をguest:<token>として
-# 集計キーに使う。ゲストも含めて全対局を集計する。
+
 # =========================
 
 ELO_K = 32
@@ -1030,8 +998,7 @@ def _get_or_init_rating(player_key: str, game: str, display_name: str):
 
 
 def apply_game_result(game: str, key_a: str, name_a: str, key_b: str, name_b: str, result_a: float):
-    """result_a: 1=Aの勝ち, 0=Aの負け, 0.5=引き分け。両者のEloレーティングと戦績を更新する。
-    失敗してもゲーム進行自体には影響させない(集計はベストエフォート)。"""
+
     try:
         a = _get_or_init_rating(key_a, game, name_a)
         b = _get_or_init_rating(key_b, game, name_b)
@@ -1258,14 +1225,14 @@ def _chess_in_check(board, color):
 
 
 def _chess_apply(board, r, c, tr, tc):
-    """盤面をコピーして着手を適用した新しい盤面を返す(王手判定のシミュレーション用)"""
+   
     nb = board[:]
     piece = nb[r * 8 + c]
     color, typ = piece[0], piece[1]
     nb[r * 8 + c] = ''
 
     if typ == 'K' and abs(tc - c) == 2:
-        # キャスリング: 王が横に2マス動く手 -> ルークも一緒に動かす
+       
         nb[tr * 8 + tc] = piece
         row = r
         if tc == 6:
@@ -1275,7 +1242,6 @@ def _chess_apply(board, r, c, tr, tc):
             nb[row * 8 + 0] = ''
             nb[row * 8 + 3] = color + 'R'
     elif typ == 'P' and c != tc and not board[tr * 8 + tc]:
-        # アンパッサン: ポーンが斜めに動いたのに移動先が空 -> 通過されたポーンを取る
         nb[tr * 8 + tc] = piece
         nb[r * 8 + tc] = ''
     elif typ == 'P' and tr in (0, 7):
@@ -1296,7 +1262,6 @@ def _chess_update_castling_rights(castling, typ, color, r, c, tr, tc):
 
 
 def _chess_legal_moves(board, color, castling='', en_passant=None):
-    """自分の王が王手にさらされる手を除いた、本当に指せる手の一覧"""
     moves = []
     for i, p in enumerate(board):
         if p and p[0] == color:
@@ -1321,8 +1286,6 @@ def _initial_shogi_hands_json():
 
 
 def _initial_shogi_board():
-    # 9x9(81マス)の盤面をJSON文字列で返す。空マスは''、駒は 手番色('s'=先手/'g'=後手) + 種類 の2文字。
-    # 成り駒には先頭に'+'を付ける(例: 's+R' = 先手の龍)
     board = [''] * 81
     back_rank = ['L', 'N', 'S', 'G', 'K', 'G', 'S', 'N', 'L']
     for c in range(9):
@@ -1342,12 +1305,10 @@ def _shogi_forward(color):
 
 
 def _shogi_zone(color, r):
-    """成れる範囲(敵陣3段)かどうか"""
     return r <= 2 if color == 's' else r >= 6
 
 
 def _shogi_forced_promotion(base_typ, color, tr):
-    """そのまま進むと二度と動けなくなる駒は、強制的に成る"""
     if base_typ in ('P', 'L'):
         return tr == (0 if color == 's' else 8)
     if base_typ == 'N':
@@ -1356,7 +1317,6 @@ def _shogi_forced_promotion(base_typ, color, tr):
 
 
 def _shogi_piece_moves(board, r, c):
-    """(王手を考慮しない)疑似合法手の移動先マス一覧"""
     p = board[r * 9 + c]
     if not p:
         return []
@@ -1447,7 +1407,6 @@ def _shogi_in_check(board, color):
 
 
 def _shogi_apply_move(board, r, c, tr, tc, promote=False):
-    """盤面をコピーして着手を適用した新しい盤面を返す"""
     nb = board[:]
     piece = nb[r * 9 + c]
     color, typ = piece[0], piece[1:]
@@ -1482,7 +1441,6 @@ def _shogi_drop_allowed(board, color, ptype, r, c):
 
 
 def _shogi_legal_board_moves(board, color):
-    """自分の王が王手にさらされる手を除いた、盤上の駒を動かす合法手の一覧"""
     moves = []
     for i, p in enumerate(board):
         if p and p[0] == color:
@@ -1495,7 +1453,6 @@ def _shogi_legal_board_moves(board, color):
 
 
 def _shogi_legal_drop_moves(board, color, hand):
-    """持ち駒を打てる合法手が1つでもあるかを調べるための一覧"""
     moves = []
     for ptype, count in (hand or {}).items():
         if count <= 0:
@@ -1577,7 +1534,6 @@ ARCHIVE_PINNED_IDS = [1, 2, 3, 4]
 
 
 def _fetch_all_from_supabase(sb_url, sb_key, table, columns):
-    """PostgRESTのRangeヘッダーでページ送りしながら全件取得する(1000件の壁を回避)"""
     all_rows = []
     page_size = 1000
     offset = 0
