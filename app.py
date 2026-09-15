@@ -20,6 +20,7 @@ import secrets
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
+from markupsafe import Markup, escape
 import uvicorn
 
 load_dotenv()
@@ -28,6 +29,47 @@ app = FastAPI()
 
 
 templates = Jinja2Templates(directory="templates")
+
+
+# =========================
+# 自己紹介文などのURL自動リンク化フィルター
+# =========================
+# 既にDB側でエスケープ済みのテキストが渡ってきても二重エスケープにならないよう、
+# このフィルターは「未エスケープの生テキスト」を受け取る前提で実装する。
+# (プロフィール保存時のエスケープは行わず、表示時にここで一括してエスケープ＆リンク化する)
+_URL_RE = re.compile(r'(https?://[^\s<>"\']+)')
+
+
+def linkify(text: str) -> Markup:
+    """テキストをHTMLエスケープした上で、URLだけを<a>タグに変換する。
+    XSS対策として、text自体は必ずescape()を通してから組み立てる。
+    """
+    if not text:
+        return Markup('')
+
+    parts = []
+    last_end = 0
+    for m in _URL_RE.finditer(text):
+        # URL以外の地の文はエスケープしてそのまま追加
+        parts.append(escape(text[last_end:m.start()]))
+        url = m.group(1)
+        # 文末の句読点・括弧などをURLから除外する（よくある誤爆対策）
+        trail = ''
+        while url and url[-1] in '.,)>」』、。':
+            trail = url[-1] + trail
+            url = url[:-1]
+        safe_url = escape(url)
+        parts.append(Markup(
+            f'<a href="{safe_url}" target="_blank" rel="noopener noreferrer nofollow">{safe_url}</a>'
+        ))
+        parts.append(escape(trail))
+        last_end = m.end()
+    parts.append(escape(text[last_end:]))
+
+    return Markup('').join(parts)
+
+
+templates.env.filters['linkify'] = linkify
 
 
 if os.path.isdir("static"):
@@ -286,6 +328,10 @@ s3_client = boto3.client(
 R2_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME', 'bbs-images')
 R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 
+ALLOWED_AVATAR_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
+ALLOWED_AVATAR_CONTENT_TYPES = {'image/png', 'image/jpeg', 'image/webp', 'image/gif'}
+MAX_AVATAR_SIZE_BYTES = 3 * 1024 * 1024  # 3MB
+
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
 RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'noreply@example.com')
@@ -432,8 +478,6 @@ BOARD_MANAGER_ROLES = ['admin', 'sub_admin']
 def can_manage_board(request: Request):
     return request.session.get('staff_role') in BOARD_MANAGER_ROLES
 
-
-=
 
 USERNAME_RE = re.compile(
     r'^[A-Za-z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\uFF66-\uFF9F]{2,20}$'
@@ -859,9 +903,60 @@ async def profile_edit_form(request: Request):
     if not is_member_logged_in(request):
         return RedirectResponse(url='/login')
     member_id = request.session.get('member_id')
-    res = query_d1("SELECT username, bio FROM users WHERE id = ?", [member_id])
-    user = res[0] if res else {'username': request.session.get('member_username'), 'bio': ''}
-    return templates.TemplateResponse(request, 'profile_edit.html', {'user': user, 'error': None})
+    res = query_d1("SELECT username, bio, icon_path FROM users WHERE id = ?", [member_id])
+    user = res[0] if res else {'username': request.session.get('member_username'), 'bio': '', 'icon_path': None}
+
+    avatar_error_map = {
+        'type': '画像はPNG/JPEG/WEBP/GIF形式のみアップロードできます。',
+        'size': f'画像サイズは{MAX_AVATAR_SIZE_BYTES // (1024 * 1024)}MB以内にしてください。',
+        'upload': 'アップロード中にエラーが発生しました。時間をおいて再度お試しください。',
+        'empty': 'ファイルが選択されていません。',
+    }
+    avatar_error = avatar_error_map.get(request.query_params.get('avatar_error'))
+
+    return templates.TemplateResponse(
+        request, 'profile_edit.html', {'user': user, 'error': None, 'avatar_error': avatar_error}
+    )
+
+
+@app.post('/profile/avatar')
+async def profile_avatar_upload(request: Request):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login')
+    member_id = request.session.get('member_id')
+    public_id = get_member_public_id(request)
+
+    form = await request.form()
+    upload = form.get('avatar')
+
+    if upload is None or not getattr(upload, 'filename', ''):
+        return RedirectResponse(url=f'/profile/edit?avatar_error=empty', status_code=303)
+
+    orig_filename = secure_filename(upload.filename)
+    ext = os.path.splitext(orig_filename)[1].lower()
+
+    if ext not in ALLOWED_AVATAR_EXTENSIONS or upload.content_type not in ALLOWED_AVATAR_CONTENT_TYPES:
+        return RedirectResponse(url=f'/profile/edit?avatar_error=type', status_code=303)
+
+    # サイズチェック（先頭からMAXバイト+1だけ読んでオーバーしていないか確認）
+    contents = await upload.read()
+    if len(contents) > MAX_AVATAR_SIZE_BYTES:
+        return RedirectResponse(url=f'/profile/edit?avatar_error=size', status_code=303)
+    await upload.seek(0)
+
+    try:
+        unique_filename = f"avatars/{public_id or member_id}_{uuid.uuid4().hex}{ext}"
+        s3_client.upload_fileobj(
+            upload.file, R2_BUCKET_NAME, unique_filename,
+            ExtraArgs={'ContentType': upload.content_type}
+        )
+        icon_path = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
+        query_d1("UPDATE users SET icon_path = ? WHERE id = ?", [icon_path, member_id])
+    except Exception as e:
+        print(f"アバターアップロードエラー: {e}")
+        return RedirectResponse(url=f'/profile/edit?avatar_error=upload', status_code=303)
+
+    return RedirectResponse(url=f'/profile/{public_id}', status_code=303)
 
 
 @app.post('/profile/edit')
@@ -871,7 +966,10 @@ async def profile_edit_submit(request: Request):
     member_id = request.session.get('member_id')
     form = await request.form()
     username = (form.get('username') or '').strip()
-    bio = html.escape((form.get('bio') or '').strip()[:200])
+    # bioは生のまま保存し、表示側(linkifyフィルター)でエスケープ＆リンク化する。
+    # (以前はここでhtml.escapeしていたため、テンプレート側の自動エスケープと合わさって
+    #  二重エスケープになっていた点を修正)
+    bio = (form.get('bio') or '').strip()[:200]
 
     def render_error(msg):
         return templates.TemplateResponse(
@@ -897,9 +995,23 @@ async def profile_edit_submit(request: Request):
 
 
 
+def _calc_win_rate(wins: int, losses: int, draws: int):
+    """勝率を計算して表示用文字列を返す。対局数0の場合は '-' を返す。"""
+    total = (wins or 0) + (losses or 0) + (draws or 0)
+    if total == 0:
+        return '-'
+    rate = (wins or 0) / total * 100
+    if rate == round(rate):
+        return f"{rate:.0f}%"
+    return f"{rate:.1f}%"
+
+
 @app.get('/profile/{public_id}')
 async def profile_view(request: Request, public_id: str):
-    res = query_d1("SELECT id, username, public_id, bio, created_at FROM users WHERE public_id = ?", [public_id])
+    res = query_d1(
+        "SELECT id, username, public_id, bio, icon_path, created_at FROM users WHERE public_id = ?",
+        [public_id]
+    )
     if not res:
         return text_resp("そのユーザーは見つかりませんでした。", 404)
     profile_user = res[0]
@@ -907,7 +1019,21 @@ async def profile_view(request: Request, public_id: str):
     games = {}
     for g in ('othello', 'chess', 'shogi'):
         gr = query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, g])
-        games[g] = gr[0] if gr else None
+        if gr:
+            row = gr[0]
+            row['win_rate'] = _calc_win_rate(row.get('wins'), row.get('losses'), row.get('draws'))
+            games[g] = row
+        else:
+            games[g] = None
+
+    # 掲示板実績（作成スレッド数・総レス数）
+    # threads.user_id / replies.user_id には会員のpublic_idが保存されている
+    thread_count_res = query_d1("SELECT COUNT(*) as cnt FROM threads WHERE user_id = ?", [public_id])
+    reply_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE user_id = ?", [public_id])
+    board_stats = {
+        'thread_count': thread_count_res[0]['cnt'] if thread_count_res else 0,
+        'reply_count': reply_count_res[0]['cnt'] if reply_count_res else 0,
+    }
 
     current_member = get_current_member(request)
     is_own_profile = bool(current_member) and str(current_member['id']) == str(profile_user['id'])
@@ -915,6 +1041,7 @@ async def profile_view(request: Request, public_id: str):
     return templates.TemplateResponse(request, 'profile.html', {
         'profile_user': profile_user,
         'games': games,
+        'board_stats': board_stats,
         'is_own_profile': is_own_profile,
     })
 
