@@ -14,24 +14,53 @@
   .wrap { max-width: 520px; margin: 0 auto; padding: 28px 16px 60px; }
   .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 24px; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
-  .username { font-size: 22px; font-weight: 800; margin: 0; }
+  .head-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+
+  /* --- アバター --- */
+  .avatar {
+    width: 56px; height: 56px; border-radius: 50%; flex: none;
+    background: var(--primary-soft); color: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 800; overflow: hidden;
+    border: 1px solid var(--card-border);
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .head-text { min-width: 0; }
+  .username { font-size: 22px; font-weight: 800; margin: 0; overflow-wrap: anywhere; }
   .edit-link {
     font-size: 12.5px; font-weight: 600; color: var(--primary); text-decoration: none;
     border: 1px solid var(--primary); border-radius: var(--radius); padding: 6px 12px; white-space: nowrap;
   }
-  .joined { font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; }
-  .bio { font-size: 14px; line-height: 1.7; white-space: pre-wrap; margin: 0 0 22px; color: var(--text); }
+  .joined { font-size: 12.5px; color: var(--text-muted); margin: 4px 0 16px; }
+  .bio { font-size: 14px; line-height: 1.7; white-space: pre-wrap; margin: 0 0 22px; color: var(--text); overflow-wrap: anywhere; }
   .bio.empty { color: var(--text-muted); font-style: italic; }
+  .bio a { color: var(--primary); word-break: break-all; }
+
   .section-title { font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; }
-  .game-rows { display: flex; flex-direction: column; gap: 8px; }
+
+  /* --- 掲示板実績 --- */
+  .board-stats {
+    display: flex; gap: 10px; margin-bottom: 22px;
+  }
+  .board-stat-box {
+    flex: 1; background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+    padding: 12px 14px; text-align: center;
+  }
+  .board-stat-box .num { font-size: 20px; font-weight: 800; color: var(--primary); line-height: 1.2; }
+  .board-stat-box .label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* --- ゲーム成績 --- */
+  .game-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
   .game-row {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
     background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
     padding: 10px 14px; font-size: 13.5px;
   }
-  .game-row .name { font-weight: 600; }
+  .game-row .name { font-weight: 600; min-width: 56px; }
   .game-row .rating { font-weight: 700; color: var(--primary); }
   .game-row .record { color: var(--text-muted); font-size: 12.5px; }
+  .game-row .win-rate { font-size: 12.5px; font-weight: 700; color: var(--text); }
   .no-games { font-size: 13px; color: var(--text-muted); }
   .back-link { display: inline-block; margin-top: 20px; font-size: 13px; color: var(--primary); text-decoration: none; }
 </style>
@@ -40,7 +69,18 @@
   <div class="wrap">
     <div class="card">
       <div class="head">
-        <h1 class="username">{{ profile_user.username }}</h1>
+        <div class="head-left">
+          <div class="avatar">
+            {% if profile_user.icon_path %}
+            <img src="{{ profile_user.icon_path }}" alt="{{ profile_user.username }}のアイコン" loading="lazy">
+            {% else %}
+            <span>{{ profile_user.username[:1] if profile_user.username else '?' }}</span>
+            {% endif %}
+          </div>
+          <div class="head-text">
+            <h1 class="username">{{ profile_user.username }}</h1>
+          </div>
+        </div>
         {% if is_own_profile %}
         <a class="edit-link" href="{{ url_for('profile_edit_form') }}">プロフィールを編集</a>
         {% endif %}
@@ -48,10 +88,22 @@
       <div class="joined">{{ profile_user.created_at[:10] if profile_user.created_at else '' }} 登録</div>
 
       {% if profile_user.bio %}
-      <p class="bio">{{ profile_user.bio }}</p>
+      <p class="bio">{{ profile_user.bio|linkify }}</p>
       {% else %}
       <p class="bio empty">自己紹介はまだありません。</p>
       {% endif %}
+
+      <div class="section-title">掲示板実績</div>
+      <div class="board-stats">
+        <div class="board-stat-box">
+          <div class="num">{{ board_stats.thread_count }}</div>
+          <div class="label">作成スレッド数</div>
+        </div>
+        <div class="board-stat-box">
+          <div class="num">{{ board_stats.reply_count }}</div>
+          <div class="label">総レス数</div>
+        </div>
+      </div>
 
       <div class="section-title">ゲーム成績</div>
       {% set game_labels = {'othello': 'オセロ', 'chess': 'チェス', 'shogi': '将棋'} %}
@@ -63,6 +115,7 @@
           <span class="name">{{ label }}</span>
           <span class="rating">R{{ games[key].rating }}</span>
           <span class="record">{{ games[key].wins }}勝{{ games[key].losses }}敗{{ games[key].draws }}分</span>
+          <span class="win-rate">勝率 {{ games[key].win_rate }}</span>
         </div>
         {% endif %}
         {% endfor %}
