@@ -3,49 +3,99 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>プロフィールを編集 | talk-ch</title>
+<title>プロフィール編集 | talk-ch</title>
 <style>
   :root {
     --bg: #F6F8FA; --card-bg: #FFFFFF; --card-border: #E5E7EB;
     --text: #111827; --text-muted: #475569; --primary: #2563EB;
-    --primary-hover: #1D4ED8; --red: #DC2626; --radius: 6px;
+    --primary-hover: #1D4ED8; --primary-soft: #EFF4FE; --radius: 6px;
+    --error: #DC2626; --error-soft: #FEF2F2;
   }
-  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",sans-serif;
-         display:flex; align-items:center; justify-content:center; min-height:100vh; }
-  .card { background:var(--card-bg); border:1px solid var(--card-border); border-radius:var(--radius);
-          padding:32px; width:100%; max-width:380px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
-  h1 { font-size:20px; margin:0 0 20px; }
-  label { display:block; font-size:13px; color:var(--text-muted); margin-bottom:4px; }
-  input, textarea { width:100%; box-sizing:border-box; padding:10px 12px; margin-bottom:6px; border:1px solid var(--card-border);
-          border-radius:var(--radius); font-size:14px; font-family: inherit; }
-  textarea { resize: vertical; min-height: 80px; }
-  .hint { font-size:12px; color:var(--text-muted); margin-bottom:14px; }
-  button { width:100%; padding:10px; background:var(--primary); color:#fff; border:none; border-radius:var(--radius);
-           font-size:14px; font-weight:600; cursor:pointer; margin-top:8px; }
-  button:hover { background:var(--primary-hover); }
-  .error { background:#FEF2F2; color:var(--red); padding:10px 12px; border-radius:var(--radius); font-size:13px; margin-bottom:16px; }
-  .links { margin-top:16px; font-size:13px; text-align:center; }
-  .links a { color:var(--primary); text-decoration:none; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",sans-serif; }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 28px 16px 60px; }
+  .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 24px; margin-bottom: 16px; }
+  h1 { font-size: 18px; margin: 0 0 18px; }
+  h2 { font-size: 14px; margin: 0 0 14px; color: var(--text-muted); }
+
+  .avatar-row { display: flex; align-items: center; gap: 16px; }
+  .avatar {
+    width: 56px; height: 56px; border-radius: 50%; flex: none;
+    background: var(--primary-soft); color: var(--primary);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 800; overflow: hidden;
+    border: 1px solid var(--card-border);
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .field { margin-bottom: 16px; }
+  label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+  input[type="text"], input[type="file"], textarea {
+    width: 100%; box-sizing: border-box; border: 1px solid var(--card-border); border-radius: var(--radius);
+    padding: 10px 12px; font-size: 14px; font-family: inherit; background: var(--bg); color: var(--text);
+  }
+  textarea { resize: vertical; min-height: 90px; }
+  .hint { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+
+  .error-box { background: var(--error-soft); color: var(--error); border: 1px solid #FCA5A5; border-radius: var(--radius); padding: 10px 12px; font-size: 13px; margin-bottom: 16px; }
+
+  button {
+    background: var(--primary); color: #fff; border: none; border-radius: var(--radius);
+    padding: 10px 18px; font-size: 14px; font-weight: 700; cursor: pointer;
+  }
+  button:hover { background: var(--primary-hover); }
+  .back-link { display: inline-block; margin-top: 8px; font-size: 13px; color: var(--primary); text-decoration: none; }
 </style>
 </head>
 <body>
-  <div class="card">
-    <h1>プロフィールを編集</h1>
-    {% if error %}<div class="error">{{ error }}</div>{% endif %}
-    <form method="post" action="{{ url_for('profile_edit_submit') }}">
-      <label>ユーザー名</label>
-      <input type="text" name="username" value="{{ user.username }}" required autofocus>
-      <div class="hint">半角英数字とアンダースコアで3〜20文字</div>
+  <div class="wrap">
 
-      <label>自己紹介</label>
-      <textarea name="bio" maxlength="200">{{ user.bio or '' }}</textarea>
-      <div class="hint">200文字まで</div>
-
-      <button type="submit">保存する</button>
-    </form>
-    <div class="links">
-      <a href="{{ url_for('forgot_password_form') }}">パスワードを変更する</a>
+    <div class="card">
+      <h2>アイコン画像</h2>
+      {% if avatar_error %}
+      <div class="error-box">{{ avatar_error }}</div>
+      {% endif %}
+      <form action="{{ url_for('profile_avatar_upload') }}" method="post" enctype="multipart/form-data">
+        <div class="avatar-row">
+          <div class="avatar">
+            {% if user.icon_path %}
+            <img src="{{ user.icon_path }}" alt="現在のアイコン">
+            {% else %}
+            <span>{{ user.username[:1] if user.username else '?' }}</span>
+            {% endif %}
+          </div>
+          <div class="field" style="flex:1; margin-bottom:0;">
+            <input type="file" name="avatar" accept="image/png,image/jpeg,image/webp,image/gif" required>
+            <div class="hint">PNG / JPEG / WEBP / GIF、3MBまで。正方形推奨。</div>
+          </div>
+        </div>
+        <div style="margin-top:14px;">
+          <button type="submit">アイコンを更新</button>
+        </div>
+      </form>
     </div>
+
+    <div class="card">
+      <h1>プロフィール編集</h1>
+
+      {% if error %}
+      <div class="error-box">{{ error }}</div>
+      {% endif %}
+
+      <form action="{{ url_for('profile_edit_submit') }}" method="post">
+        <div class="field">
+          <label for="username">ユーザー名</label>
+          <input type="text" id="username" name="username" value="{{ user.username }}" maxlength="20" required>
+        </div>
+        <div class="field">
+          <label for="bio">自己紹介（200文字まで）</label>
+          <textarea id="bio" name="bio" maxlength="200">{{ user.bio }}</textarea>
+          <div class="hint">https:// から始まるURLは自動的にリンクになります。</div>
+        </div>
+        <button type="submit">保存する</button>
+      </form>
+    </div>
+
+    <a class="back-link" href="/">トップに戻る</a>
   </div>
 </body>
 </html>
