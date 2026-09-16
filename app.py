@@ -11,8 +11,9 @@ import hashlib
 import uuid
 import time
 import re
+import asyncio
 import random
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 import httpx
 import boto3
 import psutil
@@ -125,8 +126,11 @@ async def thread_ws(websocket: WebSocket, thread_id: int):
     await manager.connect(thread_id, websocket)
     try:
         while True:
-            # クライアント側からは基本何も送ってこない想定。接続維持のためだけに待ち受ける
-            await websocket.receive_text()
+            # クライアントは接続維持の確認用に定期的に 'ping' を送ってくる。
+            # pongを返さないと、クライアント側が「死んだ接続」とみなして張り直す。
+            msg = await websocket.receive_text()
+            if msg == 'ping':
+                await websocket.send_text('{"type":"pong"}')
     except WebSocketDisconnect:
         manager.disconnect(thread_id, websocket)
     except Exception:
@@ -154,6 +158,96 @@ async def response_to_uptimerobot(request: Request, call_next):
     if request.method == 'HEAD':
         return Response(content='', status_code=200)
     return await call_next(request)
+
+
+# =========================
+# 簡易アクセス解析
+# トップページとスレッド閲覧のPVだけを対象に、非同期(別スレッド)でD1へ記録する。
+# レスポンスをブロックしないよう、書き込みはfire-and-forestで投げっぱなしにする。
+# =========================
+
+_THREAD_PATH_RE = re.compile(r'^/thread/(\d+)$')
+
+
+def _classify_user_agent(ua: str):
+    ua = (ua or '').lower()
+    if 'ipad' in ua or ('tablet' in ua and 'mobile' not in ua):
+        device = 'tablet'
+    elif 'mobile' in ua or 'iphone' in ua or 'android' in ua:
+        device = 'mobile'
+    else:
+        device = 'pc'
+
+    if 'edg/' in ua:
+        browser = 'Edge'
+    elif 'opr/' in ua or 'opera' in ua:
+        browser = 'Opera'
+    elif 'chrome/' in ua:
+        browser = 'Chrome'
+    elif 'firefox/' in ua:
+        browser = 'Firefox'
+    elif 'safari/' in ua:
+        browser = 'Safari'
+    else:
+        browser = 'Other'
+    return device, browser
+
+
+def _log_page_view_sync(path, thread_id, visitor_token, referrer_host, device, browser):
+    try:
+        query_d1(
+            "INSERT INTO page_views (path, thread_id, visitor_token, referrer_host, device, browser) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [path, thread_id, visitor_token, referrer_host, device, browser]
+        )
+    except Exception as e:
+        print(f"アクセス解析ログエラー: {e}")
+
+
+@app.middleware("http")
+async def track_page_views(request: Request, call_next):
+    response = await call_next(request)
+
+    try:
+        if request.method != 'GET':
+            return response
+
+        path = request.url.path
+        thread_id = None
+        if path != '/':
+            m = _THREAD_PATH_RE.match(path)
+            if not m:
+                return response  # トップページとスレッド閲覧以外は記録しない
+            thread_id = int(m.group(1))
+
+        # 「ユニーク」の目安として既存のuser_bbs_tokenを使う。無ければ初回訪問なので
+        # IP+UAから一時的なキーを作る(cookieの発行自体はルート側の責務のまま触らない)。
+        visitor_token = request.cookies.get('user_bbs_token')
+        if not visitor_token:
+            client_ip = get_client_ip(request)
+            ua_for_hash = request.headers.get('user-agent', '')
+            visitor_token = 'tmp:' + hashlib.sha256(f"{client_ip}:{ua_for_hash}".encode()).hexdigest()[:16]
+
+        referrer_host = ''
+        referrer = request.headers.get('referer', '')
+        if referrer:
+            try:
+                host = urlparse(referrer).netloc
+                if host and host != request.url.netloc:
+                    referrer_host = host
+            except Exception:
+                referrer_host = ''
+
+        device, browser = _classify_user_agent(request.headers.get('user-agent', ''))
+
+        # awaitせず投げっぱなしにして、記録処理がレスポンス速度に影響しないようにする
+        asyncio.create_task(asyncio.to_thread(
+            _log_page_view_sync, path, thread_id, visitor_token, referrer_host, device, browser
+        ))
+    except Exception as e:
+        print(f"アクセス解析トラッキングエラー: {e}")
+
+    return response
 
 
 
@@ -2616,6 +2710,37 @@ async def shogi_drop(request: Request, room_code: str):
     return {'success': True}
 
 
+MAX_THREAD_TAGS = 5
+MAX_TAG_LENGTH = 15
+
+
+def _sanitize_tags(raw: str):
+    """カンマ区切りのタグ入力を、重複除去・NGワードフィルタ・エスケープした上で
+    最大5個・1個あたり15文字までに制限したリストにする。"""
+    tags = []
+    for t in (raw or '').split(','):
+        t = t.strip()
+        if not t:
+            continue
+        t = html.escape(filter_ng_words(t))[:MAX_TAG_LENGTH]
+        if t and t not in tags:
+            tags.append(t)
+        if len(tags) >= MAX_THREAD_TAGS:
+            break
+    return tags
+
+
+def _parse_tags(raw_json):
+    """DBに保存されたJSON文字列のタグを、壊れていても落ちないようにリストへ戻す。"""
+    if not raw_json:
+        return []
+    try:
+        parsed = json.loads(raw_json)
+        return parsed if isinstance(parsed, list) else []
+    except Exception:
+        return []
+
+
 def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
     """threads を、レス数・最終更新日時・現在の閲覧人数・スレ主の表示名/アイコンつきで取得する共通ヘルパー"""
     active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
@@ -2668,6 +2793,8 @@ async def index(request: Request):
     if category not in THREAD_CATEGORY_VALUES:
         category = ''
 
+    tag = request.query_params.get('tag', '').strip()[:MAX_TAG_LENGTH]
+
     sort = request.query_params.get('sort', DEFAULT_THREAD_SORT).strip()
     if sort not in THREAD_SORT_SQL:
         sort = DEFAULT_THREAD_SORT
@@ -2682,6 +2809,10 @@ async def index(request: Request):
         if category:
             where_clauses.append("t.category = ?")
             where_params.append(category)
+        if tag:
+            # tagsはJSON配列文字列で保存しているので、部分一致で引っかける簡易的な絞り込み
+            where_clauses.append("t.tags LIKE ?")
+            where_params.append(f'%"{tag}"%')
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
         threads = _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=per_page, offset=start_index)
@@ -2692,7 +2823,7 @@ async def index(request: Request):
         pinned_threads = []
 
         # 固定表示は「検索・カテゴリ絞り込み・並び替えなし」かつ1ページ目の時だけ行う
-        show_pinned = (not search_query) and (not category) and sort == DEFAULT_THREAD_SORT and page == 1
+        show_pinned = (not search_query) and (not category) and (not tag) and sort == DEFAULT_THREAD_SORT and page == 1
 
         if show_pinned:
             for pid in pinned_ids:
@@ -2720,6 +2851,7 @@ async def index(request: Request):
                 t['is_pinned'] = True
             if not t.get('category'):
                 t['category'] = DEFAULT_THREAD_CATEGORY
+            t['tags_list'] = _parse_tags(t.get('tags'))
 
         try:
             admin_res = query_d1("SELECT message FROM admin_messages WHERE id = ?", [1])
@@ -2757,6 +2889,7 @@ async def index(request: Request):
         'thread_category_labels': THREAD_CATEGORY_LABELS,
         'thread_category_colors': THREAD_CATEGORY_COLORS,
         'current_category': category,
+        'current_tag': tag,
         'thread_sort_options': THREAD_SORT_OPTIONS,
         'current_sort': sort,
         'current_year': datetime.utcnow().year,
@@ -2811,6 +2944,9 @@ async def create_thread(request: Request):
     if category not in THREAD_CATEGORY_VALUES:
         category = DEFAULT_THREAD_CATEGORY
 
+    tags = _sanitize_tags(form.get('tags', ''))
+    tags_json = json.dumps(tags, ensure_ascii=False)
+
     is_admin = can_manage_board(request)
     now = time.time()
 
@@ -2830,13 +2966,15 @@ async def create_thread(request: Request):
     try:
         member_public_id = get_member_public_id(request)
         query_d1(
-            "INSERT INTO threads (title, ip_address, category, user_id) VALUES (?, ?, ?, ?)",
-            [title, client_ip, category, member_public_id]
+            "INSERT INTO threads (title, ip_address, category, user_id, tags) VALUES (?, ?, ?, ?, ?)",
+            [title, client_ip, category, member_public_id, tags_json]
         )
         res = query_d1("SELECT * FROM threads ORDER BY id DESC LIMIT 1")
         new_thread = res[0] if res else None
         if new_thread and not new_thread.get('category'):
             new_thread['category'] = category
+        if new_thread:
+            new_thread['tags_list'] = tags
     except Exception as e:
         print(f"スレッド作成エラー: {e}")
         return json_resp({"error": "データベースエラーが発生しました"}, 500)
@@ -3110,6 +3248,7 @@ async def thread_view(request: Request, thread_id: int):
         if not thread_res:
             return text_resp("スレッドが見つかりません", 404)
         thread = thread_res[0]
+        thread['tags_list'] = _parse_tags(thread.get('tags'))
 
         # 合計レス数を取得(通し番号の計算とページングに使う)
         count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
@@ -3168,7 +3307,9 @@ async def thread_view(request: Request, thread_id: int):
         'active_count': active_count,
         'back_to_board': "/?tab=threads",
         'op_user_id': op_user_id,
-        'current_member': get_current_member(request)
+        'current_member': get_current_member(request),
+        'report_reasons': REPORT_REASONS,
+        'unread_dm_count': get_unread_dm_count(request),
     })
 
     if is_new_user:
@@ -3468,8 +3609,12 @@ async def dm_ws(websocket: WebSocket):
     await dm_manager.connect(member_id, websocket)
     try:
         while True:
-            await websocket.receive_text()
+            msg = await websocket.receive_text()
+            if msg == 'ping':
+                await websocket.send_text('{"type":"pong"}')
     except WebSocketDisconnect:
+        dm_manager.disconnect(member_id, websocket)
+    except Exception:
         dm_manager.disconnect(member_id, websocket)
 
 
@@ -3834,8 +3979,8 @@ async def api_report(request: Request):
     return json_resp({"success": True})
 
 
-@app.get('/admin/reports')
-async def admin_reports(request: Request):
+@app.get('/admin')
+async def admin_dashboard(request: Request):
     if not can_manage_board(request):
         return text_resp("権限がありません。", 403)
 
@@ -3855,11 +4000,76 @@ async def admin_reports(request: Request):
 
     open_count_res = query_d1("SELECT COUNT(*) AS cnt FROM reports WHERE status = 'open'")
 
-    return templates.TemplateResponse(request, 'admin_reports.html', {
+    try:
+        trend = query_d1(
+            "SELECT substr(created_at, 1, 10) AS day, "
+            "COUNT(*) AS pv, COUNT(DISTINCT visitor_token) AS uniques "
+            "FROM page_views WHERE created_at >= datetime('now', '-14 days') "
+            "GROUP BY day ORDER BY day ASC"
+        ) or []
+
+        summary_res = query_d1(
+            "SELECT COUNT(*) AS pv, COUNT(DISTINCT visitor_token) AS uniques "
+            "FROM page_views WHERE created_at >= datetime('now', '-7 days')"
+        )
+        summary = summary_res[0] if summary_res else {'pv': 0, 'uniques': 0}
+
+        popular_threads = query_d1(
+            "SELECT pv.thread_id AS thread_id, COUNT(*) AS views, t.title AS title "
+            "FROM page_views pv JOIN threads t ON t.id = pv.thread_id "
+            "WHERE pv.thread_id IS NOT NULL AND pv.created_at >= datetime('now', '-7 days') "
+            "GROUP BY pv.thread_id ORDER BY views DESC LIMIT 10"
+        ) or []
+
+        referrers = query_d1(
+            "SELECT CASE WHEN referrer_host IS NULL OR referrer_host = '' THEN '(direct / 直接アクセス)' "
+            "ELSE referrer_host END AS host, COUNT(*) AS cnt "
+            "FROM page_views WHERE created_at >= datetime('now', '-7 days') "
+            "GROUP BY host ORDER BY cnt DESC LIMIT 10"
+        ) or []
+
+        devices = query_d1(
+            "SELECT device, COUNT(*) AS cnt FROM page_views "
+            "WHERE created_at >= datetime('now', '-7 days') GROUP BY device ORDER BY cnt DESC"
+        ) or []
+
+        browsers = query_d1(
+            "SELECT browser, COUNT(*) AS cnt FROM page_views "
+            "WHERE created_at >= datetime('now', '-7 days') GROUP BY browser ORDER BY cnt DESC"
+        ) or []
+    except Exception as e:
+        print(f"アクセス解析集計エラー: {e}")
+        trend, summary, popular_threads, referrers, devices, browsers = [], {'pv': 0, 'uniques': 0}, [], [], [], []
+
+    def _with_pct(rows, key='cnt'):
+        total = sum(r.get(key, 0) or 0 for r in rows) or 1
+        for r in rows:
+            r['pct'] = round((r.get(key, 0) or 0) * 100 / total, 1)
+        return rows
+
+    return templates.TemplateResponse(request, 'admin.html', {
         'reports': reports,
         'status': status,
         'open_count': open_count_res[0]['cnt'] if open_count_res else 0,
+        'trend': trend,
+        'summary': summary,
+        'popular_threads': popular_threads,
+        'referrers': _with_pct(referrers),
+        'devices': _with_pct(devices),
+        'browsers': _with_pct(browsers),
     })
+
+
+# 旧URL（ブックマーク・過去のリンク対策として残しておく）
+@app.get('/admin/reports')
+async def admin_reports(request: Request):
+    qs = request.url.query
+    return RedirectResponse(url=('/admin' + (f'?{qs}' if qs else '')), status_code=301)
+
+
+@app.get('/admin/analytics')
+async def admin_analytics(request: Request):
+    return RedirectResponse(url='/admin', status_code=301)
 
 
 @app.post('/api/admin/reports/{report_id}/status')
