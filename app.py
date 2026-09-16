@@ -21,6 +21,8 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from markupsafe import Markup, escape
+import io
+from PIL import Image, ImageOps
 import uvicorn
 
 load_dotenv()
@@ -330,7 +332,47 @@ R2_PUBLIC_URL = os.environ.get('R2_PUBLIC_URL')
 
 ALLOWED_AVATAR_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif'}
 ALLOWED_AVATAR_CONTENT_TYPES = {'image/png', 'image/jpeg', 'image/webp', 'image/gif'}
-MAX_AVATAR_SIZE_BYTES = 3 * 1024 * 1024  # 3MB
+MAX_AVATAR_SIZE_BYTES = 3 * 1024 * 1024  # 3MB（アップロード時点の元ファイルに対する上限）
+
+AVATAR_TARGET_SIZE = 256   # 変換後の一辺のピクセル数（正方形）
+AVATAR_WEBP_QUALITY = 82   # WebPの圧縮品質(1-100)
+
+
+def process_avatar_image(raw_bytes: bytes) -> bytes:
+    """アップロードされた画像を
+      1) EXIFの向き情報を反映して正立させる（EXIF自体は破棄しプライバシー保護）
+      2) 中央を正方形にクロップ
+      3) AVATAR_TARGET_SIZEにリサイズ（アップスケールはしない）
+      4) 軽量なWebPに変換
+    してbytesで返す。破損ファイルや非対応形式の場合はValueErrorを送出する。
+    """
+    try:
+        img = Image.open(io.BytesIO(raw_bytes))
+        img.load()  # ここで実際にデコードし、壊れた/偽装ファイルを検知する
+    except Exception:
+        raise ValueError("invalid_image")
+
+    # GIFなどの複数フレーム画像は先頭フレームのみを使用する
+    if getattr(img, "is_animated", False):
+        img.seek(0)
+
+    img = ImageOps.exif_transpose(img)
+
+    has_alpha = img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info)
+    img = img.convert('RGBA') if has_alpha else img.convert('RGB')
+
+    w, h = img.size
+    side = min(w, h)
+    left = (w - side) // 2
+    top = (h - side) // 2
+    img = img.crop((left, top, left + side, top + side))
+
+    target = min(AVATAR_TARGET_SIZE, side)
+    img = img.resize((target, target), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format='WEBP', quality=AVATAR_WEBP_QUALITY, method=6)
+    return buf.getvalue()
 
 
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
@@ -495,6 +537,8 @@ def get_current_member(request: Request):
     return {
         'id': member_id,
         'username': request.session.get('member_username'),
+        'public_id': get_member_public_id(request),
+        'icon_path': get_member_icon_path(request),
     }
 
 
@@ -531,6 +575,26 @@ def get_member_public_id(request: Request):
     except Exception as e:
         print(f"public_id取得エラー: {e}")
         return None
+
+
+def get_member_icon_path(request: Request):
+    """ログイン中の会員のアバターURLをセッションにキャッシュしつつ返す。
+    レス投稿のたびにusersテーブルへ問い合わせるのを避けるための軽量キャッシュ。
+    アバターを更新した際は profile_avatar_upload 側でこのキャッシュを更新する。
+    """
+    if not is_member_logged_in(request):
+        return None
+    if 'member_icon_path' in request.session:
+        return request.session['member_icon_path']
+    member_id = request.session.get('member_id')
+    try:
+        res = query_d1("SELECT icon_path FROM users WHERE id = ?", [member_id])
+        icon_path = res[0]['icon_path'] if res else None
+    except Exception as e:
+        print(f"icon_path取得エラー: {e}")
+        icon_path = None
+    request.session['member_icon_path'] = icon_path
+    return icon_path
 
 
 def _make_token() -> str:
@@ -586,6 +650,9 @@ def _apply_login_session(request: Request, user: dict):
 
     request.session['member_id'] = user['id']
     request.session['member_username'] = user['username']
+    # 別アカウントへの切り替え時に古いキャッシュを引き継がないようにクリアしておく
+    request.session.pop('member_public_id', None)
+    request.session.pop('member_icon_path', None)
 
     if role != 'user':
         request.session['staff_id'] = user['id']
@@ -705,6 +772,7 @@ async def member_logout(request: Request):
     request.session.pop('member_id', None)
     request.session.pop('member_username', None)
     request.session.pop('member_public_id', None)
+    request.session.pop('member_icon_path', None)
     return RedirectResponse(url='/')
 
 
@@ -907,7 +975,7 @@ async def profile_edit_form(request: Request):
     user = res[0] if res else {'username': request.session.get('member_username'), 'bio': '', 'icon_path': None}
 
     avatar_error_map = {
-        'type': '画像はPNG/JPEG/WEBP/GIF形式のみアップロードできます。',
+        'type': '画像の形式が正しくないか、対応していないファイルです（PNG/JPEG/WEBP/GIF）。',
         'size': f'画像サイズは{MAX_AVATAR_SIZE_BYTES // (1024 * 1024)}MB以内にしてください。',
         'upload': 'アップロード中にエラーが発生しました。時間をおいて再度お試しください。',
         'empty': 'ファイルが選択されていません。',
@@ -935,23 +1003,38 @@ async def profile_avatar_upload(request: Request):
     orig_filename = secure_filename(upload.filename)
     ext = os.path.splitext(orig_filename)[1].lower()
 
+    # 拡張子/Content-Typeでの一次チェック（本格的な検証はPillowでのデコード時に行う）
     if ext not in ALLOWED_AVATAR_EXTENSIONS or upload.content_type not in ALLOWED_AVATAR_CONTENT_TYPES:
         return RedirectResponse(url=f'/profile/edit?avatar_error=type', status_code=303)
 
-    # サイズチェック（先頭からMAXバイト+1だけ読んでオーバーしていないか確認）
     contents = await upload.read()
     if len(contents) > MAX_AVATAR_SIZE_BYTES:
         return RedirectResponse(url=f'/profile/edit?avatar_error=size', status_code=303)
-    await upload.seek(0)
 
     try:
-        unique_filename = f"avatars/{public_id or member_id}_{uuid.uuid4().hex}{ext}"
-        s3_client.upload_fileobj(
-            upload.file, R2_BUCKET_NAME, unique_filename,
-            ExtraArgs={'ContentType': upload.content_type}
+        webp_bytes = process_avatar_image(contents)
+    except ValueError:
+        return RedirectResponse(url=f'/profile/edit?avatar_error=type', status_code=303)
+    except Image.DecompressionBombError:
+        # 画素数が異常に大きい画像（解凍爆弾対策のPillow標準チェックに抵触）
+        return RedirectResponse(url=f'/profile/edit?avatar_error=size', status_code=303)
+    except Exception as e:
+        print(f"アバター画像処理エラー: {e}")
+        return RedirectResponse(url=f'/profile/edit?avatar_error=upload', status_code=303)
+
+    try:
+        unique_filename = f"avatars/{public_id or member_id}_{uuid.uuid4().hex}.webp"
+        s3_client.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=unique_filename,
+            Body=webp_bytes,
+            ContentType='image/webp',
+            # ファイル名がuuidで一意なので、ブラウザ/CDNに長期キャッシュさせて再取得の負荷を減らす
+            CacheControl='public, max-age=31536000, immutable',
         )
         icon_path = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
         query_d1("UPDATE users SET icon_path = ? WHERE id = ?", [icon_path, member_id])
+        request.session['member_icon_path'] = icon_path  # レス投稿時に使うキャッシュも更新
     except Exception as e:
         print(f"アバターアップロードエラー: {e}")
         return RedirectResponse(url=f'/profile/edit?avatar_error=upload', status_code=303)
@@ -2506,7 +2589,7 @@ async def shogi_drop(request: Request, room_code: str):
 
 
 def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
-    """threads を、レス数・最終更新日時・現在の閲覧人数つきで取得する共通ヘルパー"""
+    """threads を、レス数・最終更新日時・現在の閲覧人数・スレ主の表示名/アイコンつきで取得する共通ヘルパー"""
     active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
 
     sql = f"""
@@ -2518,8 +2601,11 @@ def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, of
                 t.created_at
             ) AS last_activity,
             (SELECT COUNT(*) FROM active_users au
-                WHERE au.location = ('thread_' || t.id) AND au.last_seen >= ?) AS thread_active_count
+                WHERE au.location = ('thread_' || t.id) AND au.last_seen >= ?) AS thread_active_count,
+            u.username AS op_username,
+            u.icon_path AS op_icon_path
         FROM threads t
+        LEFT JOIN users u ON u.public_id = t.user_id
         {where_sql}
         ORDER BY {order_sql}
     """
@@ -2649,6 +2735,7 @@ async def index(request: Request):
             {key: {'label': label, 'color': color} for key, label, color in THREAD_CATEGORIES},
             ensure_ascii=False
         ),
+        'current_member_json': json.dumps(current_member, ensure_ascii=False) if current_member else 'null',
     })
 
     if is_new_user:
@@ -2749,7 +2836,11 @@ async def get_older_replies(request: Request, thread_id: int):
 
         LOAD_LIMIT = 300
         older_res = query_d1(
-            "SELECT * FROM replies WHERE thread_id = ? AND id < ? ORDER BY id DESC LIMIT ?",
+            """SELECT r.*, u.icon_path AS icon_path
+               FROM replies r
+               LEFT JOIN users u ON u.public_id = r.poster_public_id
+               WHERE r.thread_id = ? AND r.id < ?
+               ORDER BY r.id DESC LIMIT ?""",
             [thread_id, before_id, LOAD_LIMIT]
         )
         older_replies = list(reversed(older_res)) if older_res else []
@@ -2800,7 +2891,11 @@ async def get_new_replies(request: Request, thread_id: int):
         after_id = 0
     try:
         replies = query_d1(
-            "SELECT * FROM replies WHERE thread_id = ? AND id > ? ORDER BY id ASC",
+            """SELECT r.*, u.icon_path AS icon_path
+               FROM replies r
+               LEFT JOIN users u ON u.public_id = r.poster_public_id
+               WHERE r.thread_id = ? AND r.id > ?
+               ORDER BY r.id ASC""",
             [thread_id, after_id]
         )
         if not replies:
@@ -2970,6 +3065,10 @@ async def thread_view(request: Request, thread_id: int):
                     except Exception:
                         new_reply['post_num'] = None
 
+                    # アバターURL: 投稿者が会員ならセッションキャッシュから取得(DB再問い合わせ不要)。
+                    # ゲスト/STAFF投稿の場合はNoneのままでフロント側がフォールバック表示する。
+                    new_reply['icon_path'] = get_member_icon_path(request) if poster_public_id else None
+
                     await manager.broadcast(thread_id, new_reply)
                     return {"success": True, "reply": new_reply}
             except Exception as e:
@@ -2990,7 +3089,11 @@ async def thread_view(request: Request, thread_id: int):
         # D1のAPI応答サイズ制限対策として、直近300件だけ取得する(古い順に並べ直す)
         RECENT_REPLIES_LIMIT = 300
         replies_res = query_d1(
-            "SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT ?",
+            """SELECT r.*, u.icon_path AS icon_path
+               FROM replies r
+               LEFT JOIN users u ON u.public_id = r.poster_public_id
+               WHERE r.thread_id = ?
+               ORDER BY r.id DESC LIMIT ?""",
             [thread_id, RECENT_REPLIES_LIMIT]
         )
         loaded_replies = list(reversed(replies_res)) if replies_res else []
