@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>メッセージ | talk-ch</title>
+<script>
+    (function() {
+        var saved = localStorage.getItem('talk_ch_theme');
+        if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    })();
+</script>
+<style>
+    :root {
+        --bg-color: #0f172a; --panel-bg: #1e293b; --border-color: #334155;
+        --text-main: #f8fafc; --text-muted: #94a3b8;
+        --accent-color: #38bdf8; --danger-color: #f43f5e;
+    }
+    html[data-theme="light"] {
+        --bg-color: #dfe0dc; --panel-bg: #eeece6; --border-color: #c7c5bd;
+        --text-main: #0f172a; --text-muted: #64748b;
+        --accent-color: #0284c7; --danger-color: #e11d48;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0; padding: 0; min-height: 100%;
+        background: var(--bg-color); color: var(--text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", sans-serif;
+    }
+    .header-area {
+        position: sticky; top: 0; z-index: 10;
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 16px;
+        background: var(--panel-bg); border-bottom: 1px solid var(--border-color);
+    }
+    .header-title { font-size: 16px; font-weight: 700; }
+    .header-area a { color: var(--text-muted); text-decoration: none; font-size: 12px; }
+    .header-area a:hover { color: var(--accent-color); }
+
+    .container { max-width: 620px; margin: 0 auto; padding: 16px; }
+    .section-title {
+        font-size: 12px; font-weight: 700; color: var(--text-muted);
+        text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px;
+    }
+    .conv-list { display: flex; flex-direction: column; gap: 1px; margin-bottom: 28px; }
+    .conv-row {
+        display: flex; align-items: center; gap: 12px;
+        padding: 12px 14px; text-decoration: none; color: inherit;
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+    }
+    .conv-row:first-child { border-radius: 8px 8px 0 0; }
+    .conv-row:last-child { border-radius: 0 0 8px 8px; }
+    .conv-row:only-child { border-radius: 8px; }
+    .conv-row:hover { border-color: var(--accent-color); }
+
+    .avatar {
+        width: 42px; height: 42px; border-radius: 50%; flex: none; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--bg-color); border: 1px solid var(--border-color);
+        font-size: 16px; font-weight: 700; color: var(--text-muted);
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .conv-body { flex: 1; min-width: 0; }
+    .conv-name { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+    .conv-preview {
+        font-size: 12.5px; color: var(--text-muted); margin-top: 2px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .conv-side { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex: none; }
+    .conv-time { font-size: 10.5px; color: var(--text-muted); }
+    .unread-badge {
+        background: var(--danger-color); color: #fff; border-radius: 999px;
+        min-width: 20px; height: 20px; padding: 0 6px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 11px; font-weight: 700;
+    }
+
+    .mutual-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .mutual-chip {
+        display: flex; align-items: center; gap: 7px;
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+        border-radius: 999px; padding: 5px 13px 5px 5px;
+        text-decoration: none; color: inherit; font-size: 13px; font-weight: 600;
+    }
+    .mutual-chip:hover { border-color: var(--accent-color); }
+    .mutual-chip .avatar { width: 26px; height: 26px; font-size: 11px; }
+
+    .empty-state {
+        text-align: center; color: var(--text-muted); font-size: 13px;
+        padding: 28px 16px; background: var(--panel-bg);
+        border: 1px solid var(--border-color); border-radius: 8px;
+        line-height: 1.7;
+    }
+</style>
+</head>
+<body>
+
+<div class="header-area">
+    <div class="header-title">✉️ メッセージ</div>
+    <a href="/">← 掲示板に戻る</a>
+</div>
+
+<div class="container">
+    <div class="section-title">やり取り中</div>
+    {% if conversations %}
+    <div class="conv-list">
+        {% for c in conversations %}
+        <a class="conv-row" href="/messages/{{ c.public_id }}">
+            <span class="avatar">
+                {% if c.icon_path %}
+                <img src="{{ c.icon_path }}" alt="" loading="lazy">
+                {% else %}{{ (c.username or '?')[:1] }}{% endif %}
+            </span>
+            <span class="conv-body">
+                <div class="conv-name">{{ c.username }}</div>
+                <div class="conv-preview">{{ c.last_content or '' }}</div>
+            </span>
+            <span class="conv-side">
+                {% if c.unread_count and c.unread_count > 0 %}
+                <span class="unread-badge">{{ c.unread_count if c.unread_count < 100 else '99+' }}</span>
+                {% endif %}
+            </span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state" style="margin-bottom: 28px;">
+        まだやり取りがありません。<br>
+        相互フォローの相手にDMを送れます。
+    </div>
+    {% endif %}
+
+    <div class="section-title">相互フォロー（DMを送れる相手）</div>
+    {% if mutuals %}
+    <div class="mutual-grid">
+        {% for u in mutuals %}
+        <a class="mutual-chip" href="/messages/{{ u.public_id }}">
+            <span class="avatar">
+                {% if u.icon_path %}
+                <img src="{{ u.icon_path }}" alt="" loading="lazy">
+                {% else %}{{ (u.username or '?')[:1] }}{% endif %}
+            </span>
+            {{ u.username }}
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        相互フォローの相手がいません。<br>
+        気になる人のプロフィールからフォローしてみましょう。
+    </div>
+    {% endif %}
+</div>
+
+</body>
+</html>
