@@ -396,7 +396,7 @@
                 <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 11px;">スレッド削除</button>
             </form>
             {% endif %}
-            <button type="button" class="report-btn" onclick="openReportModal('thread', {{ thread.id }})">🚩 通報</button>
+            <button type="button" class="report-btn" data-report-type="thread" data-report-id="{{ thread.id }}">🚩 通報</button>
         </div>
     </div>
 
@@ -464,11 +464,11 @@
                     <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
                         <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
                     </form>
-                    <button type="button" class="report-btn" onclick="openReportModal('reply', {{ r.id }})">🚩</button>
+                    <button type="button" class="report-btn" data-report-type="reply" data-report-id="{{ r.id }}">🚩</button>
                 </div>
                 {% else %}
                 <div style="margin-left: auto;">
-                    <button type="button" class="report-btn" onclick="openReportModal('reply', {{ r.id }})">🚩通報</button>
+                    <button type="button" class="report-btn" data-report-type="reply" data-report-id="{{ r.id }}">🚩 通報</button>
                 </div>
                 {% endif %}
             </div>
@@ -832,13 +832,13 @@
                         <form action="/ban_user/${threadId}/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
                             <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
                         </form>
-                        <button type="button" class="report-btn" onclick="openReportModal('reply', ${reply.id})">🚩</button>
+                        <button type="button" class="report-btn" data-report-type="reply" data-report-id="${reply.id}">🚩</button>
                     </div>
                 `;
             } else {
                 adminBtns = `
                     <div style="margin-left: auto;">
-                        <button type="button" class="report-btn" onclick="openReportModal('reply', ${reply.id})">🚩 通報</button>
+                        <button type="button" class="report-btn" data-report-type="reply" data-report-id="${reply.id}">🚩 通報</button>
                     </div>
                 `;
             }
@@ -1079,6 +1079,14 @@
         const overlay = document.getElementById('report-modal-overlay');
         const cancelBtn = document.getElementById('report-modal-cancel-btn');
         const form = document.getElementById('report-modal-form');
+
+        // 通報ボタンはサーバー描画分・WebSocketで後から追加される分の両方があるため、
+        // 個々のボタンにリスナーを付けるのではなく document 全体でイベント委譲する
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.report-btn');
+            if (!btn) return;
+            openReportModal(btn.getAttribute('data-report-type'), btn.getAttribute('data-report-id'));
+        });
 
         if (overlay) {
             overlay.addEventListener('click', (e) => {
