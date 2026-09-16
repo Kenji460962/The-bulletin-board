@@ -149,7 +149,7 @@
 <div class="messages" id="messages">
     {% if messages %}
         {% for m in messages %}
-        <div class="msg {{ 'mine' if m.is_mine else 'theirs' }}">
+        <div class="msg {{ 'mine' if m.is_mine else 'theirs' }}" data-msg-id="{{ m.id }}">
             <div class="bubble">{{ m.content | safe }}</div>
             <div class="msg-time">{{ m.created_at }}</div>
         </div>
@@ -213,12 +213,32 @@
         );
     }
 
+    // WebSocketとポーリングの両方から同じメッセージが届き得るため、
+    // メッセージIDで重複排除する。初期表示済みの分(data-msg-id)もここに含める。
+    const seenMessageIds = new Set();
+    let lastMessageId = 0;
+    messagesEl.querySelectorAll('[data-msg-id]').forEach(el => {
+        const id = parseInt(el.getAttribute('data-msg-id'), 10);
+        if (!Number.isNaN(id)) {
+            seenMessageIds.add(id);
+            if (id > lastMessageId) lastMessageId = id;
+        }
+    });
+
     function appendMessage(msg) {
+        const id = msg && msg.id != null ? parseInt(msg.id, 10) : null;
+        if (id != null && !Number.isNaN(id)) {
+            if (seenMessageIds.has(id)) return; // WS/ポーリング/自前描画の重複をスキップ
+            seenMessageIds.add(id);
+            if (id > lastMessageId) lastMessageId = id;
+        }
+
         const empty = messagesEl.querySelector('.empty-state');
         if (empty) empty.remove();
 
         const div = document.createElement('div');
         div.className = 'msg ' + (msg.is_mine ? 'mine' : 'theirs');
+        if (id != null) div.setAttribute('data-msg-id', String(id));
         div.innerHTML = `
             <div class="bubble">${renderContent(msg.content)}</div>
             <div class="msg-time">${escapeHtml(msg.created_at || '')}</div>
@@ -249,9 +269,9 @@
             const data = await res.json();
             if (data.success) {
                 input.value = '';
-                // WebSocketからも届くが、取りこぼし時のために即時描画はしない。
-                // 自分の他タブ含めWS経由の dm_sent で一元的に描画する。
-                if (!wsConnected) appendMessage(data.message);
+                // 自分の送信分はここで即描画する。WebSocket/ポーリング経由で
+                // 同じメッセージが後から届いても、IDで重複排除されるので問題ない。
+                appendMessage(data.message);
             } else {
                 errorEl.textContent = data.error || '送信に失敗しました。';
                 errorEl.style.display = 'block';
@@ -275,16 +295,24 @@
         });
     }
 
-    // ---- WebSocket ----
-    let wsConnected = false;
+    // ---- WebSocket(つながっていれば即時反映。切れていてもポーリングが拾う) ----
     let ws = null;
     let reconnectDelay = 1000;
+    let pingTimer = null;
 
     function connectWS() {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
 
-        ws.onopen = () => { wsConnected = true; reconnectDelay = 1000; };
+        ws.onopen = () => {
+            reconnectDelay = 1000;
+            // 一定間隔でpingを送り、アイドルタイムアウトで
+            // プロキシ側から切断されるのを防ぐ
+            if (pingTimer) clearInterval(pingTimer);
+            pingTimer = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) ws.send('ping');
+            }, 25000);
+        };
 
         ws.onmessage = (event) => {
             let data;
@@ -298,13 +326,31 @@
         };
 
         ws.onclose = () => {
-            wsConnected = false;
+            if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
             setTimeout(connectWS, reconnectDelay);
             reconnectDelay = Math.min(reconnectDelay * 2, 30000);
         };
         ws.onerror = () => { try { ws.close(); } catch {} };
     }
     connectWS();
+
+    // ---- ポーリング(保険) ----
+    // WebSocketが何らかの理由で繋がらない/届かない環境でも、
+    // 数秒おきに新着を取りに行くことで「毎回リロードしないと届かない」状態を防ぐ。
+    // WebSocketで既に受信済みのメッセージはappendMessage側のID重複排除で無視される。
+    async function pollNewMessages() {
+        try {
+            const res = await fetch(`/api/dm/${PARTNER_PUBLIC_ID}/poll?after_id=${lastMessageId}`, { cache: 'no-store' });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.success && Array.isArray(data.messages)) {
+                data.messages.forEach(appendMessage);
+            }
+        } catch (e) {
+            // 通信エラー時は次回のポーリングに任せる
+        }
+    }
+    setInterval(pollNewMessages, 4000);
 
     // ---- 通報モーダル ----
     const modal = document.getElementById('report-modal');
