@@ -492,6 +492,13 @@
         .thread-badge.pin { background: var(--amber-soft); color: var(--amber); }
         .thread-date { font-size: 11.5px; color: var(--text-faint); }
 
+        .thread-tag {
+            font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: var(--radius-pill);
+            background: none; border: 1px solid var(--card-border); color: var(--text-muted);
+            text-decoration: none;
+        }
+        .thread-tag:hover { border-color: var(--primary); color: var(--primary); }
+
         /* ---- スレ主（作成者）表示 ---- */
         .thread-op {
             display: inline-flex; align-items: center; gap: 4px;
@@ -868,6 +875,18 @@
         @media (max-width: 560px) {
             .site-footer { flex-direction: column; align-items: flex-start; gap: 10px; }
         }
+
+        /* ---- DM着信トースト ---- */
+        .toast-stack {
+            position: fixed; right: 16px; bottom: 16px; z-index: 1100;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .toast {
+            background: var(--card-bg, #fff); border: 1px solid var(--primary, #2563EB);
+            border-left-width: 3px; border-radius: 8px; padding: 10px 14px;
+            font-size: 13px; color: var(--text, #111827); max-width: 280px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.18); cursor: pointer;
+        }
     </style>
 
 </head>
@@ -1074,6 +1093,9 @@
                                     </select>
                                     <button type="submit">新規スレッド作成</button>
                                 </div>
+                                <div style="margin-top:8px;">
+                                    <input type="text" name="tags" id="create-thread-tags" placeholder="タグをカンマ区切りで入力（最大5個・1個15文字まで、任意）" style="width:100%; box-sizing:border-box;" maxlength="100">
+                                </div>
                             </form>
 
                             <div class="thread-toolbar-row">
@@ -1106,10 +1128,16 @@
                             </div>
                         </div>
 
-                        {% if search_query or current_category %}
-                        <div class="glass-panel" style="font-size: 12.5px; color: var(--text-muted);">
+                        {% if search_query or current_category or current_tag %}
+                        <div class="glass-panel" style="font-size: 12.5px; color: var(--text-muted); display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span>
                             {% if search_query %}「{{ search_query }}」の検索結果{% if current_category %}（{{ thread_category_labels[current_category] }}）{% endif %}: {{ threads|length }}件
-                            {% else %}{{ thread_category_labels[current_category] }}の一覧: {{ threads|length }}件
+                            {% elif current_category %}{{ thread_category_labels[current_category] }}の一覧: {{ threads|length }}件
+                            {% else %}タグ「{{ current_tag }}」の一覧: {{ threads|length }}件
+                            {% endif %}
+                            </span>
+                            {% if current_tag %}
+                            <a href="{{ url_for('index') }}?tab=threads{% if current_category %}&category={{ current_category }}{% endif %}{% if current_sort and current_sort != 'latest_activity' %}&sort={{ current_sort }}{% endif %}" class="filter-pill">タグ解除 ×</a>
                             {% endif %}
                         </div>
                         {% endif %}
@@ -1144,6 +1172,9 @@
                                                 名無しさん
                                                 {% endif %}
                                             </span>
+                                            {% for tag in thread.tags_list %}
+                                            <a class="thread-tag" href="{{ url_for('index') }}?tab=threads&tag={{ tag|urlencode }}">#{{ tag }}</a>
+                                            {% endfor %}
                                         </div>
                                         <a class="thread-link" href="{{ url_for('thread_view', thread_id=thread.id) }}">
                                             {{ thread.title }}
@@ -1170,13 +1201,13 @@
                             <!-- ページ切り替え -->
                             <div class="pagination-row">
                                 {% if current_page > 1 %}
-                                    <a href="/?tab=threads&page={{ current_page - 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}" class="page-link">前のページ</a>
+                                    <a href="/?tab=threads&page={{ current_page - 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_tag %}&tag={{ current_tag|urlencode }}{% endif %}" class="page-link">前のページ</a>
                                 {% endif %}
 
                                 <span class="page-indicator">ページ {{ current_page }}</span>
 
                                 {% if has_next %}
-                                    <a href="/?tab=threads&page={{ current_page + 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}" class="page-link">次のページ</a>
+                                    <a href="/?tab=threads&page={{ current_page + 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_tag %}&tag={{ current_tag|urlencode }}{% endif %}" class="page-link">次のページ</a>
                                 {% endif %}
                             </div>
                         </div>
@@ -1377,34 +1408,87 @@
     // ログイン中の会員情報（スレ立て直後にその場でスレ主表示を組み立てるために使う）
     const CURRENT_MEMBER = {{ current_member_json | safe }};
 
-    // ---- DM未読バッジのリアルタイム更新 ----
+    // ---- トースト表示 ----
+    function showToast(text, href) {
+        const stack = document.getElementById('toast-stack');
+        if (!stack) return;
+        const el = document.createElement('div');
+        el.className = 'toast';
+        el.textContent = text;
+        if (href) el.addEventListener('click', () => { location.href = href; });
+        stack.appendChild(el);
+        setTimeout(() => el.remove(), 6000);
+    }
+
+    // ---- DM未読バッジ・着信通知のリアルタイム更新 ----
     (function() {
         if (!CURRENT_MEMBER) return;
         const badge = document.getElementById('dm-badge');
-        if (!badge) return;
 
-        let unread = parseInt(badge.textContent, 10) || 0;
+        let unread = badge ? (parseInt(badge.textContent, 10) || 0) : 0;
         function render() {
+            if (!badge) return;
             badge.textContent = unread > 99 ? '99+' : unread;
             badge.style.display = unread > 0 ? 'flex' : 'none';
         }
 
-        let delay = 1000;
+        // 通知の許可は最初のクリック時に求める（読み込み直後に出すとブロックされやすい）
+        if ('Notification' in window && Notification.permission === 'default') {
+            document.addEventListener('click', function once() {
+                Notification.requestPermission();
+            }, { once: true });
+        }
+
+        let delay = 1000, ws = null, hb = null, pong = null;
+
         function connect() {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
             const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
-            ws.onopen = () => { delay = 1000; };
+            ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
+
+            ws.onopen = () => {
+                delay = 1000;
+                // 定期pingで死んだ接続を検出する（スリープ復帰時はcloseが飛ばないことがある）
+                hb = setInterval(() => {
+                    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                    try { ws.send('ping'); } catch (e) { return; }
+                    clearTimeout(pong);
+                    pong = setTimeout(() => { try { ws.close(); } catch (e) {} }, 10000);
+                }, 25000);
+            };
+
             ws.onmessage = (event) => {
                 let data;
-                try { data = JSON.parse(event.data); } catch { return; }
-                if (data.type === 'dm_new') { unread += 1; render(); }
+                try { data = JSON.parse(event.data); } catch (e) { return; }
+                if (data.type === 'pong') { clearTimeout(pong); return; }
+                if (data.type === 'dm_new') {
+                    unread += 1;
+                    render();
+                    const who = data.from_username || '新着メッセージ';
+                    const link = data.from_public_id ? `/messages/${data.from_public_id}` : '/messages';
+                    showToast(`✉️ ${who} からDMが届きました`, link);
+                    if ('Notification' in window && Notification.permission === 'granted'
+                        && document.visibilityState !== 'visible') {
+                        new Notification('talk-ch', { body: `${who} からDMが届きました` });
+                    }
+                }
             };
+
             ws.onclose = () => {
+                clearInterval(hb);
+                clearTimeout(pong);
                 setTimeout(connect, delay);
                 delay = Math.min(delay * 2, 30000);
             };
-            ws.onerror = () => { try { ws.close(); } catch {} };
+
+            ws.onerror = () => { try { ws.close(); } catch (e) {} };
         }
+
+        // タブ復帰・ネットワーク復帰時は即座に張り直す
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') { delay = 1000; connect(); }
+        });
+        window.addEventListener('online', () => { delay = 1000; connect(); });
         connect();
     })();
 
@@ -1658,6 +1742,9 @@
                 }
 
                 const catMeta = CATEGORY_META[thread.category] || { label: 'その他', color: 'gray' };
+                const tagsHtml = (thread.tags_list || [])
+                    .map(t => `<a class="thread-tag" href="/?tab=threads&tag=${encodeURIComponent(t)}">#${escapeHtml(t)}</a>`)
+                    .join('');
 
                 let opHtml = '名無しさん';
                 if (CURRENT_MEMBER) {
@@ -1676,6 +1763,7 @@
                             <span class="thread-badge cat-${catMeta.color}">${escapeHtml(catMeta.label)}</span>
                             <span class="thread-badge">#${thread.id}</span>
                             <span class="thread-op">${opHtml}</span>
+                            ${tagsHtml}
                         </div>
                         <a class="thread-link" href="/thread/${thread.id}">
                             ${escapeHtml(thread.title)}
@@ -1771,5 +1859,6 @@
     });
     </script>
 
+    <div class="toast-stack" id="toast-stack"></div>
 </body>
 </html>
