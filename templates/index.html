@@ -505,6 +505,16 @@
         }
         .thread-op-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+        /* ---- DM未読バッジ ---- */
+        .dm-link { position: relative; display: inline-flex; align-items: center; }
+        .dm-badge {
+            position: absolute; top: -6px; right: -9px;
+            background: #DC2626; color: #fff; border-radius: 999px;
+            min-width: 16px; height: 16px; padding: 0 4px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; line-height: 1;
+        }
+
         /* ---- 右上のメンバーピル内アイコン ---- */
         .member-pill-avatar {
             width: 20px; height: 20px; border-radius: 50%; flex: none;
@@ -922,7 +932,9 @@
                             {{ (current_member.username or '?')[:1] }}
                             {% endif %}
                         </span>
-                        <a href="{{ url_for('profile_edit_form') }}" style="color: inherit; text-decoration: none;">{{ current_member.username }} さん</a> <a href="{{ url_for('member_logout') }}" style="color: inherit; text-decoration: underline; margin-left: 4px;">ログアウト</a>
+                        <a href="{{ url_for('profile_edit_form') }}" style="color: inherit; text-decoration: none;">{{ current_member.username }} さん</a>
+                        <a href="/messages" class="dm-link" id="dm-link" style="color: inherit; text-decoration: none; margin-left: 6px;">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></a>
+                        <a href="{{ url_for('member_logout') }}" style="color: inherit; text-decoration: underline; margin-left: 4px;">ログアウト</a>
                     </div>
                     {% else %}
                     <a href="{{ url_for('member_login_form') }}" class="icon-btn">login</a>
@@ -1364,6 +1376,37 @@
 
     // ログイン中の会員情報（スレ立て直後にその場でスレ主表示を組み立てるために使う）
     const CURRENT_MEMBER = {{ current_member_json | safe }};
+
+    // ---- DM未読バッジのリアルタイム更新 ----
+    (function() {
+        if (!CURRENT_MEMBER) return;
+        const badge = document.getElementById('dm-badge');
+        if (!badge) return;
+
+        let unread = parseInt(badge.textContent, 10) || 0;
+        function render() {
+            badge.textContent = unread > 99 ? '99+' : unread;
+            badge.style.display = unread > 0 ? 'flex' : 'none';
+        }
+
+        let delay = 1000;
+        function connect() {
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
+            ws.onopen = () => { delay = 1000; };
+            ws.onmessage = (event) => {
+                let data;
+                try { data = JSON.parse(event.data); } catch { return; }
+                if (data.type === 'dm_new') { unread += 1; render(); }
+            };
+            ws.onclose = () => {
+                setTimeout(connect, delay);
+                delay = Math.min(delay * 2, 30000);
+            };
+            ws.onerror = () => { try { ws.close(); } catch {} };
+        }
+        connect();
+    })();
 
     // ---- ライト/ダークモード切り替え（デフォルトはライト） ----
     (function() {
