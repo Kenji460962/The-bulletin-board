@@ -4073,6 +4073,26 @@ async def admin_dashboard(request: Request):
         r['reason_label'] = REPORT_REASONS.get(r.get('reason'), r.get('reason'))
         r['created_at'] = _to_jst_string(r.get('created_at'))
 
+        # レス通報は target_id が replies.id なので、管理画面から該当スレッドの該当レスへ
+        # ジャンプできるよう、所属スレッドIDとスレッド内の通し番号(#post-N用)を解決しておく。
+        if r.get('target_type') == 'reply':
+            r['reply_thread_id'] = None
+            r['reply_post_num'] = None
+            try:
+                reply_id = int(r.get('target_id'))
+            except (TypeError, ValueError):
+                reply_id = None
+            if reply_id:
+                reply_res = query_d1("SELECT thread_id FROM replies WHERE id = ?", [reply_id])
+                if reply_res:
+                    r_thread_id = reply_res[0]['thread_id']
+                    pos_res = query_d1(
+                        "SELECT COUNT(*) AS cnt FROM replies WHERE thread_id = ? AND id <= ?",
+                        [r_thread_id, reply_id]
+                    )
+                    r['reply_thread_id'] = r_thread_id
+                    r['reply_post_num'] = pos_res[0]['cnt'] if pos_res else None
+
     open_count_res = query_d1("SELECT COUNT(*) AS cnt FROM reports WHERE status = 'open'")
 
     try:
@@ -4145,6 +4165,40 @@ async def admin_reports(request: Request):
 @app.get('/admin/analytics')
 async def admin_analytics(request: Request):
     return RedirectResponse(url='/admin', status_code=301)
+
+
+@app.post('/api/admin/thread/{thread_id}/delete')
+async def api_admin_delete_thread(request: Request, thread_id: int):
+    """管理画面(通報一覧)から直接スレッドを削除するためのAPI。既存の
+    /thread/{id}/delete_thread と異なりリダイレクトせずJSONを返す。"""
+    if not can_manage_board(request):
+        return json_resp({"success": False, "error": "権限がありません。"}, 403)
+    try:
+        query_d1("DELETE FROM threads WHERE id = ?", [thread_id])
+        query_d1("DELETE FROM replies WHERE thread_id = ?", [thread_id])
+    except Exception as e:
+        print(f"スレッド削除エラー(admin): {e}")
+        return json_resp({"success": False, "error": "削除に失敗しました。"}, 500)
+    return json_resp({"success": True})
+
+
+@app.post('/api/admin/reply/{reply_id}/delete')
+async def api_admin_delete_reply(request: Request, reply_id: int):
+    """管理画面(通報一覧)から直接レスを削除(あぼーん化)するためのAPI。
+    既存の /thread/{tid}/delete/{rid} と異なりthread_idを必要とせず、
+    リダイレクトせずJSONを返す。"""
+    if not can_manage_board(request):
+        return json_resp({"success": False, "error": "権限がありません。"}, 403)
+    try:
+        query_d1(
+            """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
+               WHERE id = ?""",
+            ['あぼーん', 'この書き込みは管理員によって削除されました。', '???', 0, '', reply_id]
+        )
+    except Exception as e:
+        print(f"レス削除エラー(admin): {e}")
+        return json_resp({"success": False, "error": "削除に失敗しました。"}, 500)
+    return json_resp({"success": True})
 
 
 @app.post('/api/admin/reports/{report_id}/status')
