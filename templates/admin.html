@@ -68,6 +68,7 @@
     .btn-resolve { background: var(--ok-color); color: #0f172a; }
     .btn-reject { background: none; border: 1px solid var(--border-color) !important; color: var(--text-muted); }
     .btn-reopen { background: var(--accent-color); color: #0f172a; }
+    .btn-delete { background: var(--danger-color); color: #fff; }
 
     /* ---- アクセス解析 ---- */
     .summary-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -141,6 +142,12 @@
                     <a href="/profile/{{ r.target_id }}" target="_blank">/profile/{{ r.target_id }}</a>
                     {% elif r.target_type == 'thread' %}
                     <a href="/thread/{{ r.target_id }}" target="_blank">スレッド #{{ r.target_id }}</a>
+                    {% elif r.target_type == 'reply' %}
+                        {% if r.reply_thread_id %}
+                        <a href="/thread/{{ r.reply_thread_id }}#post-{{ r.reply_post_num }}" target="_blank">スレッド #{{ r.reply_thread_id }} の {{ r.reply_post_num }}番目のレス</a>
+                        {% else %}
+                        レス #{{ r.target_id }}（既に削除済み、または見つかりません）
+                        {% endif %}
                     {% else %}
                     レス #{{ r.target_id }}
                     {% endif %}
@@ -163,6 +170,12 @@
                     <button type="button" class="btn-reject" data-id="{{ r.id }}" data-status="rejected">却下</button>
                     {% else %}
                     <button type="button" class="btn-reopen" data-id="{{ r.id }}" data-status="open">未対応に戻す</button>
+                    {% endif %}
+
+                    {% if r.target_type == 'thread' %}
+                    <button type="button" class="btn-delete" data-delete-type="thread" data-delete-id="{{ r.target_id }}" data-report-id="{{ r.id }}">スレッド削除</button>
+                    {% elif r.target_type == 'reply' and r.reply_thread_id %}
+                    <button type="button" class="btn-delete" data-delete-type="reply" data-delete-id="{{ r.target_id }}" data-report-id="{{ r.id }}">レス削除</button>
                     {% endif %}
                 </div>
             </div>
@@ -292,6 +305,44 @@
                     if (card) card.remove();
                 } else {
                     alert(data.error || '更新に失敗しました。');
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('通信に失敗しました。');
+                btn.disabled = false;
+            }
+        });
+    });
+
+    /* ---- 通報対象のスレッド/レスを管理画面から直接削除 ---- */
+    document.querySelectorAll('.btn-delete').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            const type = btn.dataset.deleteType;
+            const targetId = btn.dataset.deleteId;
+            const reportId = btn.dataset.reportId;
+            const label = type === 'thread' ? 'このスレッド' : 'このレス';
+            if (!confirm(`${label}を削除します。よろしいですか？（元に戻せません）`)) return;
+
+            btn.disabled = true;
+            try {
+                const url = type === 'thread'
+                    ? `/api/admin/thread/${targetId}/delete`
+                    : `/api/admin/reply/${targetId}/delete`;
+                const res = await fetch(url, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    // 削除できたら通報も対応済みにして、カードごと閉じる
+                    try {
+                        await fetch(`/api/admin/reports/${reportId}/status`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: 'resolved' })
+                        });
+                    } catch (e) { /* 通報の状態更新に失敗しても削除自体は成功しているので無視 */ }
+                    const card = document.getElementById(`report-${reportId}`);
+                    if (card) card.remove();
+                } else {
+                    alert(data.error || '削除に失敗しました。');
                     btn.disabled = false;
                 }
             } catch (e) {
