@@ -260,6 +260,16 @@
             border: 1px solid var(--border-color);
         }
         .post-meta { color: var(--text-muted); font-size: 13px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        /* レス投稿者のアバター */
+        .post-avatar {
+            width: 24px; height: 24px; border-radius: 50%; flex: none;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 11px; font-weight: 700; overflow: hidden;
+            background: var(--panel-bg); border: 1px solid var(--border-color); color: var(--text-muted);
+        }
+        .post-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
         
         /* 番号リンク */
         .post-num { 
@@ -372,7 +382,15 @@
         <div class="post-item" id="post-{{ r.post_num }}" data-reply-id="{{ r.id }}">
             <div class="post-meta">
                 <span class="post-num" onclick="quoteReply({{ r.post_num }})">#{{ r.post_num }}</span>
-                
+
+                <span class="post-avatar">
+                    {% if r.icon_path %}
+                    <img src="{{ r.icon_path }}" alt="" loading="lazy" decoding="async">
+                    {% else %}
+                    {{ (r.author or '?')[:1] }}
+                    {% endif %}
+                </span>
+
                 {% set role_cls = 'post-name' %}
                 {% if r.role == 'admin' or r.is_admin %}
                     {% set role_cls = 'role-admin' %}
@@ -780,9 +798,18 @@
                 ? `<a href="/profile/${reply.poster_public_id}" target="_blank" class="${roleCls}" style="text-decoration: none;">${reply.author || '名無しさん'}${starHtml}</a>`
                 : `<span class="${roleCls}">${reply.author || '名無しさん'}${starHtml}</span>`;
 
+            const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+            const avatarInitial = escapeHtml((reply.author || '?').slice(0, 1));
+            const avatarHtml = reply.icon_path
+                ? `<span class="post-avatar"><img src="${reply.icon_path}" alt="" loading="lazy" decoding="async"></span>`
+                : `<span class="post-avatar">${avatarInitial}</span>`;
+
             replyDiv.innerHTML = `
                 <div class="post-meta">
                     <span class="post-num" onclick="quoteReply(${replyCount})">#${replyCount}</span>
+                    ${avatarHtml}
                     ${nameHtml}
                     ${opHtml}
                     <span>${reply.date || ''}</span>
@@ -945,23 +972,6 @@
 
         // ウェブソケット接続を開始（モードに関わらず常時接続したままにする）
         connectWebSocket();
-
-        // WebSocketの接続自体は張れていても、サーバーが複数インスタンス構成の場合などに
-        // 投稿を受けたインスタンスと自分が繋がっているインスタンスが別だと、pushが届かないまま
-        // 接続だけは維持されてしまうことがある(closeが発火しないため再接続のcatchUpRepliesも走らない)。
-        // その保険として、数秒おきに新着レスの有無を必ずHTTPで確認しにいく。
-        // catchUpReplies自体がbusyガードとdata-reply-idでの重複排除を持っているため、
-        // WSのpushと競合しても二重表示にはならない。
-        let pollNewRepliesTimer = setInterval(() => {
-            if (document.visibilityState === 'visible') catchUpReplies();
-        }, 4000);
-        window.addEventListener('beforeunload', () => {
-            if (pollNewRepliesTimer) clearInterval(pollNewRepliesTimer);
-        });
-        // タブがバックグラウンドから復帰した瞬間にも、待たせず即座に取りに行く
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') catchUpReplies();
-        });
 
         // 初期表示時は常にリアルタイムモード
         setMode('realtime');
