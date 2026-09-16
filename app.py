@@ -3821,6 +3821,14 @@ async def dm_conversation(request: Request, public_id: str):
         for m in messages:
             m['is_mine'] = (m['sender_id'] == member_id)
             m['created_at'] = _to_jst_string(m.get('created_at'))
+            # contentは送信時点で既にhtml.escape済みのため、URLだけをリンク化する
+            # (WebSocket/ポーリング経由の表示と同じ挙動に揃える)
+            if m.get('content'):
+                m['content'] = re.sub(
+                    r'(https?://[^\s<>]+)',
+                    r'<a href="\1" target="_blank" rel="noopener noreferrer nofollow">\1</a>',
+                    str(m['content'])
+                )
 
         # 開いた時点で相手からの未読を既読にする
         try:
@@ -3928,6 +3936,73 @@ async def api_dm_send(request: Request, public_id: str):
         })
 
     return json_resp({"success": True, "message": {**new_message, "is_mine": True}})
+
+
+@app.get('/api/dm/{public_id}/poll')
+async def api_dm_poll(request: Request, public_id: str):
+    """
+    WebSocketでのリアルタイム配信が届かない環境(複数インスタンス構成や、
+    WebSocketがブロックされるホスティング環境など)でも新着メッセージを
+    取り逃さないための保険。指定したメッセージID以降の新着だけを返す。
+    フロント側は数秒おきにこれを叩き、WebSocketの受信と重複しないよう
+    メッセージIDで重複排除する。
+    """
+    member_id, err = _require_member(request)
+    if err:
+        return err
+
+    after_id_raw = request.query_params.get('after_id')
+    try:
+        after_id = int(after_id_raw) if after_id_raw is not None else 0
+    except (TypeError, ValueError):
+        after_id = 0
+
+    target_id = _user_id_by_public_id(public_id)
+    if not target_id:
+        return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
+
+    conv_res = query_d1(
+        "SELECT id FROM dm_conversations WHERE (user_a_id = ? AND user_b_id = ?) "
+        "OR (user_a_id = ? AND user_b_id = ?)",
+        [member_id, target_id, target_id, member_id]
+    )
+    if not conv_res:
+        return {"success": True, "messages": []}
+    conversation_id = conv_res[0]['id']
+
+    try:
+        rows = query_d1(
+            "SELECT id, sender_id, content, created_at FROM dm_messages "
+            "WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 50",
+            [conversation_id, after_id]
+        ) or []
+
+        if rows:
+            # ポーリングで取得した = 開いて見ているとみなし、相手からの分は既読にする
+            query_d1(
+                "UPDATE dm_messages SET read_at = datetime('now') "
+                "WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL",
+                [conversation_id, member_id]
+            )
+
+        messages = []
+        for r in rows:
+            content = str(r.get('content') or '')
+            content = re.sub(
+                r'(https?://[^\s<>]+)',
+                r'<a href="\1" target="_blank" rel="noopener noreferrer nofollow">\1</a>',
+                content
+            )
+            messages.append({
+                "id": r['id'],
+                "content": content,
+                "created_at": _to_jst_string(r.get('created_at')),
+                "is_mine": r['sender_id'] == member_id,
+            })
+        return {"success": True, "messages": messages}
+    except Exception as e:
+        print(f"DMポーリングエラー: {e}")
+        return json_resp({"success": False, "error": "取得に失敗しました。"}, 500)
 
 
 @app.get('/api/dm/unread_count')
