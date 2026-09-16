@@ -550,13 +550,15 @@
         alert('JSエラー発生:\n' + e.message + '\n(' + e.filename + ':' + e.lineno + ':' + e.colno + ')');
     });
 
+    // ページ全体(このscriptタグ内のどこからでも)使えるよう、トップレベルで宣言する
+    const currentMemberUsername = {% if current_member %}"{{ current_member.username }}"{% else %}null{% endif %};
+
     document.addEventListener('DOMContentLoaded', () => {
 
         // 名前をローカルストレージから復元。保存済みの名前がなければ、
         // ログイン中の会員ユーザー名を自動で入れる。
         const nameInput = document.querySelector('input[name="author"]');
         const savedName = localStorage.getItem('user_name');
-        const currentMemberUsername = {% if current_member %}"{{ current_member.username }}"{% else %}null{% endif %};
         if (savedName) {
             nameInput.value = savedName;
         } else if (currentMemberUsername) {
