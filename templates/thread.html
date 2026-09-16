@@ -332,6 +332,56 @@
         a:hover {
             text-decoration: underline;
         }
+        /* ---- 通報ボタン / モーダル / トースト / DMバッジ ---- */
+        .report-btn {
+            font-size: 10px; background: none; color: var(--text-muted);
+            border: 1px solid var(--border-color); border-radius: 4px;
+            padding: 2px 6px; cursor: pointer; line-height: 1.4;
+        }
+        .report-btn:hover { color: var(--danger-color); border-color: var(--danger-color); }
+
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            z-index: 1000; align-items: center; justify-content: center; padding: 16px;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-box {
+            background: var(--panel-bg); border: 1px solid var(--border-color);
+            border-radius: 10px; padding: 20px; width: 100%; max-width: 380px;
+        }
+        .modal-box h3 { margin: 0 0 14px; font-size: 15px; color: var(--text-main); }
+        .modal-box label { display: block; font-size: 13px; margin-bottom: 6px; color: var(--text-main); cursor: pointer; }
+        .modal-box textarea {
+            width: 100%; box-sizing: border-box; margin-top: 10px; padding: 8px;
+            background: var(--bg-color); color: var(--text-main);
+            border: 1px solid var(--border-color); border-radius: 6px;
+            font: inherit; font-size: 13px; resize: vertical;
+        }
+        .modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+        .modal-actions button {
+            flex: 1; padding: 8px; border: none; border-radius: 6px;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+        }
+        .modal-cancel { background: none; border: 1px solid var(--border-color) !important; color: var(--text-muted); }
+        .modal-submit { background: var(--danger-color); color: #fff; }
+
+        .dm-badge {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 16px; height: 16px; padding: 0 4px; margin-left: 3px;
+            background: var(--danger-color); color: #fff;
+            font-size: 10px; font-weight: 700; border-radius: 999px;
+        }
+
+        .toast-stack {
+            position: fixed; right: 16px; bottom: 16px; z-index: 1100;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .toast {
+            background: var(--panel-bg); border: 1px solid var(--accent-color);
+            border-left-width: 3px; border-radius: 8px; padding: 10px 14px;
+            font-size: 13px; color: var(--text-main); max-width: 280px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -343,12 +393,22 @@
             <span style="font-size: 11px; font-weight: 400; color: var(--text-muted); opacity: 0.7;">スレ主 ID:{{ op_user_id }}</span>
             {% endif %}
         </div>
+        {% if thread.tags_list %}
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">
+            {% for tag in thread.tags_list %}
+            <a href="/?tab=threads&tag={{ tag|urlencode }}" style="font-size:11px; font-weight:600; padding:1px 8px; border-radius:999px; border:1px solid var(--border-color); color: var(--text-muted); text-decoration:none;">#{{ tag }}</a>
+            {% endfor %}
+        </div>
+        {% endif %}
         <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px; flex-wrap: wrap; gap: 6px;">
             <div>
                 <a href="{{ back_to_board }}">← 掲示板に戻る</a>
                 <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
+                {% if current_member %}
+                <a href="/messages" style="color: inherit; text-decoration: none;" title="メッセージ">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></a>
+                {% endif %}
                 <button type="button" id="theme-toggle-btn" class="theme-toggle-btn">🌙</button>
                 <div id="mode-toggle" style="display: flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; font-size: 11px;">
                     <button type="button" id="mode-btn-view" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">スレ閲覧</button>
@@ -419,14 +479,19 @@
                 <span>{{ r.date }}</span>
                 <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
                 
-                {% if is_admin_user %}
-                <div style="margin-left: auto; display: flex; gap: 4px;">
-                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
+                {% if current_member or is_admin_user %}
+                <div style="margin-left: auto; display: flex; gap: 4px; align-items: center;">
+                    {% if current_member %}
+                    <button type="button" class="report-btn" data-target-id="{{ r.id }}">🚩 通報</button>
+                    {% endif %}
+                    {% if is_admin_user %}
+                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');" style="margin:0;">
                         <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
                     </form>
-                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
+                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
                         <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
                     </form>
+                    {% endif %}
                 </div>
                 {% endif %}
             </div>
@@ -516,6 +581,71 @@
         }
         const threadId = {{ thread.id }};
         const isAdminUser = {{ 'true' if is_admin_user else 'false' }};
+        const isMember = {{ 'true' if current_member else 'false' }};
+
+        /* ---- トースト表示 ---- */
+        function showToast(text, href) {
+            const stack = document.getElementById('toast-stack');
+            if (!stack) return;
+            const el = document.createElement('div');
+            el.className = 'toast';
+            el.textContent = text;
+            if (href) el.addEventListener('click', () => { location.href = href; });
+            stack.appendChild(el);
+            setTimeout(() => el.remove(), 6000);
+        }
+
+        /* ---- レスの通報 ---- */
+        (function() {
+            const modal = document.getElementById('report-modal');
+            if (!modal) return;
+            let targetId = null;
+
+            // レスは後から動的に追加されるので、documentに委譲して拾う
+            document.addEventListener('click', (e) => {
+                const btn = e.target.closest('.report-btn');
+                if (!btn) return;
+                targetId = btn.dataset.targetId;
+                document.getElementById('report-detail').value = '';
+                modal.classList.add('show');
+            });
+
+            const close = () => { modal.classList.remove('show'); targetId = null; };
+            document.getElementById('report-cancel').addEventListener('click', close);
+            modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && modal.classList.contains('show')) close();
+            });
+
+            document.getElementById('report-submit').addEventListener('click', async function() {
+                if (!targetId) return;
+                const reason = document.querySelector('input[name="report-reason"]:checked');
+                if (!reason) return;
+                this.disabled = true;
+                try {
+                    const res = await fetch('/api/report', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            target_type: 'reply',
+                            target_id: targetId,
+                            reason: reason.value,
+                            detail: document.getElementById('report-detail').value
+                        })
+                    });
+                    const data = await res.json();
+                    showToast(data.success
+                        ? (data.already ? 'この投稿はすでに通報済みです。' : '通報を受け付けました。')
+                        : (data.error || '通報に失敗しました。'));
+                } catch (err) {
+                    console.error(err);
+                    showToast('通信に失敗しました。');
+                } finally {
+                    this.disabled = false;
+                    close();
+                }
+            });
+        })();
 
         let currentMode = 'realtime'; // 初期状態: リアルタイム
         let unreadCount = 0; // 未読件数
@@ -704,18 +834,36 @@
             }
         }
 
+        let wsHeartbeat = null;
+        let wsPongTimer = null;
+
         function connectWebSocket() {
+            // 予約済みの再接続タイマーが残っていると二重接続になるので解除する
+            if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}/ws/thread/${threadId}`);
 
             ws.addEventListener('open', () => {
                 wsReconnectDelay = 1000;
                 catchUpReplies();
+                // 定期的にpingを送り、10秒以内にpongが返らなければ死んだ接続とみなす。
+                // スリープ復帰や回線切り替えでは close が飛ばないことがあるため必要。
+                wsHeartbeat = setInterval(() => {
+                    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+                    try { ws.send('ping'); } catch (e) { return; }
+                    clearTimeout(wsPongTimer);
+                    wsPongTimer = setTimeout(() => {
+                        try { ws.close(); } catch (e) {}
+                    }, 10000);
+                }, 25000);
             });
 
             ws.addEventListener('message', (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    if (data.type === 'pong') { clearTimeout(wsPongTimer); return; }
                     if (data.type === 'new_reply' && data.reply) {
                         handleNewReply(data.reply);
                     }
@@ -725,6 +873,8 @@
             });
 
             ws.addEventListener('close', () => {
+                clearInterval(wsHeartbeat);
+                clearTimeout(wsPongTimer);
                 wsReconnectTimer = setTimeout(connectWebSocket, wsReconnectDelay);
                 wsReconnectDelay = Math.min(wsReconnectDelay * 2, 15000);
             });
@@ -734,8 +884,22 @@
             });
         }
 
+        // タブ復帰・ネットワーク復帰時はバックオフを待たず即座に張り直す
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                wsReconnectDelay = 1000;
+                connectWebSocket();
+            }
+        });
+        window.addEventListener('online', () => {
+            wsReconnectDelay = 1000;
+            connectWebSocket();
+        });
+
         window.addEventListener('beforeunload', () => {
             if (wsReconnectTimer) clearTimeout(wsReconnectTimer);
+            if (wsHeartbeat) clearInterval(wsHeartbeat);
+            if (wsPongTimer) clearTimeout(wsPongTimer);
             if (ws) ws.close();
         });
 
@@ -780,18 +944,19 @@
                 `;
             }
 
-            let adminBtns = '';
-            if (isAdminUser) {
-                adminBtns = `
-                    <div style="margin-left: auto; display: flex; gap: 4px;">
+            const reportBtn = isMember
+                ? `<button type="button" class="report-btn" data-target-id="${reply.id}">🚩 通報</button>`
+                : '';
+            const adminForms = isAdminUser ? `
                         <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');" style="margin:0;">
                             <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
                         </form>
                         <form action="/ban_user/${threadId}/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
                             <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
-                        </form>
-                    </div>
-                `;
+                        </form>` : '';
+            let adminBtns = '';
+            if (reportBtn || adminForms) {
+                adminBtns = `<div style="margin-left: auto; display: flex; gap: 4px; align-items: center;">${reportBtn}${adminForms}</div>`;
             }
 
             const nameHtml = reply.poster_public_id
@@ -973,6 +1138,76 @@
         // ウェブソケット接続を開始（モードに関わらず常時接続したままにする）
         connectWebSocket();
 
+        /* ---- DM着信通知（バッジ・トースト・ブラウザ通知） ---- */
+        (function() {
+            if (!isMember) return;
+            const badge = document.getElementById('dm-badge');
+            let unread = badge ? (parseInt(badge.textContent, 10) || 0) : 0;
+
+            function render() {
+                if (!badge) return;
+                badge.textContent = unread > 99 ? '99+' : unread;
+                badge.style.display = unread > 0 ? 'inline-flex' : 'none';
+            }
+
+            // 通知の許可は最初のクリック時に求める（読み込み直後に出すとブロックされやすい）
+            if ('Notification' in window && Notification.permission === 'default') {
+                document.addEventListener('click', function once() {
+                    Notification.requestPermission();
+                }, { once: true });
+            }
+
+            let delay = 1000, dmWs = null, hb = null, pong = null;
+
+            function connect() {
+                if (dmWs && (dmWs.readyState === WebSocket.OPEN || dmWs.readyState === WebSocket.CONNECTING)) return;
+                const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                dmWs = new WebSocket(`${proto}//${location.host}/ws/dm`);
+
+                dmWs.onopen = () => {
+                    delay = 1000;
+                    hb = setInterval(() => {
+                        if (!dmWs || dmWs.readyState !== WebSocket.OPEN) return;
+                        try { dmWs.send('ping'); } catch (e) { return; }
+                        clearTimeout(pong);
+                        pong = setTimeout(() => { try { dmWs.close(); } catch (e) {} }, 10000);
+                    }, 25000);
+                };
+
+                dmWs.onmessage = (event) => {
+                    let data;
+                    try { data = JSON.parse(event.data); } catch (e) { return; }
+                    if (data.type === 'pong') { clearTimeout(pong); return; }
+                    if (data.type === 'dm_new') {
+                        unread += 1;
+                        render();
+                        const who = data.from_username || '新着メッセージ';
+                        const link = data.from_public_id ? `/messages/${data.from_public_id}` : '/messages';
+                        showToast(`✉️ ${who} からDMが届きました`, link);
+                        if ('Notification' in window && Notification.permission === 'granted'
+                            && document.visibilityState !== 'visible') {
+                            new Notification('talk-ch', { body: `${who} からDMが届きました` });
+                        }
+                    }
+                };
+
+                dmWs.onclose = () => {
+                    clearInterval(hb);
+                    clearTimeout(pong);
+                    setTimeout(connect, delay);
+                    delay = Math.min(delay * 2, 30000);
+                };
+
+                dmWs.onerror = () => { try { dmWs.close(); } catch (e) {} };
+            }
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') { delay = 1000; connect(); }
+            });
+            window.addEventListener('online', () => { delay = 1000; connect(); });
+            connect();
+        })();
+
         // 初期表示時は常にリアルタイムモード
         setMode('realtime');
         if (window.location.hash) {
@@ -1010,5 +1245,22 @@
 
 
    
+    <div class="modal-overlay" id="report-modal">
+        <div class="modal-box">
+            <h3>この投稿を通報する</h3>
+            <div id="report-reason-list">
+                {% for key, label in report_reasons.items() %}
+                <label><input type="radio" name="report-reason" value="{{ key }}" {% if loop.first %}checked{% endif %}> {{ label }}</label>
+                {% endfor %}
+            </div>
+            <textarea id="report-detail" rows="3" maxlength="500" placeholder="詳細（任意・500文字まで）"></textarea>
+            <div class="modal-actions">
+                <button type="button" class="modal-cancel" id="report-cancel">キャンセル</button>
+                <button type="button" class="modal-submit" id="report-submit">通報する</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-stack" id="toast-stack"></div>
 </body>
 </html>
