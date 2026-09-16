@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ profile_user.username }} の{{ 'フォロワー' if mode == 'followers' else 'フォロー中' }} | talk-ch</title>
+<style>
+    :root {
+        --bg: #F6F8FA; --card-bg: #FFFFFF; --card-border: #E5E7EB;
+        --text: #111827; --text-muted: #475569; --primary: #2563EB;
+        --primary-soft: #EFF4FE; --radius: 6px;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; background: var(--bg); color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", sans-serif;
+    }
+    .wrap { max-width: 520px; margin: 0 auto; padding: 28px 16px 60px; }
+    .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 20px; }
+    h1 { font-size: 17px; margin: 0 0 4px; }
+    h1 a { color: var(--primary); text-decoration: none; }
+    .tabs { display: flex; gap: 6px; margin: 16px 0; }
+    .tab {
+        flex: 1; text-align: center; padding: 9px 8px; font-size: 13px; font-weight: 600;
+        border: 1px solid var(--card-border); border-radius: var(--radius);
+        text-decoration: none; color: var(--text-muted); background: var(--bg);
+    }
+    .tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+    .user-rows { display: flex; flex-direction: column; gap: 8px; }
+    .user-row {
+        display: flex; align-items: center; gap: 12px;
+        padding: 11px 13px; text-decoration: none; color: inherit;
+        background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+    }
+    .user-row:hover { border-color: var(--primary); }
+    .avatar {
+        width: 40px; height: 40px; border-radius: 50%; flex: none; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--primary-soft); color: var(--primary);
+        font-size: 16px; font-weight: 800;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .user-body { min-width: 0; }
+    .user-name { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+    .user-bio {
+        font-size: 12px; color: var(--text-muted); margin-top: 2px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .empty-state { font-size: 13px; color: var(--text-muted); text-align: center; padding: 28px 0; }
+    .back-link { display: inline-block; margin-top: 18px; font-size: 13px; color: var(--primary); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="card">
+        <h1><a href="/profile/{{ profile_user.public_id }}">{{ profile_user.username }}</a></h1>
+
+        <div class="tabs">
+            <a class="tab {{ 'active' if mode == 'followers' else '' }}"
+               href="/profile/{{ profile_user.public_id }}/followers">フォロワー {{ counts.followers }}</a>
+            <a class="tab {{ 'active' if mode == 'following' else '' }}"
+               href="/profile/{{ profile_user.public_id }}/following">フォロー中 {{ counts.following }}</a>
+        </div>
+
+        {% if users %}
+        <div class="user-rows">
+            {% for u in users %}
+            <a class="user-row" href="/profile/{{ u.public_id }}">
+                <span class="avatar">
+                    {% if u.icon_path %}
+                    <img src="{{ u.icon_path }}" alt="" loading="lazy">
+                    {% else %}{{ (u.username or '?')[:1] }}{% endif %}
+                </span>
+                <span class="user-body">
+                    <div class="user-name">{{ u.username }}</div>
+                    {% if u.bio %}<div class="user-bio">{{ u.bio }}</div>{% endif %}
+                </span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            {% if mode == 'followers' %}まだフォロワーがいません。{% else %}まだ誰もフォローしていません。{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <a class="back-link" href="/">トップに戻る</a>
+</div>
+</body>
+</html>
