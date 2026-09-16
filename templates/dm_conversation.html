@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ partner.username }} とのDM | talk-ch</title>
+<script>
+    (function() {
+        var saved = localStorage.getItem('talk_ch_theme');
+        if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    })();
+</script>
+<style>
+    :root {
+        --bg-color: #0f172a; --panel-bg: #1e293b; --border-color: #334155;
+        --text-main: #f8fafc; --text-muted: #94a3b8;
+        --accent-color: #38bdf8; --accent-hover: #0ea5e9; --danger-color: #f43f5e;
+        --mine-bg: #0369a1;
+    }
+    html[data-theme="light"] {
+        --bg-color: #dfe0dc; --panel-bg: #eeece6; --border-color: #c7c5bd;
+        --text-main: #0f172a; --text-muted: #64748b;
+        --accent-color: #0284c7; --accent-hover: #0369a1; --danger-color: #e11d48;
+        --mine-bg: #0284c7;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: var(--bg-color); color: var(--text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", sans-serif;
+    }
+    body { display: flex; flex-direction: column; }
+
+    .header-area {
+        position: sticky; top: 0; z-index: 10;
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 14px;
+        background: var(--panel-bg); border-bottom: 1px solid var(--border-color);
+    }
+    .back-btn { color: var(--text-muted); text-decoration: none; font-size: 18px; flex: none; }
+    .partner {
+        display: flex; align-items: center; gap: 8px;
+        color: inherit; text-decoration: none; min-width: 0;
+    }
+    .avatar {
+        width: 32px; height: 32px; border-radius: 50%; flex: none; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--bg-color); border: 1px solid var(--border-color);
+        font-size: 13px; font-weight: 700; color: var(--text-muted);
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .partner-name { font-weight: 700; font-size: 15px; overflow-wrap: anywhere; }
+    .header-spacer { flex: 1; }
+    .report-btn {
+        background: none; border: 1px solid var(--border-color); color: var(--text-muted);
+        border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; flex: none;
+    }
+    .report-btn:hover { color: var(--danger-color); border-color: var(--danger-color); }
+
+    .messages {
+        flex: 1; overflow-y: auto; padding: 16px;
+        display: flex; flex-direction: column; gap: 10px;
+        max-width: 720px; width: 100%; margin: 0 auto;
+    }
+    .msg { display: flex; flex-direction: column; max-width: 80%; }
+    .msg.mine { align-self: flex-end; align-items: flex-end; }
+    .msg.theirs { align-self: flex-start; align-items: flex-start; }
+    .bubble {
+        padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.6;
+        white-space: pre-wrap; overflow-wrap: anywhere;
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+    }
+    .msg.mine .bubble { background: var(--mine-bg); border-color: var(--mine-bg); color: #fff; }
+    .bubble a { color: inherit; text-decoration: underline; }
+    .msg-time { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
+
+    .empty-state { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 0; }
+
+    .composer {
+        position: sticky; bottom: 0;
+        background: var(--panel-bg); border-top: 1px solid var(--border-color);
+        padding: 10px 14px;
+    }
+    .composer-inner {
+        max-width: 720px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end;
+    }
+    .composer textarea {
+        flex: 1; resize: none; min-height: 40px; max-height: 140px;
+        background: var(--bg-color); color: var(--text-main);
+        border: 1px solid var(--border-color); border-radius: 8px;
+        padding: 10px 12px; font-size: 14px; font-family: inherit;
+    }
+    .send-btn {
+        background: var(--accent-color); color: #0f172a; border: none;
+        border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 700;
+        cursor: pointer; flex: none;
+    }
+    .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .composer-hint { max-width: 720px; margin: 6px auto 0; font-size: 11px; color: var(--text-muted); }
+    .composer-error { max-width: 720px; margin: 6px auto 0; font-size: 12px; color: var(--danger-color); }
+
+    .blocked-notice {
+        background: var(--panel-bg); border-top: 1px solid var(--border-color);
+        padding: 16px; text-align: center; font-size: 13px; color: var(--text-muted);
+    }
+
+    /* 通報モーダル */
+    .modal-backdrop {
+        display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+        z-index: 50; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+        border-radius: 10px; padding: 20px; width: 100%; max-width: 380px;
+    }
+    .modal h2 { margin: 0 0 14px; font-size: 16px; }
+    .modal label { display: block; font-size: 12.5px; color: var(--text-muted); margin-bottom: 6px; }
+    .modal select, .modal textarea {
+        width: 100%; background: var(--bg-color); color: var(--text-main);
+        border: 1px solid var(--border-color); border-radius: 6px;
+        padding: 9px 10px; font-size: 13.5px; font-family: inherit; margin-bottom: 14px;
+    }
+    .modal textarea { resize: vertical; min-height: 70px; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-actions button {
+        border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-cancel { background: none; border: 1px solid var(--border-color); color: var(--text-muted); }
+    .btn-submit { background: var(--danger-color); border: none; color: #fff; }
+</style>
+</head>
+<body>
+
+<div class="header-area">
+    <a class="back-btn" href="/messages">←</a>
+    <a class="partner" href="/profile/{{ partner.public_id }}">
+        <span class="avatar">
+            {% if partner.icon_path %}
+            <img src="{{ partner.icon_path }}" alt="" loading="lazy">
+            {% else %}{{ (partner.username or '?')[:1] }}{% endif %}
+        </span>
+        <span class="partner-name">{{ partner.username }}</span>
+    </a>
+    <div class="header-spacer"></div>
+    <button type="button" class="report-btn" id="open-report">通報</button>
+</div>
+
+<div class="messages" id="messages">
+    {% if messages %}
+        {% for m in messages %}
+        <div class="msg {{ 'mine' if m.is_mine else 'theirs' }}">
+            <div class="bubble">{{ m.content | safe }}</div>
+            <div class="msg-time">{{ m.created_at }}</div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">まだメッセージはありません。</div>
+    {% endif %}
+</div>
+
+{% if can_send %}
+<div class="composer">
+    <div class="composer-inner">
+        <textarea id="dm-input" placeholder="メッセージを入力…" maxlength="1000"></textarea>
+        <button type="button" class="send-btn" id="dm-send">送信</button>
+    </div>
+    <div class="composer-hint">Enterで送信 / Shift+Enterで改行</div>
+    <div class="composer-error" id="dm-error" style="display:none;"></div>
+</div>
+{% else %}
+<div class="blocked-notice">{{ deny_reason }}</div>
+{% endif %}
+
+<div class="modal-backdrop" id="report-modal">
+    <div class="modal">
+        <h2>{{ partner.username }} を通報</h2>
+        <label for="report-reason">通報理由</label>
+        <select id="report-reason">
+            {% for key, label in report_reasons.items() %}
+            <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+        <label for="report-detail">詳細（任意・500文字まで）</label>
+        <textarea id="report-detail" maxlength="500" placeholder="状況を具体的に書いていただけると対応しやすくなります。"></textarea>
+        <div class="modal-actions">
+            <button type="button" class="btn-cancel" id="report-cancel">キャンセル</button>
+            <button type="button" class="btn-submit" id="report-submit">通報する</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const PARTNER_PUBLIC_ID = {{ partner.public_id | tojson }};
+    const messagesEl = document.getElementById('messages');
+
+    function scrollToBottom() {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+    scrollToBottom();
+
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+
+    // サーバー側で既にHTMLエスケープ済みの本文が来るため、URLだけリンク化する
+    function renderContent(escapedContent) {
+        return String(escapedContent ?? '').replace(
+            /(https?:\/\/[^\s<>"']+)/g,
+            '<a href="$1" target="_blank" rel="noopener noreferrer nofollow">$1</a>'
+        );
+    }
+
+    function appendMessage(msg) {
+        const empty = messagesEl.querySelector('.empty-state');
+        if (empty) empty.remove();
+
+        const div = document.createElement('div');
+        div.className = 'msg ' + (msg.is_mine ? 'mine' : 'theirs');
+        div.innerHTML = `
+            <div class="bubble">${renderContent(msg.content)}</div>
+            <div class="msg-time">${escapeHtml(msg.created_at || '')}</div>
+        `;
+        messagesEl.appendChild(div);
+        scrollToBottom();
+    }
+
+    // ---- 送信 ----
+    const input = document.getElementById('dm-input');
+    const sendBtn = document.getElementById('dm-send');
+    const errorEl = document.getElementById('dm-error');
+
+    async function sendMessage() {
+        if (!input) return;
+        const content = input.value.trim();
+        if (!content) return;
+
+        sendBtn.disabled = true;
+        errorEl.style.display = 'none';
+
+        try {
+            const res = await fetch(`/api/dm/${PARTNER_PUBLIC_ID}/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+            const data = await res.json();
+            if (data.success) {
+                input.value = '';
+                // WebSocketからも届くが、取りこぼし時のために即時描画はしない。
+                // 自分の他タブ含めWS経由の dm_sent で一元的に描画する。
+                if (!wsConnected) appendMessage(data.message);
+            } else {
+                errorEl.textContent = data.error || '送信に失敗しました。';
+                errorEl.style.display = 'block';
+            }
+        } catch (e) {
+            errorEl.textContent = '通信に失敗しました。';
+            errorEl.style.display = 'block';
+        } finally {
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    }
+
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendMessage);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
+
+    // ---- WebSocket ----
+    let wsConnected = false;
+    let ws = null;
+    let reconnectDelay = 1000;
+
+    function connectWS() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
+
+        ws.onopen = () => { wsConnected = true; reconnectDelay = 1000; };
+
+        ws.onmessage = (event) => {
+            let data;
+            try { data = JSON.parse(event.data); } catch { return; }
+
+            if (data.type === 'dm_new' && data.from_public_id === PARTNER_PUBLIC_ID) {
+                appendMessage(data.message);
+            } else if (data.type === 'dm_sent' && data.to_public_id === PARTNER_PUBLIC_ID) {
+                appendMessage(data.message);
+            }
+        };
+
+        ws.onclose = () => {
+            wsConnected = false;
+            setTimeout(connectWS, reconnectDelay);
+            reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+        };
+        ws.onerror = () => { try { ws.close(); } catch {} };
+    }
+    connectWS();
+
+    // ---- 通報モーダル ----
+    const modal = document.getElementById('report-modal');
+    document.getElementById('open-report').addEventListener('click', () => modal.classList.add('open'));
+    document.getElementById('report-cancel').addEventListener('click', () => modal.classList.remove('open'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+
+    document.getElementById('report-submit').addEventListener('click', async () => {
+        const reason = document.getElementById('report-reason').value;
+        const detail = document.getElementById('report-detail').value;
+        try {
+            const res = await fetch('/api/report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_type: 'user', target_id: PARTNER_PUBLIC_ID, reason, detail
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                modal.classList.remove('open');
+                document.getElementById('report-detail').value = '';
+                alert(data.already ? 'このユーザーは既に通報済みです。' : '通報を受け付けました。');
+            } else {
+                alert(data.error || '通報に失敗しました。');
+            }
+        } catch (e) {
+            alert('通信に失敗しました。');
+        }
+    });
+</script>
+</body>
+</html>
