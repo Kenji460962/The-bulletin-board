@@ -544,6 +544,12 @@
 
 
     <script>
+    // ---- デバッグ用: iPad等で開発者ツールが使えない環境向けに、
+    //      JSエラーが起きたら内容をアラートで表示する(原因特定できたら削除してOK) ----
+    window.addEventListener('error', function (e) {
+        alert('JSエラー発生:\n' + e.message + '\n(' + e.filename + ':' + e.lineno + ':' + e.colno + ')');
+    });
+
     document.addEventListener('DOMContentLoaded', () => {
 
         // 名前をローカルストレージから復元。保存済みの名前がなければ、
