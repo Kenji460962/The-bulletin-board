@@ -290,7 +290,7 @@
         .report-modal label { display: block; font-size: 12.5px; color: var(--text-muted); margin: 12px 0 4px; }
         .report-modal select, .report-modal textarea {
             width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px;
-            border: 1px solid var(--border-color); background: var(--bg-main, #0f172a);
+            border: 1px solid var(--border-color); background: var(--panel-bg);
             color: var(--text-main); font-size: 13px; font-family: inherit;
         }
         .report-modal textarea { resize: vertical; min-height: 70px; }
@@ -544,12 +544,6 @@
 
 
     <script>
-    // ---- デバッグ用: iPad等で開発者ツールが使えない環境向けに、
-    //      JSエラーが起きたら内容をアラートで表示する(原因特定できたら削除してOK) ----
-    window.addEventListener('error', function (e) {
-        alert('JSエラー発生:\n' + e.message + '\n(' + e.filename + ':' + e.lineno + ':' + e.colno + ')');
-    });
-
     // ページ全体(このscriptタグ内のどこからでも)使えるよう、トップレベルで宣言する
     const currentMemberUsername = {% if current_member %}"{{ current_member.username }}"{% else %}null{% endif %};
 
