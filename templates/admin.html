@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理ダッシュボード | talk-ch</title>
+<style>
+    :root {
+        --bg-color: #0f172a; --panel-bg: #1e293b; --border-color: #334155;
+        --text-main: #f8fafc; --text-muted: #94a3b8;
+        --accent-color: #38bdf8; --danger-color: #f43f5e; --ok-color: #22c55e; --amber-color: #f59e0b;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; background: var(--bg-color); color: var(--text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", sans-serif;
+    }
+    .header-area {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 16px; background: var(--panel-bg); border-bottom: 1px solid var(--border-color);
+        flex-wrap: wrap; gap: 8px;
+    }
+    .header-title { font-size: 16px; font-weight: 700; }
+    .header-area a { color: var(--text-muted); text-decoration: none; font-size: 12px; }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+    /* ---- 上段：レポート/解析の切り替えタブ ---- */
+    .view-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .view-tab {
+        padding: 9px 18px; font-size: 13.5px; font-weight: 700; border: 1px solid var(--border-color);
+        border-radius: 8px; background: var(--panel-bg); color: var(--text-muted); cursor: pointer;
+    }
+    .view-tab.active { background: var(--accent-color); border-color: var(--accent-color); color: #0f172a; }
+    .view-panel { display: none; }
+    .view-panel.active { display: block; }
+
+    /* ---- 通報管理：状態タブ ---- */
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab {
+        padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none;
+        border: 1px solid var(--border-color); border-radius: 6px;
+        color: var(--text-muted); background: var(--panel-bg);
+    }
+    .tab.active { background: var(--accent-color); border-color: var(--accent-color); color: #0f172a; }
+
+    .report {
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+        border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+    }
+    .report-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+    .badge {
+        font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+        background: rgba(244,63,94,0.15); color: var(--danger-color);
+    }
+    .badge.type { background: rgba(56,189,248,0.15); color: var(--accent-color); }
+    .report-time { font-size: 11.5px; color: var(--text-muted); margin-left: auto; }
+    .report-target { font-size: 13.5px; margin-bottom: 6px; }
+    .report-target a { color: var(--accent-color); }
+    .report-detail {
+        font-size: 13px; line-height: 1.7; color: var(--text-main);
+        background: var(--bg-color); border-radius: 6px; padding: 9px 12px;
+        margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+    .report-meta { font-size: 11.5px; color: var(--text-muted); }
+    .report-actions { display: flex; gap: 8px; margin-top: 11px; }
+    .report-actions button { border: none; border-radius: 6px; padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+    .btn-resolve { background: var(--ok-color); color: #0f172a; }
+    .btn-reject { background: none; border: 1px solid var(--border-color) !important; color: var(--text-muted); }
+    .btn-reopen { background: var(--accent-color); color: #0f172a; }
+
+    /* ---- アクセス解析 ---- */
+    .summary-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+    .summary-card {
+        flex: 1 1 160px; background: var(--panel-bg); border: 1px solid var(--border-color);
+        border-radius: 8px; padding: 14px 16px;
+    }
+    .summary-card .label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
+    .summary-card .value { font-size: 24px; font-weight: 700; color: var(--accent-color); }
+
+    .panel { background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .panel h2 { font-size: 14px; margin: 0 0 12px; color: var(--text-main); }
+    .panel .note { font-size: 11.5px; color: var(--text-muted); margin-top: 8px; }
+
+    canvas.trend-chart { width: 100%; height: 180px; display: block; }
+
+    .bar-row { display: flex; align-items: center; gap: 10px; font-size: 12.5px; margin-bottom: 8px; }
+    .bar-row .bar-label { width: 150px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main); }
+    .bar-row .bar-track { flex: 1; background: var(--bg-color); border-radius: 4px; height: 10px; overflow: hidden; }
+    .bar-row .bar-fill { height: 100%; background: var(--accent-color); border-radius: 4px; }
+    .bar-row .bar-value { width: 70px; text-align: right; color: var(--text-muted); flex-shrink: 0; }
+
+    .rank-list { list-style: none; margin: 0; padding: 0; }
+    .rank-list li { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+    .rank-list li:last-child { border-bottom: none; }
+    .rank-num { width: 20px; font-weight: 700; color: var(--text-muted); flex-shrink: 0; }
+    .rank-list a { color: var(--text-main); text-decoration: none; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .rank-list a:hover { color: var(--accent-color); }
+    .rank-views { color: var(--accent-color); font-weight: 700; font-size: 12px; flex-shrink: 0; }
+
+    .empty-state { text-align: center; color: var(--text-muted); padding: 24px 0; font-size: 13px; }
+
+    .cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 640px) { .cols-2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header-area">
+    <div class="header-title">🛠️ 管理ダッシュボード</div>
+    <a href="/">← 掲示板に戻る</a>
+</div>
+
+<div class="container">
+
+    <div class="view-tabs">
+        <button type="button" class="view-tab active" data-view="reports-view">🚩 通報管理（未対応 {{ open_count }} 件）</button>
+        <button type="button" class="view-tab" data-view="analytics-view">📊 アクセス解析</button>
+    </div>
+
+    <!-- ============ 通報管理 ============ -->
+    <div id="reports-view" class="view-panel active">
+        <div class="tabs">
+            <a class="tab {{ 'active' if status == 'open' else '' }}" href="/admin?status=open">未対応</a>
+            <a class="tab {{ 'active' if status == 'resolved' else '' }}" href="/admin?status=resolved">対応済み</a>
+            <a class="tab {{ 'active' if status == 'rejected' else '' }}" href="/admin?status=rejected">却下</a>
+        </div>
+
+        {% if reports %}
+            {% for r in reports %}
+            <div class="report" id="report-{{ r.id }}">
+                <div class="report-head">
+                    <span class="badge">{{ r.reason_label }}</span>
+                    <span class="badge type">{{ r.target_type }}</span>
+                    <span class="report-time">{{ r.created_at }}</span>
+                </div>
+
+                <div class="report-target">
+                    対象:
+                    {% if r.target_type == 'user' or r.target_type == 'dm' %}
+                    <a href="/profile/{{ r.target_id }}" target="_blank">/profile/{{ r.target_id }}</a>
+                    {% elif r.target_type == 'thread' %}
+                    <a href="/thread/{{ r.target_id }}" target="_blank">スレッド #{{ r.target_id }}</a>
+                    {% else %}
+                    レス #{{ r.target_id }}
+                    {% endif %}
+                </div>
+
+                {% if r.detail %}
+                <div class="report-detail">{{ r.detail }}</div>
+                {% endif %}
+
+                <div class="report-meta">
+                    通報者:
+                    {% if r.reporter_public_id %}
+                    <a href="/profile/{{ r.reporter_public_id }}" target="_blank" style="color: var(--text-muted);">{{ r.reporter_name }}</a>
+                    {% else %}不明{% endif %}
+                </div>
+
+                <div class="report-actions">
+                    {% if r.status == 'open' %}
+                    <button type="button" class="btn-resolve" data-id="{{ r.id }}" data-status="resolved">対応済みにする</button>
+                    <button type="button" class="btn-reject" data-id="{{ r.id }}" data-status="rejected">却下</button>
+                    {% else %}
+                    <button type="button" class="btn-reopen" data-id="{{ r.id }}" data-status="open">未対応に戻す</button>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">該当する通報はありません。</div>
+        {% endif %}
+    </div>
+
+    <!-- ============ アクセス解析 ============ -->
+    <div id="analytics-view" class="view-panel">
+        <div class="summary-row">
+            <div class="summary-card">
+                <div class="label">PV数（直近7日）</div>
+                <div class="value">{{ summary.pv or 0 }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">ユニーク数（直近7日）</div>
+                <div class="value">{{ summary.uniques or 0 }}</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>PV・ユニーク数の推移（直近14日）</h2>
+            {% if trend %}
+            <canvas id="trend-chart" class="trend-chart" width="820" height="180"></canvas>
+            <div class="note">
+                <span style="color:#38bdf8;">■</span> PV数　
+                <span style="color:#22c55e;">■</span> ユニーク数
+            </div>
+            {% else %}
+            <div class="empty-state">まだ記録がありません。</div>
+            {% endif %}
+        </div>
+
+        <div class="panel">
+            <h2>人気スレッドランキング（直近7日）</h2>
+            {% if popular_threads %}
+            <ul class="rank-list">
+                {% for t in popular_threads %}
+                <li>
+                    <span class="rank-num">{{ loop.index }}</span>
+                    <a href="/thread/{{ t.thread_id }}" target="_blank">{{ t.title }}</a>
+                    <span class="rank-views">{{ t.views }} PV</span>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="empty-state">まだ記録がありません。</div>
+            {% endif %}
+        </div>
+
+        <div class="cols-2">
+            <div class="panel">
+                <h2>リファラ・流入元（直近7日）</h2>
+                {% if referrers %}
+                {% for r in referrers %}
+                <div class="bar-row">
+                    <span class="bar-label">{{ r.host }}</span>
+                    <span class="bar-track"><span class="bar-fill" style="width:{{ r.pct }}%;"></span></span>
+                    <span class="bar-value">{{ r.cnt }}（{{ r.pct }}%）</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">まだ記録がありません。</div>
+                {% endif %}
+            </div>
+
+            <div class="panel">
+                <h2>デバイス内訳（直近7日）</h2>
+                {% if devices %}
+                {% for d in devices %}
+                <div class="bar-row">
+                    <span class="bar-label">{{ d.device }}</span>
+                    <span class="bar-track"><span class="bar-fill" style="width:{{ d.pct }}%;"></span></span>
+                    <span class="bar-value">{{ d.cnt }}（{{ d.pct }}%）</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">まだ記録がありません。</div>
+                {% endif %}
+
+                <h2 style="margin-top:18px;">ブラウザ内訳（直近7日）</h2>
+                {% if browsers %}
+                {% for b in browsers %}
+                <div class="bar-row">
+                    <span class="bar-label">{{ b.browser }}</span>
+                    <span class="bar-track"><span class="bar-fill" style="width:{{ b.pct }}%;"></span></span>
+                    <span class="bar-value">{{ b.cnt }}（{{ b.pct }}%）</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">まだ記録がありません。</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    /* ---- 上段タブの切り替え（クライアント側のみ。両方のデータはサーバーで描画済み） ---- */
+    document.querySelectorAll('.view-tab').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.view-tab').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelectorAll('.view-panel').forEach(function(p) { p.classList.remove('active'); });
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.view).classList.add('active');
+        });
+    });
+
+    /* ---- 通報の対応済み/却下/再オープン ---- */
+    document.querySelectorAll('.report-actions button').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            const id = btn.dataset.id;
+            const status = btn.dataset.status;
+            btn.disabled = true;
+            try {
+                const res = await fetch(`/api/admin/reports/${id}/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const card = document.getElementById(`report-${id}`);
+                    if (card) card.remove();
+                } else {
+                    alert(data.error || '更新に失敗しました。');
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('通信に失敗しました。');
+                btn.disabled = false;
+            }
+        });
+    });
+
+    {% if trend %}
+    /* ---- PV推移グラフ（自前canvas描画。ライブラリ追加なし） ---- */
+    const trendData = {{ trend | tojson }};
+    const canvas = document.getElementById('trend-chart');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+    const padL = 36, padB = 20, padT = 10;
+    const maxPv = Math.max(1, ...trendData.map(d => d.pv || 0));
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+        const y = padT + ((h - padT - padB) / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+    }
+
+    function drawLine(key, color) {
+        if (trendData.length < 2) return;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        trendData.forEach((d, i) => {
+            const x = padL + ((w - padL) / (trendData.length - 1)) * i;
+            const val = d[key] || 0;
+            const y = h - padB - (val / maxPv) * (h - padT - padB);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    }
+    drawLine('pv', '#38bdf8');
+    drawLine('uniques', '#22c55e');
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px sans-serif';
+    const step = Math.ceil(trendData.length / 7);
+    trendData.forEach((d, i) => {
+        if (i % step !== 0) return;
+        const x = padL + ((w - padL) / (trendData.length - 1)) * i;
+        ctx.fillText((d.day || '').slice(5), x - 12, h - 4);
+    });
+    ctx.fillText(String(maxPv), 2, padT + 8);
+    ctx.fillText('0', 2, h - padB);
+    {% endif %}
+</script>
+</body>
+</html>
