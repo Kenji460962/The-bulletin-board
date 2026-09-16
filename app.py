@@ -953,9 +953,15 @@ async def roles(request: Request):
 @app.get('/rankings')
 async def rankings(request: Request):
     def top_n(game, n=30):
+        # player_key が 'member:<users.id>' の行だけ users と結合し、
+        # プロフィールリンク用のpublic_idとアイコンURLを一緒に取得する。
+        # ゲストプレイヤーの行は public_id / icon_path が NULL になる。
         return query_d1(
-            "SELECT display_name, rating, wins, losses, draws FROM game_ratings "
-            "WHERE game = ? ORDER BY rating DESC LIMIT ?",
+            "SELECT gr.display_name, gr.rating, gr.wins, gr.losses, gr.draws, "
+            "       u.public_id AS public_id, u.icon_path AS icon_path "
+            "FROM game_ratings gr "
+            "LEFT JOIN users u ON gr.player_key = ('member:' || u.id) "
+            "WHERE gr.game = ? ORDER BY gr.rating DESC LIMIT ?",
             [game, n]
         ) or []
 
@@ -1111,8 +1117,11 @@ async def profile_view(request: Request, public_id: str):
 
     # 掲示板実績（作成スレッド数・総レス数）
     # threads.user_id / replies.user_id には会員のpublic_idが保存されている
+    # 掲示板実績（作成スレッド数・総レス数）
+    # threads.user_id には会員のpublic_idが入るが、replies.user_id は運営投稿時に "STAFF"
+    # が入る仕様のため、レス数は必ず poster_public_id 側で数える。
     thread_count_res = query_d1("SELECT COUNT(*) as cnt FROM threads WHERE user_id = ?", [public_id])
-    reply_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE user_id = ?", [public_id])
+    reply_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE poster_public_id = ?", [public_id])
     board_stats = {
         'thread_count': thread_count_res[0]['cnt'] if thread_count_res else 0,
         'reply_count': reply_count_res[0]['cnt'] if reply_count_res else 0,
@@ -1121,11 +1130,30 @@ async def profile_view(request: Request, public_id: str):
     current_member = get_current_member(request)
     is_own_profile = bool(current_member) and str(current_member['id']) == str(profile_user['id'])
 
+    # フォロー／ブロック／DMの状態（未ログイン・自分自身の場合はすべてFalse）
+    follow_state = {'following': False, 'followed_by': False, 'mutual': False, 'blocked': False}
+    if current_member and not is_own_profile:
+        me = current_member['id']
+        other = profile_user['id']
+        follow_state['following'] = is_following(me, other)
+        follow_state['followed_by'] = is_following(other, me)
+        follow_state['mutual'] = follow_state['following'] and follow_state['followed_by']
+        blocked_res = query_d1(
+            "SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ? LIMIT 1",
+            [me, other]
+        )
+        follow_state['blocked'] = bool(blocked_res)
+
     return templates.TemplateResponse(request, 'profile.html', {
         'profile_user': profile_user,
         'games': games,
         'board_stats': board_stats,
         'is_own_profile': is_own_profile,
+        'current_member': current_member,
+        'follow_counts': get_follow_counts(profile_user['id']),
+        'follow_state': follow_state,
+        'report_reasons': REPORT_REASONS,
+        'unread_dm_count': get_unread_dm_count(request),
     })
 
 
@@ -2720,6 +2748,7 @@ async def index(request: Request):
         'admin_message': admin_message,
         'is_admin_user': is_admin_user,
         'current_member': current_member,
+        'unread_dm_count': get_unread_dm_count(request),
         'active_count': active_count,
         'current_page': page,
         'has_next': has_next,
@@ -3269,6 +3298,590 @@ async def server_metrics():
         "net_tx_kbps": tx_kbps,
         "timestamp": time.time()
     }
+
+
+# =====================================================================
+# フォロー / DM / ブロック / 通報
+# =====================================================================
+# DMは「相互フォローのみ」送信可能。判定は必ずサーバー側で行い、
+# フロントのボタン表示だけに頼らない。
+
+DM_MAX_LENGTH = 1000
+DM_HISTORY_LIMIT = 200
+DM_COOLDOWN_SECONDS = 1
+LAST_DM_TIMES: dict[int, float] = {}
+
+REPORT_REASONS = {
+    'spam': 'スパム・宣伝',
+    'harassment': '嫌がらせ・誹謗中傷',
+    'sexual': '性的・わいせつな内容',
+    'violence': '暴力的・危険な内容',
+    'personal_info': '個人情報の晒し',
+    'other': 'その他',
+}
+
+
+def _user_id_by_public_id(public_id: str):
+    """public_id から users.id を引く。存在しなければ None。"""
+    if not public_id:
+        return None
+    res = query_d1("SELECT id FROM users WHERE public_id = ?", [public_id])
+    return res[0]['id'] if res else None
+
+
+def _require_member(request: Request):
+    """ログイン必須APIの共通チェック。(member_id, エラーレスポンス) を返す。"""
+    if not is_member_logged_in(request):
+        return None, json_resp({"success": False, "error": "ログインが必要です。"}, 401)
+    if is_banned_request(request, get_client_ip(request)):
+        return None, json_resp({"success": False, "error": "この操作は許可されていません。"}, 403)
+    return request.session.get('member_id'), None
+
+
+def is_following(follower_id: int, followee_id: int) -> bool:
+    res = query_d1(
+        "SELECT 1 AS ok FROM follows WHERE follower_id = ? AND followee_id = ? LIMIT 1",
+        [follower_id, followee_id]
+    )
+    return bool(res)
+
+
+def is_mutual_follow(user_a: int, user_b: int) -> bool:
+    """相互フォローかどうかを1クエリで判定する。"""
+    res = query_d1(
+        "SELECT COUNT(*) AS cnt FROM follows "
+        "WHERE (follower_id = ? AND followee_id = ?) OR (follower_id = ? AND followee_id = ?)",
+        [user_a, user_b, user_b, user_a]
+    )
+    return bool(res) and res[0]['cnt'] >= 2
+
+
+def is_blocked_between(user_a: int, user_b: int) -> bool:
+    """どちらか一方でもブロックしていればTrue（双方向に遮断する）。"""
+    res = query_d1(
+        "SELECT COUNT(*) AS cnt FROM blocks "
+        "WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)",
+        [user_a, user_b, user_b, user_a]
+    )
+    return bool(res) and res[0]['cnt'] > 0
+
+
+def can_dm(sender_id: int, target_id: int) -> tuple[bool, str]:
+    """DM送信可否を判定する。(可否, 不可の理由) を返す。"""
+    if sender_id == target_id:
+        return False, "自分自身にDMを送ることはできません。"
+    if is_blocked_between(sender_id, target_id):
+        return False, "この相手とはやり取りできません。"
+    if not is_mutual_follow(sender_id, target_id):
+        return False, "DMは相互フォローの相手にのみ送信できます。"
+    return True, ""
+
+
+def get_follow_counts(user_id: int) -> dict:
+    res = query_d1(
+        "SELECT "
+        " (SELECT COUNT(*) FROM follows WHERE followee_id = ?) AS followers, "
+        " (SELECT COUNT(*) FROM follows WHERE follower_id = ?) AS following",
+        [user_id, user_id]
+    )
+    if not res:
+        return {'followers': 0, 'following': 0}
+    return {'followers': res[0]['followers'], 'following': res[0]['following']}
+
+
+def get_unread_dm_count(request: Request) -> int:
+    """未読DM件数。未ログイン時は0。ヘッダーのバッジ表示に使う。"""
+    if not is_member_logged_in(request):
+        return 0
+    member_id = request.session.get('member_id')
+    try:
+        res = query_d1(
+            "SELECT COUNT(*) AS cnt FROM dm_messages m "
+            "JOIN dm_conversations c ON c.id = m.conversation_id "
+            "WHERE (c.user_a_id = ? OR c.user_b_id = ?) "
+            "  AND m.sender_id != ? AND m.read_at IS NULL",
+            [member_id, member_id, member_id]
+        )
+        return res[0]['cnt'] if res else 0
+    except Exception as e:
+        print(f"未読DM件数の取得エラー: {e}")
+        return 0
+
+
+def _get_or_create_conversation(user_a: int, user_b: int) -> int:
+    """2人分の会話IDを返す。無ければ作る。user_a_id < user_b_id で正規化する。"""
+    lo, hi = (user_a, user_b) if user_a < user_b else (user_b, user_a)
+    res = query_d1(
+        "SELECT id FROM dm_conversations WHERE user_a_id = ? AND user_b_id = ?", [lo, hi]
+    )
+    if res:
+        return res[0]['id']
+    query_d1(
+        "INSERT INTO dm_conversations (user_a_id, user_b_id) VALUES (?, ?)", [lo, hi]
+    )
+    res = query_d1(
+        "SELECT id FROM dm_conversations WHERE user_a_id = ? AND user_b_id = ?", [lo, hi]
+    )
+    return res[0]['id'] if res else None
+
+
+# ---------------------------------------------------------------------
+# DM用 WebSocket（ユーザー単位で接続。どのページにいても着信を受け取れる）
+# ---------------------------------------------------------------------
+class DMConnectionManager:
+    def __init__(self):
+        self.connections: dict[int, list[WebSocket]] = {}
+
+    async def connect(self, user_id: int, websocket: WebSocket):
+        await websocket.accept()
+        self.connections.setdefault(user_id, []).append(websocket)
+
+    def disconnect(self, user_id: int, websocket: WebSocket):
+        conns = self.connections.get(user_id)
+        if conns and websocket in conns:
+            conns.remove(websocket)
+            if not conns:
+                del self.connections[user_id]
+
+    async def send_to_user(self, user_id: int, payload: dict):
+        conns = list(self.connections.get(user_id, []))
+        dead = []
+        for ws in conns:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(user_id, ws)
+
+
+dm_manager = DMConnectionManager()
+
+
+@app.websocket('/ws/dm')
+async def dm_ws(websocket: WebSocket):
+    # SessionMiddlewareはWebSocketにも適用されるため、セッションから本人確認できる。
+    member_id = websocket.session.get('member_id')
+    if not member_id:
+        await websocket.close(code=1008)
+        return
+    await dm_manager.connect(member_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        dm_manager.disconnect(member_id, websocket)
+
+
+# ---------------------------------------------------------------------
+# フォロー
+# ---------------------------------------------------------------------
+@app.post('/api/follow/{public_id}')
+async def api_follow_toggle(request: Request, public_id: str):
+    member_id, err = _require_member(request)
+    if err:
+        return err
+
+    target_id = _user_id_by_public_id(public_id)
+    if not target_id:
+        return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
+    if target_id == member_id:
+        return json_resp({"success": False, "error": "自分自身はフォローできません。"}, 400)
+    if is_blocked_between(member_id, target_id):
+        return json_resp({"success": False, "error": "この相手はフォローできません。"}, 403)
+
+    try:
+        if is_following(member_id, target_id):
+            query_d1(
+                "DELETE FROM follows WHERE follower_id = ? AND followee_id = ?",
+                [member_id, target_id]
+            )
+            following = False
+        else:
+            query_d1(
+                "INSERT INTO follows (follower_id, followee_id) VALUES (?, ?)",
+                [member_id, target_id]
+            )
+            following = True
+    except Exception as e:
+        print(f"フォロー処理エラー: {e}")
+        return json_resp({"success": False, "error": "処理に失敗しました。"}, 500)
+
+    counts = get_follow_counts(target_id)
+    return json_resp({
+        "success": True,
+        "following": following,
+        "mutual": is_mutual_follow(member_id, target_id),
+        "followers_count": counts['followers'],
+    })
+
+
+def _render_follow_list(request: Request, public_id: str, mode: str):
+    """mode: 'followers' or 'following'"""
+    target = query_d1(
+        "SELECT id, username, public_id FROM users WHERE public_id = ?", [public_id]
+    )
+    if not target:
+        return text_resp("そのユーザーは見つかりませんでした。", 404)
+    target = target[0]
+
+    if mode == 'followers':
+        sql = (
+            "SELECT u.username, u.public_id, u.icon_path, u.bio "
+            "FROM follows f JOIN users u ON u.id = f.follower_id "
+            "WHERE f.followee_id = ? ORDER BY f.id DESC LIMIT 200"
+        )
+    else:
+        sql = (
+            "SELECT u.username, u.public_id, u.icon_path, u.bio "
+            "FROM follows f JOIN users u ON u.id = f.followee_id "
+            "WHERE f.follower_id = ? ORDER BY f.id DESC LIMIT 200"
+        )
+    users = query_d1(sql, [target['id']]) or []
+
+    return templates.TemplateResponse(request, 'follow_list.html', {
+        'profile_user': target,
+        'mode': mode,
+        'users': users,
+        'counts': get_follow_counts(target['id']),
+        'unread_dm_count': get_unread_dm_count(request),
+    })
+
+
+@app.get('/profile/{public_id}/followers')
+async def followers_page(request: Request, public_id: str):
+    return _render_follow_list(request, public_id, 'followers')
+
+
+@app.get('/profile/{public_id}/following')
+async def following_page(request: Request, public_id: str):
+    return _render_follow_list(request, public_id, 'following')
+
+
+# ---------------------------------------------------------------------
+# ブロック
+# ---------------------------------------------------------------------
+@app.post('/api/block/{public_id}')
+async def api_block_toggle(request: Request, public_id: str):
+    member_id, err = _require_member(request)
+    if err:
+        return err
+
+    target_id = _user_id_by_public_id(public_id)
+    if not target_id:
+        return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
+    if target_id == member_id:
+        return json_resp({"success": False, "error": "自分自身はブロックできません。"}, 400)
+
+    try:
+        existing = query_d1(
+            "SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ? LIMIT 1",
+            [member_id, target_id]
+        )
+        if existing:
+            query_d1(
+                "DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
+                [member_id, target_id]
+            )
+            blocked = False
+        else:
+            query_d1(
+                "INSERT INTO blocks (blocker_id, blocked_id) VALUES (?, ?)",
+                [member_id, target_id]
+            )
+            # ブロックしたら双方のフォロー関係も解除する（相互フォロー＝DM可のため）
+            query_d1(
+                "DELETE FROM follows WHERE (follower_id = ? AND followee_id = ?) "
+                "OR (follower_id = ? AND followee_id = ?)",
+                [member_id, target_id, target_id, member_id]
+            )
+            blocked = True
+    except Exception as e:
+        print(f"ブロック処理エラー: {e}")
+        return json_resp({"success": False, "error": "処理に失敗しました。"}, 500)
+
+    return json_resp({"success": True, "blocked": blocked})
+
+
+# ---------------------------------------------------------------------
+# DM
+# ---------------------------------------------------------------------
+@app.get('/messages')
+async def dm_list(request: Request):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login')
+    member_id = request.session.get('member_id')
+
+    conversations = query_d1(
+        "SELECT c.id AS conversation_id, "
+        "       u.username, u.public_id, u.icon_path, "
+        "       c.last_message_at, "
+        "       (SELECT m.content FROM dm_messages m WHERE m.conversation_id = c.id "
+        "          ORDER BY m.id DESC LIMIT 1) AS last_content, "
+        "       (SELECT COUNT(*) FROM dm_messages m2 WHERE m2.conversation_id = c.id "
+        "          AND m2.sender_id != ? AND m2.read_at IS NULL) AS unread_count "
+        "FROM dm_conversations c "
+        "JOIN users u ON u.id = CASE WHEN c.user_a_id = ? THEN c.user_b_id ELSE c.user_a_id END "
+        "WHERE (c.user_a_id = ? OR c.user_b_id = ?) AND c.last_message_at IS NOT NULL "
+        "ORDER BY c.last_message_at DESC LIMIT 100",
+        [member_id, member_id, member_id, member_id]
+    ) or []
+
+    # 相互フォロー（＝DMを新規に送れる相手）の一覧
+    mutuals = query_d1(
+        "SELECT u.username, u.public_id, u.icon_path FROM follows f1 "
+        "JOIN follows f2 ON f2.follower_id = f1.followee_id AND f2.followee_id = f1.follower_id "
+        "JOIN users u ON u.id = f1.followee_id "
+        "WHERE f1.follower_id = ? ORDER BY u.username LIMIT 200",
+        [member_id]
+    ) or []
+
+    return templates.TemplateResponse(request, 'messages.html', {
+        'conversations': conversations,
+        'mutuals': mutuals,
+        'unread_dm_count': get_unread_dm_count(request),
+    })
+
+
+@app.get('/messages/{public_id}')
+async def dm_conversation(request: Request, public_id: str):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login')
+    member_id = request.session.get('member_id')
+
+    partner = query_d1(
+        "SELECT id, username, public_id, icon_path FROM users WHERE public_id = ?", [public_id]
+    )
+    if not partner:
+        return text_resp("そのユーザーは見つかりませんでした。", 404)
+    partner = partner[0]
+
+    allowed, reason = can_dm(member_id, partner['id'])
+
+    messages = []
+    conv_res = query_d1(
+        "SELECT id FROM dm_conversations WHERE (user_a_id = ? AND user_b_id = ?) "
+        "OR (user_a_id = ? AND user_b_id = ?)",
+        [member_id, partner['id'], partner['id'], member_id]
+    )
+    conversation_id = conv_res[0]['id'] if conv_res else None
+
+    if conversation_id:
+        raw = query_d1(
+            "SELECT id, sender_id, content, created_at, read_at FROM dm_messages "
+            "WHERE conversation_id = ? ORDER BY id DESC LIMIT ?",
+            [conversation_id, DM_HISTORY_LIMIT]
+        ) or []
+        messages = list(reversed(raw))
+        for m in messages:
+            m['is_mine'] = (m['sender_id'] == member_id)
+            m['created_at'] = _to_jst_string(m.get('created_at'))
+
+        # 開いた時点で相手からの未読を既読にする
+        try:
+            query_d1(
+                "UPDATE dm_messages SET read_at = datetime('now') "
+                "WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL",
+                [conversation_id, member_id]
+            )
+        except Exception as e:
+            print(f"既読処理エラー: {e}")
+
+    return templates.TemplateResponse(request, 'dm_conversation.html', {
+        'partner': partner,
+        'messages': messages,
+        'can_send': allowed,
+        'deny_reason': reason,
+        'report_reasons': REPORT_REASONS,
+        'unread_dm_count': get_unread_dm_count(request),
+    })
+
+
+def _to_jst_string(value):
+    """DBのUTC文字列を日本時間の表示用文字列に変換する。失敗時は元の値を返す。"""
+    if not value:
+        return ''
+    try:
+        dt_utc = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        return (dt_utc + timedelta(hours=9)).strftime('%Y-%m-%d %H:%M')
+    except Exception:
+        return str(value)
+
+
+@app.post('/api/dm/{public_id}/send')
+async def api_dm_send(request: Request, public_id: str):
+    member_id, err = _require_member(request)
+    if err:
+        return err
+
+    body = await get_json_silent(request)
+    content = (body.get('content') or '').strip() if body else ''
+    if not content:
+        return json_resp({"success": False, "error": "本文が空です。"}, 400)
+    if len(content) > DM_MAX_LENGTH:
+        return json_resp({"success": False, "error": f"本文は{DM_MAX_LENGTH}文字以内にしてください。"}, 400)
+
+    target_id = _user_id_by_public_id(public_id)
+    if not target_id:
+        return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
+
+    allowed, reason = can_dm(member_id, target_id)
+    if not allowed:
+        return json_resp({"success": False, "error": reason}, 403)
+
+    now = time.time()
+    last = LAST_DM_TIMES.get(member_id)
+    if last is not None and now - last < DM_COOLDOWN_SECONDS:
+        return json_resp({"success": False, "error": "送信が速すぎます。少し待ってください。"}, 429)
+    LAST_DM_TIMES[member_id] = now
+
+    # 本文はここでエスケープして保存し、表示側では自動エスケープを切って
+    # リンク化だけ行う（掲示板本体のレスと同じ方針）。
+    safe_content = html.escape(content)
+
+    try:
+        conversation_id = _get_or_create_conversation(member_id, target_id)
+        if not conversation_id:
+            return json_resp({"success": False, "error": "会話の作成に失敗しました。"}, 500)
+
+        query_d1(
+            "INSERT INTO dm_messages (conversation_id, sender_id, content) VALUES (?, ?, ?)",
+            [conversation_id, member_id, safe_content]
+        )
+        query_d1(
+            "UPDATE dm_conversations SET last_message_at = datetime('now') WHERE id = ?",
+            [conversation_id]
+        )
+        res = query_d1(
+            "SELECT id, sender_id, content, created_at FROM dm_messages "
+            "WHERE conversation_id = ? ORDER BY id DESC LIMIT 1",
+            [conversation_id]
+        )
+        new_message = res[0] if res else None
+    except Exception as e:
+        print(f"DM送信エラー: {e}")
+        return json_resp({"success": False, "error": "送信に失敗しました。"}, 500)
+
+    if new_message:
+        new_message['created_at'] = _to_jst_string(new_message.get('created_at'))
+
+        sender_public_id = get_member_public_id(request)
+        # 受信側へプッシュ（相手がどのページを開いていてもバッジを更新できる）
+        await dm_manager.send_to_user(target_id, {
+            "type": "dm_new",
+            "conversation_id": conversation_id,
+            "from_public_id": sender_public_id,
+            "from_username": request.session.get('member_username'),
+            "message": {**new_message, "is_mine": False},
+        })
+        # 送信者の他タブにも反映
+        await dm_manager.send_to_user(member_id, {
+            "type": "dm_sent",
+            "conversation_id": conversation_id,
+            "to_public_id": public_id,
+            "message": {**new_message, "is_mine": True},
+        })
+
+    return json_resp({"success": True, "message": {**new_message, "is_mine": True}})
+
+
+@app.get('/api/dm/unread_count')
+async def api_dm_unread_count(request: Request):
+    return json_resp({"count": get_unread_dm_count(request)})
+
+
+# ---------------------------------------------------------------------
+# 通報
+# ---------------------------------------------------------------------
+@app.post('/api/report')
+async def api_report(request: Request):
+    member_id, err = _require_member(request)
+    if err:
+        return err
+
+    body = await get_json_silent(request) or {}
+    target_type = (body.get('target_type') or '').strip()
+    target_id = str(body.get('target_id') or '').strip()
+    reason = (body.get('reason') or '').strip()
+    detail = (body.get('detail') or '').strip()[:500]
+
+    if target_type not in ('user', 'thread', 'reply', 'dm'):
+        return json_resp({"success": False, "error": "通報対象が不正です。"}, 400)
+    if not target_id:
+        return json_resp({"success": False, "error": "通報対象が指定されていません。"}, 400)
+    if reason not in REPORT_REASONS:
+        return json_resp({"success": False, "error": "通報理由が不正です。"}, 400)
+
+    try:
+        # 同一対象への重複通報を防ぐ（未対応のものが既にあれば受け付けたことにする）
+        dup = query_d1(
+            "SELECT id FROM reports WHERE reporter_id = ? AND target_type = ? "
+            "AND target_id = ? AND status = 'open' LIMIT 1",
+            [member_id, target_type, target_id]
+        )
+        if dup:
+            return json_resp({"success": True, "already": True})
+
+        query_d1(
+            "INSERT INTO reports (reporter_id, target_type, target_id, reason, detail) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [member_id, target_type, target_id, reason, html.escape(detail)]
+        )
+    except Exception as e:
+        print(f"通報登録エラー: {e}")
+        return json_resp({"success": False, "error": "通報の送信に失敗しました。"}, 500)
+
+    return json_resp({"success": True})
+
+
+@app.get('/admin/reports')
+async def admin_reports(request: Request):
+    if not can_manage_board(request):
+        return text_resp("権限がありません。", 403)
+
+    status = request.query_params.get('status', 'open')
+    if status not in ('open', 'resolved', 'rejected'):
+        status = 'open'
+
+    reports = query_d1(
+        "SELECT r.*, u.username AS reporter_name, u.public_id AS reporter_public_id "
+        "FROM reports r LEFT JOIN users u ON u.id = r.reporter_id "
+        "WHERE r.status = ? ORDER BY r.created_at DESC LIMIT 200",
+        [status]
+    ) or []
+    for r in reports:
+        r['reason_label'] = REPORT_REASONS.get(r.get('reason'), r.get('reason'))
+        r['created_at'] = _to_jst_string(r.get('created_at'))
+
+    open_count_res = query_d1("SELECT COUNT(*) AS cnt FROM reports WHERE status = 'open'")
+
+    return templates.TemplateResponse(request, 'admin_reports.html', {
+        'reports': reports,
+        'status': status,
+        'open_count': open_count_res[0]['cnt'] if open_count_res else 0,
+    })
+
+
+@app.post('/api/admin/reports/{report_id}/status')
+async def api_admin_report_status(request: Request, report_id: int):
+    if not can_manage_board(request):
+        return json_resp({"success": False, "error": "権限がありません。"}, 403)
+
+    body = await get_json_silent(request) or {}
+    new_status = (body.get('status') or '').strip()
+    if new_status not in ('open', 'resolved', 'rejected'):
+        return json_resp({"success": False, "error": "不正なステータスです。"}, 400)
+
+    try:
+        query_d1(
+            "UPDATE reports SET status = ?, handled_by = ?, handled_at = datetime('now') WHERE id = ?",
+            [new_status, request.session.get('member_id'), report_id]
+        )
+    except Exception as e:
+        print(f"通報ステータス更新エラー: {e}")
+        return json_resp({"success": False, "error": "更新に失敗しました。"}, 500)
+
+    return json_resp({"success": True, "status": new_status})
 
 
 if __name__ == '__main__':
