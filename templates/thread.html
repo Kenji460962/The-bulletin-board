@@ -270,6 +270,42 @@
         }
         .post-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
+        /* 通報ボタン・モーダル */
+        .report-btn {
+            font-size: 10.5px; background: transparent; color: var(--text-muted);
+            border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 7px;
+            cursor: pointer; line-height: 1.6; white-space: nowrap;
+        }
+        .report-btn:hover { color: var(--danger-color); border-color: var(--danger-color); }
+        .report-modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            z-index: 200; align-items: center; justify-content: center; padding: 16px;
+        }
+        .report-modal-overlay.open { display: flex; }
+        .report-modal {
+            background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 8px;
+            padding: 20px; width: 100%; max-width: 360px;
+        }
+        .report-modal h3 { margin: 0 0 14px; font-size: 15px; }
+        .report-modal label { display: block; font-size: 12.5px; color: var(--text-muted); margin: 12px 0 4px; }
+        .report-modal select, .report-modal textarea {
+            width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px;
+            border: 1px solid var(--border-color); background: var(--bg-main, #0f172a);
+            color: var(--text-main); font-size: 13px; font-family: inherit;
+        }
+        .report-modal textarea { resize: vertical; min-height: 70px; }
+        .report-modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+        .report-modal-actions button {
+            flex: 1; padding: 9px; border: none; border-radius: 6px; font-size: 13px;
+            font-weight: 600; cursor: pointer;
+        }
+        .report-modal-cancel { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color) !important; }
+        .report-modal-submit { background: var(--danger-color); color: #fff; }
+        .report-modal-msg { font-size: 12px; margin-top: 10px; min-height: 1.2em; }
+        .report-modal-msg.error { color: var(--danger-color); }
+        .report-modal-msg.success { color: #22c55e; }
+
+
         
         /* 番号リンク */
         .post-num { 
@@ -360,6 +396,7 @@
                 <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 11px;">スレッド削除</button>
             </form>
             {% endif %}
+            <button type="button" class="report-btn" onclick="openReportModal('thread', {{ thread.id }})">🚩 通報</button>
         </div>
     </div>
 
@@ -427,6 +464,11 @@
                     <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
                         <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
                     </form>
+                    <button type="button" class="report-btn" onclick="openReportModal('reply', {{ r.id }})">🚩</button>
+                </div>
+                {% else %}
+                <div style="margin-left: auto;">
+                    <button type="button" class="report-btn" onclick="openReportModal('reply', {{ r.id }})">🚩通報</button>
                 </div>
                 {% endif %}
             </div>
@@ -790,6 +832,13 @@
                         <form action="/ban_user/${threadId}/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
                             <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
                         </form>
+                        <button type="button" class="report-btn" onclick="openReportModal('reply', ${reply.id})">🚩</button>
+                    </div>
+                `;
+            } else {
+                adminBtns = `
+                    <div style="margin-left: auto;">
+                        <button type="button" class="report-btn" onclick="openReportModal('reply', ${reply.id})">🚩 通報</button>
                     </div>
                 `;
             }
@@ -1003,12 +1052,112 @@
             textarea.focus();
         }
     }
+
+    // ---- 通報モーダル ----
+    let reportTarget = { type: null, id: null };
+
+    function openReportModal(targetType, targetId) {
+        if (!currentMemberUsername) {
+            alert('通報にはログインが必要です。');
+            return;
+        }
+        reportTarget = { type: targetType, id: targetId };
+        const overlay = document.getElementById('report-modal-overlay');
+        const msg = document.getElementById('report-modal-msg');
+        const form = document.getElementById('report-modal-form');
+        if (form) form.reset();
+        if (msg) { msg.textContent = ''; msg.className = 'report-modal-msg'; }
+        if (overlay) overlay.classList.add('open');
+    }
+
+    function closeReportModal() {
+        const overlay = document.getElementById('report-modal-overlay');
+        if (overlay) overlay.classList.remove('open');
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const overlay = document.getElementById('report-modal-overlay');
+        const cancelBtn = document.getElementById('report-modal-cancel-btn');
+        const form = document.getElementById('report-modal-form');
+
+        if (overlay) {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) closeReportModal();
+            });
+        }
+        if (cancelBtn) cancelBtn.addEventListener('click', closeReportModal);
+
+        if (form) {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const msg = document.getElementById('report-modal-msg');
+                const submitBtn = document.getElementById('report-modal-submit-btn');
+                const reason = document.getElementById('report-reason-select').value;
+                const detail = document.getElementById('report-detail-textarea').value;
+
+                if (!reason) {
+                    if (msg) { msg.textContent = '理由を選択してください。'; msg.className = 'report-modal-msg error'; }
+                    return;
+                }
+
+                if (submitBtn) submitBtn.disabled = true;
+                try {
+                    const res = await fetch('/api/report', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            target_type: reportTarget.type,
+                            target_id: reportTarget.id,
+                            reason: reason,
+                            detail: detail,
+                        }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        if (msg) {
+                            msg.textContent = data.already ? 'この内容は既に通報済みです。' : '通報を受け付けました。ご協力ありがとうございます。';
+                            msg.className = 'report-modal-msg success';
+                        }
+                        setTimeout(closeReportModal, 1500);
+                    } else {
+                        if (msg) { msg.textContent = data.error || '送信に失敗しました。'; msg.className = 'report-modal-msg error'; }
+                    }
+                } catch (err) {
+                    if (msg) { msg.textContent = '通信エラーが発生しました。'; msg.className = 'report-modal-msg error'; }
+                } finally {
+                    if (submitBtn) submitBtn.disabled = false;
+                }
+            });
+        }
+    });
     </script>
+
+    <div class="report-modal-overlay" id="report-modal-overlay">
+        <div class="report-modal">
+            <h3>通報する</h3>
+            <form id="report-modal-form">
+                <label for="report-reason-select">理由</label>
+                <select id="report-reason-select" required>
+                    <option value="">選択してください</option>
+                    {% for key, label in report_reasons.items() %}
+                    <option value="{{ key }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+
+                <label for="report-detail-textarea">詳細(任意・500文字まで)</label>
+                <textarea id="report-detail-textarea" maxlength="500" placeholder="具体的な状況があれば入力してください"></textarea>
+
+                <div class="report-modal-msg" id="report-modal-msg"></div>
+
+                <div class="report-modal-actions">
+                    <button type="button" class="report-modal-cancel" id="report-modal-cancel-btn">キャンセル</button>
+                    <button type="submit" class="report-modal-submit" id="report-modal-submit-btn">通報する</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     
 
-
-
-   
 </body>
 </html>
