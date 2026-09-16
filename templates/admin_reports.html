@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>通報管理 | talk-ch</title>
+<style>
+    :root {
+        --bg-color: #0f172a; --panel-bg: #1e293b; --border-color: #334155;
+        --text-main: #f8fafc; --text-muted: #94a3b8;
+        --accent-color: #38bdf8; --danger-color: #f43f5e; --ok-color: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0; background: var(--bg-color); color: var(--text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", sans-serif;
+    }
+    .header-area {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 16px; background: var(--panel-bg); border-bottom: 1px solid var(--border-color);
+    }
+    .header-title { font-size: 16px; font-weight: 700; }
+    .header-area a { color: var(--text-muted); text-decoration: none; font-size: 12px; }
+
+    .container { max-width: 820px; margin: 0 auto; padding: 16px; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab {
+        padding: 8px 16px; font-size: 13px; font-weight: 600; text-decoration: none;
+        border: 1px solid var(--border-color); border-radius: 6px;
+        color: var(--text-muted); background: var(--panel-bg);
+    }
+    .tab.active { background: var(--accent-color); border-color: var(--accent-color); color: #0f172a; }
+
+    .report {
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+        border-radius: 8px; padding: 14px 16px; margin-bottom: 10px;
+    }
+    .report-head {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px;
+    }
+    .badge {
+        font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+        background: rgba(244,63,94,0.15); color: var(--danger-color);
+    }
+    .badge.type { background: rgba(56,189,248,0.15); color: var(--accent-color); }
+    .report-time { font-size: 11.5px; color: var(--text-muted); margin-left: auto; }
+    .report-target { font-size: 13.5px; margin-bottom: 6px; }
+    .report-target a { color: var(--accent-color); }
+    .report-detail {
+        font-size: 13px; line-height: 1.7; color: var(--text-main);
+        background: var(--bg-color); border-radius: 6px; padding: 9px 12px;
+        margin: 8px 0; white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+    .report-meta { font-size: 11.5px; color: var(--text-muted); }
+    .report-actions { display: flex; gap: 8px; margin-top: 11px; }
+    .report-actions button {
+        border: none; border-radius: 6px; padding: 7px 14px;
+        font-size: 12.5px; font-weight: 600; cursor: pointer;
+    }
+    .btn-resolve { background: var(--ok-color); color: #0f172a; }
+    .btn-reject { background: none; border: 1px solid var(--border-color) !important; color: var(--text-muted); }
+    .btn-reopen { background: var(--accent-color); color: #0f172a; }
+
+    .empty-state { text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="header-area">
+    <div class="header-title">🚩 通報管理（未対応 {{ open_count }} 件）</div>
+    <a href="/">← 掲示板に戻る</a>
+</div>
+
+<div class="container">
+    <div class="tabs">
+        <a class="tab {{ 'active' if status == 'open' else '' }}" href="/admin/reports?status=open">未対応</a>
+        <a class="tab {{ 'active' if status == 'resolved' else '' }}" href="/admin/reports?status=resolved">対応済み</a>
+        <a class="tab {{ 'active' if status == 'rejected' else '' }}" href="/admin/reports?status=rejected">却下</a>
+    </div>
+
+    {% if reports %}
+        {% for r in reports %}
+        <div class="report" id="report-{{ r.id }}">
+            <div class="report-head">
+                <span class="badge">{{ r.reason_label }}</span>
+                <span class="badge type">{{ r.target_type }}</span>
+                <span class="report-time">{{ r.created_at }}</span>
+            </div>
+
+            <div class="report-target">
+                対象:
+                {% if r.target_type == 'user' or r.target_type == 'dm' %}
+                <a href="/profile/{{ r.target_id }}" target="_blank">/profile/{{ r.target_id }}</a>
+                {% elif r.target_type == 'thread' %}
+                <a href="/thread/{{ r.target_id }}" target="_blank">スレッド #{{ r.target_id }}</a>
+                {% else %}
+                レス #{{ r.target_id }}
+                {% endif %}
+            </div>
+
+            {% if r.detail %}
+            <div class="report-detail">{{ r.detail }}</div>
+            {% endif %}
+
+            <div class="report-meta">
+                通報者:
+                {% if r.reporter_public_id %}
+                <a href="/profile/{{ r.reporter_public_id }}" target="_blank" style="color: var(--text-muted);">{{ r.reporter_name }}</a>
+                {% else %}不明{% endif %}
+            </div>
+
+            <div class="report-actions">
+                {% if r.status == 'open' %}
+                <button type="button" class="btn-resolve" data-id="{{ r.id }}" data-status="resolved">対応済みにする</button>
+                <button type="button" class="btn-reject" data-id="{{ r.id }}" data-status="rejected">却下</button>
+                {% else %}
+                <button type="button" class="btn-reopen" data-id="{{ r.id }}" data-status="open">未対応に戻す</button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">該当する通報はありません。</div>
+    {% endif %}
+</div>
+
+<script>
+    document.querySelectorAll('.report-actions button').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            const id = btn.dataset.id;
+            const status = btn.dataset.status;
+            btn.disabled = true;
+            try {
+                const res = await fetch(`/api/admin/reports/${id}/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const card = document.getElementById(`report-${id}`);
+                    if (card) card.remove();
+                } else {
+                    alert(data.error || '更新に失敗しました。');
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                alert('通信に失敗しました。');
+                btn.disabled = false;
+            }
+        });
+    });
+</script>
+</body>
+</html>
