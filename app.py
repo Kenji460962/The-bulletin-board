@@ -4078,20 +4078,30 @@ async def admin_dashboard(request: Request):
         if r.get('target_type') == 'reply':
             r['reply_thread_id'] = None
             r['reply_post_num'] = None
+            r['reply_content'] = None
+            r['reply_author'] = None
+            r['reply_poster_public_id'] = None
             try:
                 reply_id = int(r.get('target_id'))
             except (TypeError, ValueError):
                 reply_id = None
             if reply_id:
-                reply_res = query_d1("SELECT thread_id FROM replies WHERE id = ?", [reply_id])
+                reply_res = query_d1(
+                    "SELECT thread_id, content, author, poster_public_id FROM replies WHERE id = ?",
+                    [reply_id]
+                )
                 if reply_res:
-                    r_thread_id = reply_res[0]['thread_id']
+                    reply_row = reply_res[0]
+                    r_thread_id = reply_row['thread_id']
                     pos_res = query_d1(
                         "SELECT COUNT(*) AS cnt FROM replies WHERE thread_id = ? AND id <= ?",
                         [r_thread_id, reply_id]
                     )
                     r['reply_thread_id'] = r_thread_id
                     r['reply_post_num'] = pos_res[0]['cnt'] if pos_res else None
+                    r['reply_content'] = reply_row.get('content')
+                    r['reply_author'] = reply_row.get('author')
+                    r['reply_poster_public_id'] = reply_row.get('poster_public_id')
 
     open_count_res = query_d1("SELECT COUNT(*) AS cnt FROM reports WHERE status = 'open'")
 
