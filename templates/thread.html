@@ -368,9 +368,33 @@
         a:hover {
             text-decoration: underline;
         }
+
+        /* ---- DM未読バッジ ---- */
+        .dm-link { position: relative; display: inline-flex; align-items: center; color: var(--text-main); text-decoration: none; margin-left: 4px; }
+        .dm-badge {
+            position: absolute; top: -6px; right: -9px;
+            background: #DC2626; color: #fff; border-radius: 999px;
+            min-width: 16px; height: 16px; padding: 0 4px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 700; line-height: 1;
+        }
+
+        /* ---- DM着信トースト ---- */
+        .toast-stack {
+            position: fixed; right: 16px; bottom: 16px; z-index: 1100;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .toast {
+            background: var(--panel-bg, #1e293b); border: 1px solid var(--accent-color, #38bdf8);
+            border-left-width: 3px; border-radius: 8px; padding: 10px 14px;
+            font-size: 13px; color: var(--text-main, #f8fafc); max-width: 280px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.18); cursor: pointer;
+        }
     </style>
 </head>
 <body>
+
+    <div class="toast-stack" id="toast-stack"></div>
 
     <div class="header-area">
         <div style="font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-main);">
@@ -390,6 +414,9 @@
                     <button type="button" id="mode-btn-view" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">スレ閲覧</button>
                     <button type="button" id="mode-btn-realtime" class="mode-btn" style="border: none; padding: 4px 8px; cursor: pointer;">リアルタイム</button>
                 </div>
+                {% if current_member %}
+                <a href="/messages" class="dm-link" id="dm-link">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></a>
+                {% endif %}
             </div>
             {% if is_admin_user %}
             <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
@@ -546,6 +573,91 @@
     <script>
     // ページ全体(このscriptタグ内のどこからでも)使えるよう、トップレベルで宣言する
     const currentMemberUsername = {% if current_member %}"{{ current_member.username }}"{% else %}null{% endif %};
+    const CURRENT_MEMBER = {{ current_member_json | safe }};
+
+    // ---- トースト表示 ----
+    function showToast(text, href) {
+        const stack = document.getElementById('toast-stack');
+        if (!stack) return;
+        const el = document.createElement('div');
+        el.className = 'toast';
+        el.textContent = text;
+        if (href) el.addEventListener('click', () => { location.href = href; });
+        stack.appendChild(el);
+        setTimeout(() => el.remove(), 6000);
+    }
+
+    // ---- DM未読バッジ・着信通知のリアルタイム更新 ----
+    (function() {
+        if (!CURRENT_MEMBER) return;
+        const badge = document.getElementById('dm-badge');
+
+        let unread = badge ? (parseInt(badge.textContent, 10) || 0) : 0;
+        function render() {
+            if (!badge) return;
+            badge.textContent = unread > 99 ? '99+' : unread;
+            badge.style.display = unread > 0 ? 'flex' : 'none';
+        }
+
+        // 通知の許可は最初のクリック時に求める（読み込み直後に出すとブロックされやすい）
+        if ('Notification' in window && Notification.permission === 'default') {
+            document.addEventListener('click', function once() {
+                Notification.requestPermission();
+            }, { once: true });
+        }
+
+        let dmDelay = 1000, dmWs = null, dmHb = null, dmPong = null;
+
+        function connectDmWs() {
+            if (dmWs && (dmWs.readyState === WebSocket.OPEN || dmWs.readyState === WebSocket.CONNECTING)) return;
+            const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            dmWs = new WebSocket(`${proto}//${location.host}/ws/dm`);
+
+            dmWs.onopen = () => {
+                dmDelay = 1000;
+                // 定期pingで死んだ接続を検出する（スリープ復帰時はcloseが飛ばないことがある）
+                dmHb = setInterval(() => {
+                    if (!dmWs || dmWs.readyState !== WebSocket.OPEN) return;
+                    try { dmWs.send('ping'); } catch (e) { return; }
+                    clearTimeout(dmPong);
+                    dmPong = setTimeout(() => { try { dmWs.close(); } catch (e) {} }, 10000);
+                }, 25000);
+            };
+
+            dmWs.onmessage = (event) => {
+                let data;
+                try { data = JSON.parse(event.data); } catch (e) { return; }
+                if (data.type === 'pong') { clearTimeout(dmPong); return; }
+                if (data.type === 'dm_new') {
+                    unread += 1;
+                    render();
+                    const who = data.from_username || '新着メッセージ';
+                    const link = data.from_public_id ? `/messages/${data.from_public_id}` : '/messages';
+                    showToast(`✉️ ${who} からDMが届きました`, link);
+                    if ('Notification' in window && Notification.permission === 'granted'
+                        && document.visibilityState !== 'visible') {
+                        new Notification('talk-ch', { body: `${who} からDMが届きました` });
+                    }
+                }
+            };
+
+            dmWs.onclose = () => {
+                clearInterval(dmHb);
+                clearTimeout(dmPong);
+                setTimeout(connectDmWs, dmDelay);
+                dmDelay = Math.min(dmDelay * 2, 30000);
+            };
+
+            dmWs.onerror = () => { try { dmWs.close(); } catch (e) {} };
+        }
+
+        // タブ復帰・ネットワーク復帰時は即座に張り直す
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') { dmDelay = 1000; connectDmWs(); }
+        });
+        window.addEventListener('online', () => { dmDelay = 1000; connectDmWs(); });
+        connectDmWs();
+    })();
 
     document.addEventListener('DOMContentLoaded', () => {
 
