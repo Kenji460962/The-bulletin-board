@@ -3301,15 +3301,18 @@ async def thread_view(request: Request, thread_id: int):
     location_key = f"thread_{thread_id}"
     active_count = update_and_get_user_counts(user_token, location_key)
 
+    current_member = get_current_member(request)
+
     response = templates.TemplateResponse(request, 'thread.html', {
         'thread': thread,
         'is_admin_user': is_admin_user,
         'active_count': active_count,
         'back_to_board': "/?tab=threads",
         'op_user_id': op_user_id,
-        'current_member': get_current_member(request),
+        'current_member': current_member,
         'report_reasons': REPORT_REASONS,
         'unread_dm_count': get_unread_dm_count(request),
+        'current_member_json': json.dumps(current_member, ensure_ascii=False) if current_member else 'null',
     })
 
     if is_new_user:
