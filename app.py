@@ -272,6 +272,27 @@ async def response_to_uptimerobot(request: Request, call_next):
 
 
 # =========================
+# リクエストサイズの上限
+# =========================
+# 512MB程度の小さいVPSでは、サイズ制限のない巨大アップロード1本だけで
+# プロセスが即座にメモリ上限を超えて落ちうる。Content-Lengthの時点で
+# 弾くことで、ボディを読み込む前にリクエストを拒否する。
+MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024  # 8MB
+
+
+@app.middleware("http")
+async def limit_request_size(request: Request, call_next):
+    content_length = request.headers.get('content-length')
+    if content_length is not None:
+        try:
+            if int(content_length) > MAX_REQUEST_BODY_BYTES:
+                return json_resp({"error": "リクエストサイズが大きすぎます。"}, 413)
+        except ValueError:
+            pass
+    return await call_next(request)
+
+
+# =========================
 # 簡易アクセス解析
 # トップページとスレッド閲覧のPVだけを対象に、非同期(別スレッド)でD1へ記録する。
 # レスポンスをブロックしないよう、書き込みはfire-and-forestで投げっぱなしにする。
