@@ -1977,6 +1977,13 @@ ARCHIVE_PINNED_IDS = [1, 2, 3, 4]
 
 
 def _fetch_all_from_supabase(sb_url, sb_key, table, columns):
+    """
+    同期・ブロッキングなhttpx呼び出しを行う関数。
+    このプロジェクトの他の同期I/O呼び出し(query_d1, R2アクセス)と同様、
+    必ず `await run_in_threadpool(_fetch_all_from_supabase, ...)` の形で呼ぶこと。
+    直接awaitせずに呼ぶと、取得が終わるまでイベントループ全体がブロックされ、
+    その間サイト全体が応答しなくなる(全ユーザーに影響する)。
+    """
     all_rows = []
     page_size = 1000
     offset = 0
@@ -2030,8 +2037,13 @@ async def migrate_from_supabase(request: Request):
         return json_resp({"error": "X-Supabase-Url / X-Supabase-Key ヘッダーが必要です"}, 400)
 
     try:
-        threads = _fetch_all_from_supabase(sb_url, sb_key, 'threads', 'id,title,created_at,ip_address')
-        replies = _fetch_all_from_supabase(sb_url, sb_key, 'replies', 'id,thread_id,author,content,user_id,is_admin,image_url,ip_address,date,role')
+        threads = await run_in_threadpool(
+            _fetch_all_from_supabase, sb_url, sb_key, 'threads', 'id,title,created_at,ip_address'
+        )
+        replies = await run_in_threadpool(
+            _fetch_all_from_supabase, sb_url, sb_key, 'replies',
+            'id,thread_id,author,content,user_id,is_admin,image_url,ip_address,date,role'
+        )
     except Exception as e:
         return json_resp({"error": f"Supabaseからの取得に失敗しました: {e}"}, 500)
 
@@ -2076,8 +2088,13 @@ async def migrate_from_supabase_safe(request: Request):
     reply_offset = current_max_rid + 10000
 
     try:
-        threads = _fetch_all_from_supabase(sb_url, sb_key, 'threads', 'id,title,created_at,ip_address')
-        replies = _fetch_all_from_supabase(sb_url, sb_key, 'replies', 'id,thread_id,author,content,user_id,is_admin,image_url,ip_address,date,role')
+        threads = await run_in_threadpool(
+            _fetch_all_from_supabase, sb_url, sb_key, 'threads', 'id,title,created_at,ip_address'
+        )
+        replies = await run_in_threadpool(
+            _fetch_all_from_supabase, sb_url, sb_key, 'replies',
+            'id,thread_id,author,content,user_id,is_admin,image_url,ip_address,date,role'
+        )
     except Exception as e:
         return json_resp({"error": f"Supabaseからの取得に失敗しました: {e}"}, 500)
 
@@ -3071,7 +3088,7 @@ async def create_thread(request: Request):
     now = time.time()
 
     thread_cooldown = 300
-    if not is_admin and is_proxy_or_vpn(client_ip):
+    if not is_admin and await run_in_threadpool(is_proxy_or_vpn, client_ip):
         thread_cooldown = 900
 
     if not is_admin:
