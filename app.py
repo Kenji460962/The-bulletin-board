@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, Plai
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.concurrency import run_in_threadpool
 from datetime import datetime, timedelta
 import json
 import html
@@ -194,8 +195,10 @@ def _classify_user_agent(ua: str):
 
 
 def _log_page_view_sync(path, thread_id, visitor_token, referrer_host, device, browser):
+    # この関数はasyncio.to_thread()で別スレッド上で実行されるため、
+    # asyncラッパーのquery_d1ではなく、同期版の_query_d1_syncを直接呼ぶ。
     try:
-        query_d1(
+        _query_d1_sync(
             "INSERT INTO page_views (path, thread_id, visitor_token, referrer_host, device, browser) "
             "VALUES (?, ?, ?, ?, ?, ?)",
             [path, thread_id, visitor_token, referrer_host, device, browser]
@@ -284,7 +287,7 @@ CF_D1_DATABASE_ID = os.environ.get('CF_D1_DATABASE_ID')
 CF_D1_API_TOKEN = os.environ.get('CF_D1_API_TOKEN')
 
 
-def query_d1(sql, params=None):
+def _query_d1_sync(sql, params=None):
     if not CF_D1_ACCOUNT_ID or not CF_D1_DATABASE_ID or not CF_D1_API_TOKEN:
         return []
 
@@ -305,6 +308,13 @@ def query_d1(sql, params=None):
     except Exception as e:
         print(f"D1 API通信エラー: {e}")
     return []
+
+
+async def query_d1(sql, params=None):
+    """_query_d1_sync（同期・ブロッキングなhttpx呼び出し）をスレッドプールに逃がし、
+    イベントループを止めないようにするための非同期ラッパー。
+    ロジック自体は_query_d1_syncから変更していない。"""
+    return await run_in_threadpool(_query_d1_sync, sql, params)
 
 
 
@@ -571,34 +581,34 @@ def is_proxy_or_vpn(ip):
     return is_proxy
 
 
-def is_banned_ip(ip):
+async def is_banned_ip(ip):
     if not ip:
         return False
     try:
-        res = query_d1("SELECT * FROM banned_ips WHERE ip_address = ?", [ip])
+        res = await query_d1("SELECT * FROM banned_ips WHERE ip_address = ?", [ip])
         return len(res) > 0
     except Exception as e:
         print(f"BANチェックエラー: {e}")
         return False
 
 
-def is_banned_member_public_id(public_id):
+async def is_banned_member_public_id(public_id):
     if not public_id:
         return False
     try:
-        res = query_d1("SELECT * FROM banned_members WHERE public_id = ?", [public_id])
+        res = await query_d1("SELECT * FROM banned_members WHERE public_id = ?", [public_id])
         return len(res) > 0
     except Exception as e:
         print(f"会員BANチェックエラー: {e}")
         return False
 
 
-def is_banned_request(request: Request, client_ip) -> bool:
+async def is_banned_request(request: Request, client_ip) -> bool:
 
-    if is_banned_ip(client_ip):
+    if await is_banned_ip(client_ip):
         return True
-    public_id = get_member_public_id(request)
-    if public_id and is_banned_member_public_id(public_id):
+    public_id = await get_member_public_id(request)
+    if public_id and await is_banned_member_public_id(public_id):
         return True
     return False
 
@@ -623,7 +633,7 @@ TOKEN_EXPIRE_HOURS_VERIFY = 24
 TOKEN_EXPIRE_HOURS_RESET = 1
 
 
-def get_current_member(request: Request):
+async def get_current_member(request: Request):
     
     member_id = request.session.get('member_id')
     if not member_id:
@@ -631,8 +641,8 @@ def get_current_member(request: Request):
     return {
         'id': member_id,
         'username': request.session.get('member_username'),
-        'public_id': get_member_public_id(request),
-        'icon_path': get_member_icon_path(request),
+        'public_id': await get_member_public_id(request),
+        'icon_path': await get_member_icon_path(request),
     }
 
 
@@ -640,17 +650,17 @@ def is_member_logged_in(request: Request) -> bool:
     return bool(request.session.get('member_id'))
 
 
-def _generate_public_id() -> str:
+async def _generate_public_id() -> str:
 
     for _ in range(5):
         candidate = secrets.token_hex(4)
-        existing = query_d1("SELECT id FROM users WHERE public_id = ?", [candidate])
+        existing = await query_d1("SELECT id FROM users WHERE public_id = ?", [candidate])
         if not existing:
             return candidate
     return secrets.token_hex(6)
 
 
-def get_member_public_id(request: Request):
+async def get_member_public_id(request: Request):
    
     if not is_member_logged_in(request):
         return None
@@ -659,11 +669,11 @@ def get_member_public_id(request: Request):
         return cached
     member_id = request.session.get('member_id')
     try:
-        res = query_d1("SELECT public_id FROM users WHERE id = ?", [member_id])
+        res = await query_d1("SELECT public_id FROM users WHERE id = ?", [member_id])
         public_id = res[0]['public_id'] if res else None
         if not public_id:
-            public_id = _generate_public_id()
-            query_d1("UPDATE users SET public_id = ? WHERE id = ?", [public_id, member_id])
+            public_id = await _generate_public_id()
+            await query_d1("UPDATE users SET public_id = ? WHERE id = ?", [public_id, member_id])
         request.session['member_public_id'] = public_id
         return public_id
     except Exception as e:
@@ -671,7 +681,7 @@ def get_member_public_id(request: Request):
         return None
 
 
-def get_member_icon_path(request: Request):
+async def get_member_icon_path(request: Request):
     """ログイン中の会員のアバターURLをセッションにキャッシュしつつ返す。
     レス投稿のたびにusersテーブルへ問い合わせるのを避けるための軽量キャッシュ。
     アバターを更新した際は profile_avatar_upload 側でこのキャッシュを更新する。
@@ -682,7 +692,7 @@ def get_member_icon_path(request: Request):
         return request.session['member_icon_path']
     member_id = request.session.get('member_id')
     try:
-        res = query_d1("SELECT icon_path FROM users WHERE id = ?", [member_id])
+        res = await query_d1("SELECT icon_path FROM users WHERE id = ?", [member_id])
         icon_path = res[0]['icon_path'] if res else None
     except Exception as e:
         print(f"icon_path取得エラー: {e}")
@@ -695,19 +705,19 @@ def _make_token() -> str:
     return secrets.token_urlsafe(32)
 
 
-def _issue_token(user_id: int, purpose: str, expire_hours: int) -> str:
+async def _issue_token(user_id: int, purpose: str, expire_hours: int) -> str:
     token = _make_token()
     expires_at = (datetime.utcnow() + timedelta(hours=expire_hours)).isoformat()
-    query_d1(
+    await query_d1(
         "INSERT INTO email_tokens (user_id, token, purpose, expires_at, used) VALUES (?, ?, ?, ?, 0)",
         [user_id, token, purpose, expires_at]
     )
     return token
 
 
-def _consume_token(token: str, purpose: str):
+async def _consume_token(token: str, purpose: str):
     
-    res = query_d1(
+    res = await query_d1(
         "SELECT * FROM email_tokens WHERE token = ? AND purpose = ? AND used = 0",
         [token, purpose]
     )
@@ -720,16 +730,16 @@ def _consume_token(token: str, purpose: str):
         return None
     if datetime.utcnow() > expires_at:
         return None
-    query_d1("UPDATE email_tokens SET used = 1 WHERE id = ?", [row['id']])
-    user_res = query_d1("SELECT * FROM users WHERE id = ?", [row['user_id']])
+    await query_d1("UPDATE email_tokens SET used = 1 WHERE id = ?", [row['id']])
+    user_res = await query_d1("SELECT * FROM users WHERE id = ?", [row['user_id']])
     return user_res[0] if user_res else None
 
 
 
-def _authenticate_user(username: str, password: str):
+async def _authenticate_user(username: str, password: str):
 
     try:
-        res = query_d1("SELECT * FROM users WHERE username = ?", [username])
+        res = await query_d1("SELECT * FROM users WHERE username = ?", [username])
     except Exception as e:
         print(f"ログインエラー: {e}")
         res = []
@@ -799,21 +809,21 @@ async def register_submit(request: Request):
         return render_error('メールアドレスの形式が正しくありません。')
 
     try:
-        existing = query_d1("SELECT id FROM users WHERE username = ?", [username])
+        existing = await query_d1("SELECT id FROM users WHERE username = ?", [username])
         if existing:
             return render_error('そのユーザー名はすでに使われています。')
         if email:
-            existing_email = query_d1("SELECT id FROM users WHERE email = ?", [email])
+            existing_email = await query_d1("SELECT id FROM users WHERE email = ?", [email])
             if existing_email:
                 return render_error('そのメールアドレスはすでに登録されています。')
 
         password_hash = generate_password_hash(password)
-        public_id = _generate_public_id()
-        query_d1(
+        public_id = await _generate_public_id()
+        await query_d1(
             "INSERT INTO users (username, password_hash, email, email_verified, public_id, role) VALUES (?, ?, ?, 0, ?, 'user')",
             [username, password_hash, email or None, public_id]
         )
-        new_user_res = query_d1("SELECT * FROM users WHERE username = ?", [username])
+        new_user_res = await query_d1("SELECT * FROM users WHERE username = ?", [username])
         if not new_user_res:
             return render_error('登録に失敗しました。もう一度お試しください。')
         new_user = new_user_res[0]
@@ -822,7 +832,7 @@ async def register_submit(request: Request):
         return render_error('データベースエラーが発生しました。')
 
     if email:
-        token = _issue_token(new_user['id'], 'verify', TOKEN_EXPIRE_HOURS_VERIFY)
+        token = await _issue_token(new_user['id'], 'verify', TOKEN_EXPIRE_HOURS_VERIFY)
         verify_url = f"{SITE_BASE_URL.rstrip('/')}/verify_email/{token}"
         await send_email(
             email,
@@ -851,7 +861,7 @@ async def member_login_submit(request: Request):
     username = (form.get('username') or '').strip()
     password = form.get('password') or ''
 
-    user = _authenticate_user(username, password)
+    user = await _authenticate_user(username, password)
     if not user:
         return templates.TemplateResponse(
             request, 'login.html', {'error': 'ユーザー名またはパスワードが違います。'}, status_code=401
@@ -872,11 +882,11 @@ async def member_logout(request: Request):
 
 @app.get('/verify_email/{token}')
 async def verify_email(request: Request, token: str):
-    user = _consume_token(token, 'verify')
+    user = await _consume_token(token, 'verify')
     if not user:
         return text_resp("確認リンクが無効か、有効期限が切れています。", 400)
     try:
-        query_d1("UPDATE users SET email_verified = 1 WHERE id = ?", [user['id']])
+        await query_d1("UPDATE users SET email_verified = 1 WHERE id = ?", [user['id']])
     except Exception as e:
         print(f"メール確認エラー: {e}")
         return text_resp("データベースエラーが発生しました。", 500)
@@ -895,13 +905,13 @@ async def forgot_password_submit(request: Request):
     
     if email:
         try:
-            res = query_d1("SELECT * FROM users WHERE email = ?", [email])
+            res = await query_d1("SELECT * FROM users WHERE email = ?", [email])
         except Exception as e:
             print(f"パスワードリセット検索エラー: {e}")
             res = []
         if res:
             user = res[0]
-            token = _issue_token(user['id'], 'reset', TOKEN_EXPIRE_HOURS_RESET)
+            token = await _issue_token(user['id'], 'reset', TOKEN_EXPIRE_HOURS_RESET)
             reset_url = f"{SITE_BASE_URL.rstrip('/')}/reset_password/{token}"
             await send_email(
                 email,
@@ -937,7 +947,7 @@ async def reset_password_submit(request: Request, token: str):
             {'token': token, 'error': 'パスワードが一致しません。'}, status_code=400
         )
 
-    user = _consume_token(token, 'reset')
+    user = await _consume_token(token, 'reset')
     if not user:
         return templates.TemplateResponse(
             request, 'reset_password.html',
@@ -946,7 +956,7 @@ async def reset_password_submit(request: Request, token: str):
         )
 
     try:
-        query_d1("UPDATE users SET password_hash = ? WHERE id = ?", [generate_password_hash(password), user['id']])
+        await query_d1("UPDATE users SET password_hash = ? WHERE id = ?", [generate_password_hash(password), user['id']])
     except Exception as e:
         print(f"パスワード更新エラー: {e}")
         return templates.TemplateResponse(
@@ -993,7 +1003,7 @@ def filter_ng_words(text):
     return text
 
 
-def update_and_get_user_counts(current_token, location):
+async def update_and_get_user_counts(current_token, location):
     now = datetime.utcnow()
     cutoff = (now - timedelta(minutes=2)).isoformat()
 
@@ -1003,14 +1013,14 @@ def update_and_get_user_counts(current_token, location):
         VALUES (?, ?, ?) 
         ON CONFLICT(token) DO UPDATE SET location=excluded.location, last_seen=excluded.last_seen
         """
-        query_d1(sql_upsert, [current_token, location, now.isoformat()])
+        await query_d1(sql_upsert, [current_token, location, now.isoformat()])
 
     sql_count = "SELECT COUNT(*) as cnt FROM active_users WHERE location = ? AND last_seen >= ?"
-    res = query_d1(sql_count, [location, cutoff])
+    res = await query_d1(sql_count, [location, cutoff])
     count = res[0]['cnt'] if res and len(res) > 0 else 0
 
     if random.random() < 0.05:
-        query_d1("DELETE FROM active_users WHERE last_seen < ?", [cutoff])
+        await query_d1("DELETE FROM active_users WHERE last_seen < ?", [cutoff])
 
     return count
 
@@ -1022,7 +1032,7 @@ async def api_lobby_active_count(request: Request):
     if not user_token:
         user_token = str(uuid.uuid4())
         is_new_user = True
-    count = update_and_get_user_counts(user_token, "lobby")
+    count = await update_and_get_user_counts(user_token, "lobby")
     resp = json_resp({'success': True, 'active_count': count, 'count': count})
     if is_new_user:
         resp.set_cookie('user_bbs_token', user_token, max_age=60 * 60 * 24 * 365, httponly=True)
@@ -1046,11 +1056,11 @@ async def roles(request: Request):
 
 @app.get('/rankings')
 async def rankings(request: Request):
-    def top_n(game, n=30):
+    async def top_n(game, n=30):
         # player_key が 'member:<users.id>' の行だけ users と結合し、
         # プロフィールリンク用のpublic_idとアイコンURLを一緒に取得する。
         # ゲストプレイヤーの行は public_id / icon_path が NULL になる。
-        return query_d1(
+        return await query_d1(
             "SELECT gr.display_name, gr.rating, gr.wins, gr.losses, gr.draws, "
             "       u.public_id AS public_id, u.icon_path AS icon_path "
             "FROM game_ratings gr "
@@ -1060,9 +1070,9 @@ async def rankings(request: Request):
         ) or []
 
     return templates.TemplateResponse(request, 'rankings.html', {
-        'othello_ranking': top_n('othello'),
-        'chess_ranking': top_n('chess'),
-        'shogi_ranking': top_n('shogi'),
+        'othello_ranking': await top_n('othello'),
+        'chess_ranking': await top_n('chess'),
+        'shogi_ranking': await top_n('shogi'),
     })
 
 
@@ -1071,7 +1081,7 @@ async def profile_edit_form(request: Request):
     if not is_member_logged_in(request):
         return RedirectResponse(url='/login')
     member_id = request.session.get('member_id')
-    res = query_d1("SELECT username, bio, icon_path FROM users WHERE id = ?", [member_id])
+    res = await query_d1("SELECT username, bio, icon_path FROM users WHERE id = ?", [member_id])
     user = res[0] if res else {'username': request.session.get('member_username'), 'bio': '', 'icon_path': None}
 
     avatar_error_map = {
@@ -1092,7 +1102,7 @@ async def profile_avatar_upload(request: Request):
     if not is_member_logged_in(request):
         return RedirectResponse(url='/login')
     member_id = request.session.get('member_id')
-    public_id = get_member_public_id(request)
+    public_id = await get_member_public_id(request)
 
     form = await request.form()
     upload = form.get('avatar')
@@ -1112,7 +1122,7 @@ async def profile_avatar_upload(request: Request):
         return RedirectResponse(url=f'/profile/edit?avatar_error=size', status_code=303)
 
     try:
-        webp_bytes = process_avatar_image(contents)
+        webp_bytes = await run_in_threadpool(process_avatar_image, contents)
     except ValueError:
         return RedirectResponse(url=f'/profile/edit?avatar_error=type', status_code=303)
     except Image.DecompressionBombError:
@@ -1124,7 +1134,8 @@ async def profile_avatar_upload(request: Request):
 
     try:
         unique_filename = f"avatars/{public_id or member_id}_{uuid.uuid4().hex}.webp"
-        s3_client.put_object(
+        await run_in_threadpool(
+            s3_client.put_object,
             Bucket=R2_BUCKET_NAME,
             Key=unique_filename,
             Body=webp_bytes,
@@ -1133,7 +1144,7 @@ async def profile_avatar_upload(request: Request):
             CacheControl='public, max-age=31536000, immutable',
         )
         icon_path = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
-        query_d1("UPDATE users SET icon_path = ? WHERE id = ?", [icon_path, member_id])
+        await query_d1("UPDATE users SET icon_path = ? WHERE id = ?", [icon_path, member_id])
         request.session['member_icon_path'] = icon_path  # レス投稿時に使うキャッシュも更新
     except Exception as e:
         print(f"アバターアップロードエラー: {e}")
@@ -1164,16 +1175,16 @@ async def profile_edit_submit(request: Request):
         return render_error('ユーザー名は半角英数字・アンダースコア・日本語(ひらがな/カタカナ/漢字)で2〜20文字にしてください。')
 
     try:
-        existing = query_d1("SELECT id FROM users WHERE username = ? AND id != ?", [username, member_id])
+        existing = await query_d1("SELECT id FROM users WHERE username = ? AND id != ?", [username, member_id])
         if existing:
             return render_error('そのユーザー名はすでに使われています。')
-        query_d1("UPDATE users SET username = ?, bio = ? WHERE id = ?", [username, bio, member_id])
+        await query_d1("UPDATE users SET username = ?, bio = ? WHERE id = ?", [username, bio, member_id])
     except Exception as e:
         print(f"プロフィール更新エラー: {e}")
         return render_error('データベースエラーが発生しました。')
 
     request.session['member_username'] = username
-    public_id = get_member_public_id(request)
+    public_id = await get_member_public_id(request)
     return RedirectResponse(url=f'/profile/{public_id}', status_code=303)
 
 
@@ -1191,7 +1202,7 @@ def _calc_win_rate(wins: int, losses: int, draws: int):
 
 @app.get('/profile/{public_id}')
 async def profile_view(request: Request, public_id: str):
-    res = query_d1(
+    res = await query_d1(
         "SELECT id, username, public_id, bio, icon_path, created_at FROM users WHERE public_id = ?",
         [public_id]
     )
@@ -1201,7 +1212,7 @@ async def profile_view(request: Request, public_id: str):
     member_key = f"member:{profile_user['id']}"
     games = {}
     for g in ('othello', 'chess', 'shogi'):
-        gr = query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, g])
+        gr = await query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, g])
         if gr:
             row = gr[0]
             row['win_rate'] = _calc_win_rate(row.get('wins'), row.get('losses'), row.get('draws'))
@@ -1214,14 +1225,14 @@ async def profile_view(request: Request, public_id: str):
     # 掲示板実績（作成スレッド数・総レス数）
     # threads.user_id には会員のpublic_idが入るが、replies.user_id は運営投稿時に "STAFF"
     # が入る仕様のため、レス数は必ず poster_public_id 側で数える。
-    thread_count_res = query_d1("SELECT COUNT(*) as cnt FROM threads WHERE user_id = ?", [public_id])
-    reply_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE poster_public_id = ?", [public_id])
+    thread_count_res = await query_d1("SELECT COUNT(*) as cnt FROM threads WHERE user_id = ?", [public_id])
+    reply_count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE poster_public_id = ?", [public_id])
     board_stats = {
         'thread_count': thread_count_res[0]['cnt'] if thread_count_res else 0,
         'reply_count': reply_count_res[0]['cnt'] if reply_count_res else 0,
     }
 
-    current_member = get_current_member(request)
+    current_member = await get_current_member(request)
     is_own_profile = bool(current_member) and str(current_member['id']) == str(profile_user['id'])
 
     # フォロー／ブロック／DMの状態（未ログイン・自分自身の場合はすべてFalse）
@@ -1229,10 +1240,10 @@ async def profile_view(request: Request, public_id: str):
     if current_member and not is_own_profile:
         me = current_member['id']
         other = profile_user['id']
-        follow_state['following'] = is_following(me, other)
-        follow_state['followed_by'] = is_following(other, me)
+        follow_state['following'] = await is_following(me, other)
+        follow_state['followed_by'] = await is_following(other, me)
         follow_state['mutual'] = follow_state['following'] and follow_state['followed_by']
-        blocked_res = query_d1(
+        blocked_res = await query_d1(
             "SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ? LIMIT 1",
             [me, other]
         )
@@ -1244,10 +1255,10 @@ async def profile_view(request: Request, public_id: str):
         'board_stats': board_stats,
         'is_own_profile': is_own_profile,
         'current_member': current_member,
-        'follow_counts': get_follow_counts(profile_user['id']),
+        'follow_counts': await get_follow_counts(profile_user['id']),
         'follow_state': follow_state,
         'report_reasons': REPORT_REASONS,
-        'unread_dm_count': get_unread_dm_count(request),
+        'unread_dm_count': await get_unread_dm_count(request),
     })
 
 
@@ -1285,13 +1296,13 @@ async def _game_name(request: Request, default='名無しさん'):
     return name or default
 
 
-def _new_room_code():
+async def _new_room_code():
     alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
     for _ in range(30):
         code = ''.join(random.choice(alphabet) for _ in range(6))
-        if (not query_d1('SELECT 1 FROM othello_rooms WHERE room_code = ? LIMIT 1', [code])
-                and not query_d1('SELECT 1 FROM chess_rooms WHERE room_code = ? LIMIT 1', [code])
-                and not query_d1('SELECT 1 FROM shogi_rooms WHERE room_code = ? LIMIT 1', [code])):
+        if (not await query_d1('SELECT 1 FROM othello_rooms WHERE room_code = ? LIMIT 1', [code])
+                and not await query_d1('SELECT 1 FROM chess_rooms WHERE room_code = ? LIMIT 1', [code])
+                and not await query_d1('SELECT 1 FROM shogi_rooms WHERE room_code = ? LIMIT 1', [code])):
             return code
     return uuid.uuid4().hex[:6].upper()
 
@@ -1305,9 +1316,9 @@ ELO_K = 32
 ELO_DEFAULT_RATING = 1500
 
 
-def _game_member_id(request: Request):
+async def _game_member_id(request: Request):
     """ログイン中ならそのmember idを文字列で返す(ゲストならNone)。部屋作成・参加時にrooms側へ保存しておく。"""
-    member = get_current_member(request)
+    member = await get_current_member(request)
     return str(member['id']) if member else None
 
 
@@ -1315,12 +1326,12 @@ def _rating_key(member_id_str, token: str) -> str:
     return f"member:{member_id_str}" if member_id_str else f"guest:{token}"
 
 
-def _get_or_init_rating(player_key: str, game: str, display_name: str):
-    res = query_d1("SELECT * FROM game_ratings WHERE player_key = ? AND game = ?", [player_key, game])
+async def _get_or_init_rating(player_key: str, game: str, display_name: str):
+    res = await query_d1("SELECT * FROM game_ratings WHERE player_key = ? AND game = ?", [player_key, game])
     if res:
         return res[0]
     now = datetime.utcnow().isoformat()
-    query_d1(
+    await query_d1(
         "INSERT INTO game_ratings (player_key, game, display_name, rating, wins, losses, draws, updated_at) "
         "VALUES (?, ?, ?, ?, 0, 0, 0, ?)",
         [player_key, game, display_name, ELO_DEFAULT_RATING, now]
@@ -1329,11 +1340,11 @@ def _get_or_init_rating(player_key: str, game: str, display_name: str):
             'rating': ELO_DEFAULT_RATING, 'wins': 0, 'losses': 0, 'draws': 0}
 
 
-def apply_game_result(game: str, key_a: str, name_a: str, key_b: str, name_b: str, result_a: float):
+async def apply_game_result(game: str, key_a: str, name_a: str, key_b: str, name_b: str, result_a: float):
 
     try:
-        a = _get_or_init_rating(key_a, game, name_a)
-        b = _get_or_init_rating(key_b, game, name_b)
+        a = await _get_or_init_rating(key_a, game, name_a)
+        b = await _get_or_init_rating(key_b, game, name_b)
         ra, rb = a['rating'], b['rating']
         expected_a = 1 / (1 + 10 ** ((rb - ra) / 400))
         result_b = 1 - result_a
@@ -1353,12 +1364,12 @@ def apply_game_result(game: str, key_a: str, name_a: str, key_b: str, name_b: st
         wa, la, da = bump(a, result_a)
         wb, lb, db = bump(b, result_b)
         now = datetime.utcnow().isoformat()
-        query_d1(
+        await query_d1(
             "UPDATE game_ratings SET rating=?, wins=?, losses=?, draws=?, display_name=?, updated_at=? "
             "WHERE player_key=? AND game=?",
             [new_ra, wa, la, da, name_a, now, key_a, game]
         )
-        query_d1(
+        await query_d1(
             "UPDATE game_ratings SET rating=?, wins=?, losses=?, draws=?, display_name=?, updated_at=? "
             "WHERE player_key=? AND game=?",
             [new_rb, wb, lb, db, name_b, now, key_b, game]
@@ -1821,7 +1832,7 @@ async def archive_list(request: Request):
         page = 1
     per_page = 20
     offset = (page - 1) * per_page
-    rows = query_d1(
+    rows = await query_d1(
         "SELECT * FROM archived_threads_index ORDER BY archived_at DESC LIMIT ? OFFSET ?",
         [per_page, offset]
     )
@@ -1836,8 +1847,11 @@ async def archive_list(request: Request):
 async def archive_view(request: Request, thread_id: int):
     archive_key = f"archive/thread_{thread_id}.json"
     try:
-        obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=archive_key)
-        payload = json.loads(obj['Body'].read().decode('utf-8'))
+        def _fetch_archive():
+            obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=archive_key)
+            return obj['Body'].read()
+        raw = await run_in_threadpool(_fetch_archive)
+        payload = json.loads(raw.decode('utf-8'))
     except Exception as e:
         print(f"過去ログ取得エラー(thread_id={thread_id}): {e}")
         return text_resp("この過去ログは見つかりませんでした", 404)
@@ -1891,7 +1905,7 @@ def _fetch_all_from_supabase(sb_url, sb_key, table, columns):
     return all_rows
 
 
-def _d1_batch_insert(table, columns, rows, chunk_size):
+async def _d1_batch_insert(table, columns, rows, chunk_size):
     """複数行をまとめたINSERT OR IGNOREをchunk_size件ずつD1に流し込む"""
     inserted = 0
     placeholders_one = "(" + ",".join(["?"] * len(columns)) + ")"
@@ -1903,7 +1917,7 @@ def _d1_batch_insert(table, columns, rows, chunk_size):
         for row in chunk:
             for col in columns:
                 params.append(row.get(col))
-        query_d1(sql, params)
+        await query_d1(sql, params)
         inserted += len(chunk)
     return inserted
 
@@ -1925,10 +1939,10 @@ async def migrate_from_supabase(request: Request):
         return json_resp({"error": f"Supabaseからの取得に失敗しました: {e}"}, 500)
 
     try:
-        threads_inserted = _d1_batch_insert(
+        threads_inserted = await _d1_batch_insert(
             'threads', ['id', 'title', 'created_at', 'ip_address'], threads, chunk_size=200
         )
-        replies_inserted = _d1_batch_insert(
+        replies_inserted = await _d1_batch_insert(
             'replies', ['id', 'thread_id', 'author', 'content', 'user_id', 'is_admin', 'image_url', 'ip_address', 'date', 'role'], replies, chunk_size=90
         )
     except Exception as e:
@@ -1954,8 +1968,8 @@ async def migrate_from_supabase_safe(request: Request):
         return json_resp({"error": "X-Supabase-Url / X-Supabase-Key ヘッダーが必要です"}, 400)
 
     try:
-        max_tid_res = query_d1("SELECT MAX(id) as m FROM threads", [])
-        max_rid_res = query_d1("SELECT MAX(id) as m FROM replies", [])
+        max_tid_res = await query_d1("SELECT MAX(id) as m FROM threads", [])
+        max_rid_res = await query_d1("SELECT MAX(id) as m FROM replies", [])
         current_max_tid = (max_tid_res[0]['m'] if max_tid_res and max_tid_res[0]['m'] is not None else 0)
         current_max_rid = (max_rid_res[0]['m'] if max_rid_res and max_rid_res[0]['m'] is not None else 0)
     except Exception as e:
@@ -1978,10 +1992,10 @@ async def migrate_from_supabase_safe(request: Request):
         r['thread_id'] = r['thread_id'] + thread_offset
 
     try:
-        threads_inserted = _d1_batch_insert(
+        threads_inserted = await _d1_batch_insert(
             'threads', ['id', 'title', 'created_at', 'ip_address'], threads, chunk_size=200
         )
-        replies_inserted = _d1_batch_insert(
+        replies_inserted = await _d1_batch_insert(
             'replies', ['id', 'thread_id', 'author', 'content', 'user_id', 'is_admin', 'image_url', 'ip_address', 'date', 'role'], replies, chunk_size=90
         )
     except Exception as e:
@@ -2006,15 +2020,23 @@ async def rebuild_archive_index(request: Request):
     rebuilt = []
     errors = []
 
-    try:
+    def _list_archive_keys():
         paginator = s3_client.get_paginator('list_objects_v2')
         keys = []
         for page in paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix='archive/'):
             for obj in page.get('Contents', []):
                 if obj['Key'].endswith('.json'):
                     keys.append(obj['Key'])
+        return keys
+
+    try:
+        keys = await run_in_threadpool(_list_archive_keys)
     except Exception as e:
         return json_resp({"error": f"R2一覧の取得に失敗しました: {e}"}, 500)
+
+    def _fetch_archive_json(key):
+        obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+        return obj['Body'].read()
 
     for key in keys:
         try:
@@ -2023,14 +2045,14 @@ async def rebuild_archive_index(request: Request):
                 continue
             tid = int(m.group(1))
 
-            obj = s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
-            payload = json.loads(obj['Body'].read().decode('utf-8'))
+            raw = await run_in_threadpool(_fetch_archive_json, key)
+            payload = json.loads(raw.decode('utf-8'))
 
             title = payload.get('thread', {}).get('title', '(無題)')
             reply_count = len(payload.get('replies', []))
             archived_at = payload.get('archived_at') or datetime.utcnow().isoformat()
 
-            query_d1(
+            await query_d1(
                 "INSERT OR REPLACE INTO archived_threads_index (thread_id, title, reply_count, archived_at) VALUES (?, ?, ?, ?)",
                 [tid, title, reply_count, archived_at]
             )
@@ -2053,7 +2075,7 @@ async def archive_old_threads(request: Request):
     errors = []
 
     try:
-        all_threads = query_d1("SELECT * FROM threads", []) or []
+        all_threads = await query_d1("SELECT * FROM threads", []) or []
     except Exception as e:
         return json_resp({"error": f"スレッド一覧の取得に失敗しました: {e}"}, 500)
 
@@ -2063,7 +2085,7 @@ async def archive_old_threads(request: Request):
             continue
 
         try:
-            last_reply_res = query_d1(
+            last_reply_res = await query_d1(
                 "SELECT date FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1",
                 [tid]
             )
@@ -2071,7 +2093,7 @@ async def archive_old_threads(request: Request):
             if not last_activity or last_activity > cutoff:
                 continue
 
-            all_replies = query_d1(
+            all_replies = await query_d1(
                 "SELECT * FROM replies WHERE thread_id = ? ORDER BY id ASC",
                 [tid]
             ) or []
@@ -2083,17 +2105,18 @@ async def archive_old_threads(request: Request):
             }
 
             archive_key = f"archive/thread_{tid}.json"
-            s3_client.put_object(
+            await run_in_threadpool(
+                s3_client.put_object,
                 Bucket=R2_BUCKET_NAME,
                 Key=archive_key,
                 Body=json.dumps(archive_payload, ensure_ascii=False, indent=2).encode('utf-8'),
                 ContentType='application/json'
             )
 
-            query_d1("DELETE FROM replies WHERE thread_id = ?", [tid])
-            query_d1("DELETE FROM threads WHERE id = ?", [tid])
+            await query_d1("DELETE FROM replies WHERE thread_id = ?", [tid])
+            await query_d1("DELETE FROM threads WHERE id = ?", [tid])
 
-            query_d1(
+            await query_d1(
                 "INSERT OR REPLACE INTO archived_threads_index (thread_id, title, reply_count, archived_at) VALUES (?, ?, ?, ?)",
                 [tid, t.get('title', '(無題)'), len(all_replies), datetime.utcnow().isoformat()]
             )
@@ -2120,10 +2143,10 @@ async def game_lobby(request: Request):
 async def game_create(request: Request):
     token = _game_token(request)
     name = await _game_name(request)
-    member_id = _game_member_id(request)
-    code = _new_room_code()
+    member_id = await _game_member_id(request)
+    code = await _new_room_code()
     now = datetime.utcnow().isoformat()
-    query_d1(
+    await query_d1(
         '''INSERT INTO othello_rooms
            (room_code, black_token, black_name, black_member_id, white_token, white_name, board, turn, status, winner, created_at, updated_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
@@ -2136,7 +2159,7 @@ async def game_create(request: Request):
 @app.get('/game/{room_code}')
 async def game_room(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return RedirectResponse(url='/game')
     room = rows[0]
@@ -2146,12 +2169,12 @@ async def game_room(request: Request, room_code: str):
     # 招待リンクを踏んだ2人目をその場で自動参加させる
     if my_color is None and not room.get('white_token') and room.get('black_token') != token:
         name = await _game_name(request)
-        query_d1(
+        await query_d1(
             'UPDATE othello_rooms SET white_token=?,white_name=?,white_member_id=?,status=?,updated_at=? '
             'WHERE room_code=? AND white_token IS NULL',
-            [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+            [token, name, await _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
         )
-        rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
+        rows = await query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
         room = rows[0]
         my_color = 'W' if room.get('white_token') == token else my_color
 
@@ -2162,7 +2185,7 @@ async def game_room(request: Request, room_code: str):
 @app.post('/game/{room_code}/join')
 async def game_join(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     room = rows[0]
@@ -2172,16 +2195,16 @@ async def game_join(request: Request, room_code: str):
         return {'success': True}
     if room.get('white_token'):
         return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
-    query_d1(
+    await query_d1(
         'UPDATE othello_rooms SET white_token=?,white_name=?,white_member_id=?,status=?,updated_at=? WHERE room_code=?',
-        [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+        [token, name, await _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
 
 @app.get('/api/game/{room_code}/state')
 async def game_state(request: Request, room_code: str):
-    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    rows = await query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
         return json_resp({'error': 'not found'}, 404)
     r = rows[0]
@@ -2213,7 +2236,7 @@ async def game_state(request: Request, room_code: str):
 @app.post('/game/{room_code}/move')
 async def game_move(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
@@ -2248,11 +2271,11 @@ async def game_move(request: Request, room_code: str):
             black_key = _rating_key(r.get('black_member_id'), r.get('black_token'))
             white_key = _rating_key(r.get('white_member_id'), r.get('white_token'))
             result_black = 1 if winner == 'B' else (0 if winner == 'W' else 0.5)
-            apply_game_result('othello', black_key, r.get('black_name') or '名無しさん',
+            await apply_game_result('othello', black_key, r.get('black_name') or '名無しさん',
                                white_key, r.get('white_name') or '名無しさん', result_black)
 
     now = datetime.utcnow().isoformat()
-    query_d1(
+    await query_d1(
         'UPDATE othello_rooms SET board=?,turn=?,status=?,winner=?,updated_at=? WHERE room_code=? AND turn=?',
         [new_board, next_turn, status, winner, now, code, player]
     )
@@ -2269,10 +2292,10 @@ async def chess_lobby(request: Request):
 async def chess_create(request: Request):
     token = _game_token(request)
     name = await _game_name(request)
-    member_id = _game_member_id(request)
-    code = _new_room_code()
+    member_id = await _game_member_id(request)
+    code = await _new_room_code()
     now = datetime.utcnow().isoformat()
-    query_d1(
+    await query_d1(
         '''INSERT INTO chess_rooms
            (room_code, white_token, white_name, white_member_id, black_token, black_name, board, turn, status, winner, in_check, castling, en_passant, created_at, updated_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
@@ -2285,7 +2308,7 @@ async def chess_create(request: Request):
 @app.get('/chess/{room_code}')
 async def chess_room(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return RedirectResponse(url='/chess')
     r = rows[0]
@@ -2295,12 +2318,12 @@ async def chess_room(request: Request, room_code: str):
     # 招待リンクを踏んだ2人目をその場で自動参加させる
     if my is None and not r.get('black_token') and r.get('white_token') != token:
         name = await _game_name(request)
-        query_d1(
+        await query_d1(
             'UPDATE chess_rooms SET black_token=?,black_name=?,black_member_id=?,status=?,updated_at=? '
             'WHERE room_code=? AND black_token IS NULL',
-            [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+            [token, name, await _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
         )
-        rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
+        rows = await query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
         r = rows[0]
         my = 'b' if r.get('black_token') == token else my
 
@@ -2311,7 +2334,7 @@ async def chess_room(request: Request, room_code: str):
 @app.post('/chess/{room_code}/join')
 async def chess_join(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
@@ -2321,16 +2344,16 @@ async def chess_join(request: Request, room_code: str):
         return {'success': True}
     if r.get('black_token'):
         return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
-    query_d1(
+    await query_d1(
         'UPDATE chess_rooms SET black_token=?,black_name=?,black_member_id=?,status=?,updated_at=? WHERE room_code=?',
-        [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+        [token, name, await _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
 
 @app.get('/api/chess/{room_code}/state')
 async def chess_state(request: Request, room_code: str):
-    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    rows = await query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
         return json_resp({'error': 'not found'}, 404)
     r = rows[0]
@@ -2368,7 +2391,7 @@ async def chess_state(request: Request, room_code: str):
 @app.post('/chess/{room_code}/move')
 async def chess_move(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
@@ -2433,13 +2456,13 @@ async def chess_move(request: Request, room_code: str):
         white_key = _rating_key(r.get('white_member_id'), r.get('white_token'))
         black_key = _rating_key(r.get('black_member_id'), r.get('black_token'))
         result_white = 0.5 if winner == 'draw' else (1 if winner == 'w' else 0)
-        apply_game_result('chess', white_key, r.get('white_name') or '名無しさん',
+        await apply_game_result('chess', white_key, r.get('white_name') or '名無しさん',
                            black_key, r.get('black_name') or '名無しさん', result_white)
 
     new_board_json = json.dumps(board)
     new_ep_json = json.dumps(new_en_passant) if new_en_passant else None
     now = datetime.utcnow().isoformat()
-    query_d1(
+    await query_d1(
         'UPDATE chess_rooms SET board=?,turn=?,updated_at=?,in_check=?,status=?,winner=?,castling=?,en_passant=? WHERE room_code=? AND turn=?',
         [new_board_json, next_color, now, (next_color if next_in_check else None), new_status, winner, new_castling, new_ep_json, code, color]
     )
@@ -2456,10 +2479,10 @@ async def shogi_lobby(request: Request):
 async def shogi_create(request: Request):
     token = _game_token(request)
     name = await _game_name(request)
-    member_id = _game_member_id(request)
-    code = _new_room_code()
+    member_id = await _game_member_id(request)
+    code = await _new_room_code()
     now = datetime.utcnow().isoformat()
-    query_d1(
+    await query_d1(
         '''INSERT INTO shogi_rooms
            (room_code, sente_token, sente_name, sente_member_id, gote_token, gote_name, board, hands, turn, status, winner, in_check, created_at, updated_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
@@ -2472,7 +2495,7 @@ async def shogi_create(request: Request):
 @app.get('/shogi/{room_code}')
 async def shogi_room(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return RedirectResponse(url='/shogi')
     r = rows[0]
@@ -2482,12 +2505,12 @@ async def shogi_room(request: Request, room_code: str):
     # 招待リンクを踏んだ2人目をその場で自動参加させる
     if my is None and not r.get('gote_token') and r.get('sente_token') != token:
         name = await _game_name(request)
-        query_d1(
+        await query_d1(
             'UPDATE shogi_rooms SET gote_token=?,gote_name=?,gote_member_id=?,status=?,updated_at=? '
             'WHERE room_code=? AND gote_token IS NULL',
-            [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+            [token, name, await _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
         )
-        rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
+        rows = await query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
         r = rows[0]
         my = 'g' if r.get('gote_token') == token else my
 
@@ -2498,7 +2521,7 @@ async def shogi_room(request: Request, room_code: str):
 @app.post('/shogi/{room_code}/join')
 async def shogi_join(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
@@ -2508,16 +2531,16 @@ async def shogi_join(request: Request, room_code: str):
         return {'success': True}
     if r.get('gote_token'):
         return json_resp({'success': False, 'error': 'この部屋は満員です'}, 409)
-    query_d1(
+    await query_d1(
         'UPDATE shogi_rooms SET gote_token=?,gote_name=?,gote_member_id=?,status=?,updated_at=? WHERE room_code=?',
-        [token, name, _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
+        [token, name, await _game_member_id(request), 'playing', datetime.utcnow().isoformat(), code]
     )
     return {'success': True}
 
 
 @app.get('/api/shogi/{room_code}/state')
 async def shogi_state(request: Request, room_code: str):
-    rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
+    rows = await query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [room_code.upper()])
     if not rows:
         return json_resp({'error': 'not found'}, 404)
     r = rows[0]
@@ -2554,7 +2577,7 @@ async def shogi_state(request: Request, room_code: str):
 @app.post('/shogi/{room_code}/move')
 async def shogi_move(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
@@ -2628,11 +2651,11 @@ async def shogi_move(request: Request, room_code: str):
         sente_key = _rating_key(r.get('sente_member_id'), r.get('sente_token'))
         gote_key = _rating_key(r.get('gote_member_id'), r.get('gote_token'))
         result_sente = 1 if winner == 's' else 0
-        apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
+        await apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
                            gote_key, r.get('gote_name') or '名無しさん', result_sente)
 
     now = datetime.utcnow().isoformat()
-    query_d1(
+    await query_d1(
         'UPDATE shogi_rooms SET board=?,hands=?,turn=?,updated_at=?,in_check=?,status=?,winner=? WHERE room_code=? AND turn=?',
         [json.dumps(board), json.dumps(hands), next_color, now, (next_color if next_in_check else None), new_status, winner, code, color]
     )
@@ -2642,7 +2665,7 @@ async def shogi_move(request: Request, room_code: str):
 @app.post('/shogi/{room_code}/drop')
 async def shogi_drop(request: Request, room_code: str):
     code = room_code.upper()
-    rows = query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
+    rows = await query_d1('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
     if not rows:
         return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
     r = rows[0]
@@ -2699,11 +2722,11 @@ async def shogi_drop(request: Request, room_code: str):
         sente_key = _rating_key(r.get('sente_member_id'), r.get('sente_token'))
         gote_key = _rating_key(r.get('gote_member_id'), r.get('gote_token'))
         result_sente = 1 if winner == 's' else 0
-        apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
+        await apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
                            gote_key, r.get('gote_name') or '名無しさん', result_sente)
 
     now = datetime.utcnow().isoformat()
-    query_d1(
+    await query_d1(
         'UPDATE shogi_rooms SET board=?,hands=?,turn=?,updated_at=?,in_check=?,status=?,winner=? WHERE room_code=? AND turn=?',
         [json.dumps(new_board), json.dumps(hands), next_color, now, (next_color if next_in_check else None), new_status, winner, code, color]
     )
@@ -2741,7 +2764,7 @@ def _parse_tags(raw_json):
         return []
 
 
-def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
+async def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
     """threads を、レス数・最終更新日時・現在の閲覧人数・スレ主の表示名/アイコンつきで取得する共通ヘルパー"""
     active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
 
@@ -2768,13 +2791,13 @@ def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, of
         sql += " LIMIT ? OFFSET ?"
         params += [limit, offset or 0]
 
-    return query_d1(sql, params)
+    return await query_d1(sql, params)
 
 
 @app.api_route('/', methods=['GET', 'HEAD'])
 async def index(request: Request):
     client_ip = get_client_ip(request)
-    if is_banned_request(request, client_ip):
+    if await is_banned_request(request, client_ip):
         return text_resp("あなたはアクセス禁止（BAN）されています。", 403)
 
     if request.method == 'HEAD':
@@ -2815,7 +2838,7 @@ async def index(request: Request):
             where_params.append(f'%"{tag}"%')
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
-        threads = _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=per_page, offset=start_index)
+        threads = await _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=per_page, offset=start_index)
 
         has_next = len(threads) == per_page
 
@@ -2836,7 +2859,7 @@ async def index(request: Request):
                 if any(int(pt['id']) == pid for pt in pinned_threads):
                     continue
                 try:
-                    pinned_res = _fetch_threads_with_stats("WHERE t.id = ?", [pid], order_sql)
+                    pinned_res = await _fetch_threads_with_stats("WHERE t.id = ?", [pid], order_sql)
                     if pinned_res:
                         pinned_threads.append(pinned_res[0])
                 except Exception as pe:
@@ -2854,7 +2877,7 @@ async def index(request: Request):
             t['tags_list'] = _parse_tags(t.get('tags'))
 
         try:
-            admin_res = query_d1("SELECT message FROM admin_messages WHERE id = ?", [1])
+            admin_res = await query_d1("SELECT message FROM admin_messages WHERE id = ?", [1])
             admin_message = admin_res[0]['message'] if admin_res else "ここに管理者の一言が表示されます。"
         except Exception as ae:
             admin_message = "管理者の一言の取得に失敗しました。"
@@ -2871,16 +2894,16 @@ async def index(request: Request):
         user_token = str(uuid.uuid4())
         is_new_user = True
 
-    active_count = update_and_get_user_counts(user_token, "lobby")
+    active_count = await update_and_get_user_counts(user_token, "lobby")
     is_admin_user = can_manage_board(request)
-    current_member = get_current_member(request)
+    current_member = await get_current_member(request)
 
     response = templates.TemplateResponse(request, 'index.html', {
         'threads': threads,
         'admin_message': admin_message,
         'is_admin_user': is_admin_user,
         'current_member': current_member,
-        'unread_dm_count': get_unread_dm_count(request),
+        'unread_dm_count': await get_unread_dm_count(request),
         'active_count': active_count,
         'current_page': page,
         'has_next': has_next,
@@ -2914,7 +2937,7 @@ async def update_admin_message(request: Request):
     message = form.get('message')
     if message:
         try:
-            query_d1("UPDATE admin_messages SET message = ? WHERE id = ?", [message, 1])
+            await query_d1("UPDATE admin_messages SET message = ? WHERE id = ?", [message, 1])
         except Exception as e:
             print(f"メッセージ更新エラー: {e}")
     return RedirectResponse(url='/', status_code=303)
@@ -2923,7 +2946,7 @@ async def update_admin_message(request: Request):
 @app.post('/create_thread')
 async def create_thread(request: Request):
     client_ip = get_client_ip(request)
-    if is_banned_request(request, client_ip):
+    if await is_banned_request(request, client_ip):
         return json_resp({"error": "あなたはアクセス禁止（BAN）されています。"}, 403)
 
     if not is_member_logged_in(request):
@@ -2964,12 +2987,12 @@ async def create_thread(request: Request):
     LAST_THREAD_TIMES[client_ip] = now
 
     try:
-        member_public_id = get_member_public_id(request)
-        query_d1(
+        member_public_id = await get_member_public_id(request)
+        await query_d1(
             "INSERT INTO threads (title, ip_address, category, user_id, tags) VALUES (?, ?, ?, ?, ?)",
             [title, client_ip, category, member_public_id, tags_json]
         )
-        res = query_d1("SELECT * FROM threads ORDER BY id DESC LIMIT 1")
+        res = await query_d1("SELECT * FROM threads ORDER BY id DESC LIMIT 1")
         new_thread = res[0] if res else None
         if new_thread and not new_thread.get('category'):
             new_thread['category'] = category
@@ -2986,7 +3009,7 @@ async def create_thread(request: Request):
 @app.get('/thread/{thread_id}/get_older_replies')
 async def get_older_replies(request: Request, thread_id: int):
     client_ip = get_client_ip(request)
-    if is_banned_request(request, client_ip):
+    if await is_banned_request(request, client_ip):
         return json_resp({"success": False, "error": "Banned"}, 403)
 
     before_id_raw = request.query_params.get('before_id')
@@ -2998,11 +3021,11 @@ async def get_older_replies(request: Request, thread_id: int):
         return json_resp({"success": False, "error": "before_idが必要です", "replies": [], "has_more": False}, 400)
 
     try:
-        count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ? AND id < ?", [thread_id, before_id])
+        count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ? AND id < ?", [thread_id, before_id])
         count_before = count_res[0]['cnt'] if count_res else 0
 
         LOAD_LIMIT = 300
-        older_res = query_d1(
+        older_res = await query_d1(
             """SELECT r.*, u.icon_path AS icon_path
                FROM replies r
                LEFT JOIN users u ON u.public_id = r.poster_public_id
@@ -3013,7 +3036,7 @@ async def get_older_replies(request: Request, thread_id: int):
         older_replies = list(reversed(older_res)) if older_res else []
         start_num = count_before - len(older_replies) + 1
 
-        thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
+        thread_res = await query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
         op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
 
         formatted_replies = []
@@ -3049,7 +3072,7 @@ async def get_older_replies(request: Request, thread_id: int):
 @app.get('/thread/{thread_id}/get_new_replies')
 async def get_new_replies(request: Request, thread_id: int):
     client_ip = get_client_ip(request)
-    if is_banned_request(request, client_ip):
+    if await is_banned_request(request, client_ip):
         return json_resp({"success": False, "error": "Banned"}, 403)
 
     try:
@@ -3057,7 +3080,7 @@ async def get_new_replies(request: Request, thread_id: int):
     except (TypeError, ValueError):
         after_id = 0
     try:
-        replies = query_d1(
+        replies = await query_d1(
             """SELECT r.*, u.icon_path AS icon_path
                FROM replies r
                LEFT JOIN users u ON u.public_id = r.poster_public_id
@@ -3068,10 +3091,10 @@ async def get_new_replies(request: Request, thread_id: int):
         if not replies:
             replies = []
 
-        thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
+        thread_res = await query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
         op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
 
-        total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
+        total_count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
         total_reply_count = total_count_res[0]['cnt'] if total_count_res else 0
         start_num = total_reply_count - len(replies) + 1
 
@@ -3119,7 +3142,7 @@ async def get_new_replies(request: Request, thread_id: int):
 @app.api_route('/thread/{thread_id}', methods=['GET', 'POST'])
 async def thread_view(request: Request, thread_id: int):
     client_ip = get_client_ip(request)
-    if is_banned_request(request, client_ip):
+    if await is_banned_request(request, client_ip):
         return text_resp("あなたはアクセス禁止（BAN）されています。", 403)
 
     if request.method == 'POST':
@@ -3160,10 +3183,10 @@ async def thread_view(request: Request, thread_id: int):
                 author_input = html.escape(name_part) or "名無しさん"
             else:
                 author_input = html.escape(author_input)
-            member_public_id = get_member_public_id(request)
+            member_public_id = await get_member_public_id(request)
             user_id = member_public_id if member_public_id else get_daily_user_id(client_ip)
 
-        poster_public_id = get_member_public_id(request)
+        poster_public_id = await get_member_public_id(request)
 
         content = html.escape(content)
         content = re.sub(r'&gt;&gt;(\d+)', r'>>\1', content)
@@ -3182,7 +3205,10 @@ async def thread_view(request: Request, thread_id: int):
                 orig_filename = secure_filename(upload.filename)
                 ext = os.path.splitext(orig_filename)[1]
                 unique_filename = f"{uuid.uuid4()}{ext}"
-                s3_client.upload_fileobj(upload.file, R2_BUCKET_NAME, unique_filename, ExtraArgs={'ContentType': upload.content_type})
+                await run_in_threadpool(
+                    s3_client.upload_fileobj, upload.file, R2_BUCKET_NAME, unique_filename,
+                    ExtraArgs={'ContentType': upload.content_type}
+                )
                 image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
             except Exception as e:
                 print(f"R2 Upload Error: {e}")
@@ -3199,13 +3225,13 @@ async def thread_view(request: Request, thread_id: int):
                 return json_resp({"success": False, "duplicate": True, "error": "同じ内容が連続して送信されたため、重複投稿を防止しました。"}, 409)
 
             try:
-                query_d1(
+                await query_d1(
                     """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address, poster_public_id) 
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip, poster_public_id]
                 )
                 LAST_REPLY_SIGNATURES[reply_signature] = signature_now
-                res = query_d1("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
+                res = await query_d1("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
                 new_reply = res[0] if res else None
                 if new_reply:
                     if new_reply.get('date'):
@@ -3220,21 +3246,21 @@ async def thread_view(request: Request, thread_id: int):
                         new_reply['content'] = content_str
 
                     try:
-                        thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
+                        thread_res = await query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
                         op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
                         new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
                     except Exception as ope:
                         new_reply['is_op'] = False
 
                     try:
-                        total_count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
+                        total_count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
                         new_reply['post_num'] = total_count_res[0]['cnt'] if total_count_res else None
                     except Exception:
                         new_reply['post_num'] = None
 
                     # アバターURL: 投稿者が会員ならセッションキャッシュから取得(DB再問い合わせ不要)。
                     # ゲスト/STAFF投稿の場合はNoneのままでフロント側がフォールバック表示する。
-                    new_reply['icon_path'] = get_member_icon_path(request) if poster_public_id else None
+                    new_reply['icon_path'] = await get_member_icon_path(request) if poster_public_id else None
 
                     await manager.broadcast(thread_id, new_reply)
                     return {"success": True, "reply": new_reply}
@@ -3244,19 +3270,19 @@ async def thread_view(request: Request, thread_id: int):
         return json_resp({"success": False, "error": "書き込み内容が空です。"}, 400)
 
     try:
-        thread_res = query_d1("SELECT * FROM threads WHERE id = ?", [thread_id])
+        thread_res = await query_d1("SELECT * FROM threads WHERE id = ?", [thread_id])
         if not thread_res:
             return text_resp("スレッドが見つかりません", 404)
         thread = thread_res[0]
         thread['tags_list'] = _parse_tags(thread.get('tags'))
 
         # 合計レス数を取得(通し番号の計算とページングに使う)
-        count_res = query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
+        count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
         total_reply_count = count_res[0]['cnt'] if count_res else 0
 
         # D1のAPI応答サイズ制限対策として、直近300件だけ取得する(古い順に並べ直す)
         RECENT_REPLIES_LIMIT = 300
-        replies_res = query_d1(
+        replies_res = await query_d1(
             """SELECT r.*, u.icon_path AS icon_path
                FROM replies r
                LEFT JOIN users u ON u.public_id = r.poster_public_id
@@ -3299,9 +3325,9 @@ async def thread_view(request: Request, thread_id: int):
         is_new_user = True
 
     location_key = f"thread_{thread_id}"
-    active_count = update_and_get_user_counts(user_token, location_key)
+    active_count = await update_and_get_user_counts(user_token, location_key)
 
-    current_member = get_current_member(request)
+    current_member = await get_current_member(request)
 
     response = templates.TemplateResponse(request, 'thread.html', {
         'thread': thread,
@@ -3311,7 +3337,7 @@ async def thread_view(request: Request, thread_id: int):
         'op_user_id': op_user_id,
         'current_member': current_member,
         'report_reasons': REPORT_REASONS,
-        'unread_dm_count': get_unread_dm_count(request),
+        'unread_dm_count': await get_unread_dm_count(request),
         'current_member_json': json.dumps(current_member, ensure_ascii=False) if current_member else 'null',
     })
 
@@ -3326,7 +3352,7 @@ async def delete_thread(request: Request, thread_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        query_d1("DELETE FROM threads WHERE id = ?", [thread_id])
+        await query_d1("DELETE FROM threads WHERE id = ?", [thread_id])
     except Exception as e:
         print(f"スレッド削除エラー: {e}")
     return RedirectResponse(url='/', status_code=303)
@@ -3337,7 +3363,7 @@ async def delete_reply(request: Request, thread_id: int, reply_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        query_d1(
+        await query_d1(
             """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
                WHERE id = ? AND thread_id = ?""",
             ['あぼーん', 'この書き込みは管理員によって削除されました。', '???', 0, '', reply_id, thread_id]
@@ -3352,20 +3378,20 @@ async def ban_user(request: Request, thread_id: int, reply_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        reply_res = query_d1("SELECT ip_address, poster_public_id FROM replies WHERE id = ?", [reply_id])
+        reply_res = await query_d1("SELECT ip_address, poster_public_id FROM replies WHERE id = ?", [reply_id])
         if reply_res:
             b_ip = reply_res[0].get('ip_address')
             b_public_id = reply_res[0].get('poster_public_id')
             if b_ip:
-                query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
+                await query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
             if b_public_id:
                 # ログイン中の会員による投稿の場合は、IPだけでなくアカウント自体もBANする。
                 # IPアドレスが変わっても(スマホの回線切り替え等)このアカウントでの投稿はブロックされる。
-                query_d1(
+                await query_d1(
                     "INSERT OR IGNORE INTO banned_members (public_id, reason, banned_at) VALUES (?, ?, ?)",
                     [b_public_id, f'reply_id={reply_id}', datetime.utcnow().isoformat()]
                 )
-            query_d1(
+            await query_d1(
                 """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
                    WHERE id = ?""",
                 ['あぼーん', 'この書き込みは管理員によってBANされました。', '???', 0, '', reply_id]
@@ -3382,21 +3408,21 @@ async def ban_thread_owner(request: Request, thread_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        thread_res = query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
+        thread_res = await query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
         if thread_res:
             owner_ip = thread_res[0].get('ip_address')
             owner_public_id = thread_res[0].get('user_id')
             if owner_ip:
-                query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [owner_ip])
+                await query_d1("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [owner_ip])
             if owner_public_id and owner_public_id != 'STAFF':
                 # スレッド作成には必ずログインが必要なため、user_idは常に会員のpublic_id。
-                query_d1(
+                await query_d1(
                     "INSERT OR IGNORE INTO banned_members (public_id, reason, banned_at) VALUES (?, ?, ?)",
                     [owner_public_id, f'thread_id={thread_id}', datetime.utcnow().isoformat()]
                 )
-            query_d1("UPDATE threads SET title = ? WHERE id = ?", ['【このスレッドは管理員によってBANされました】', thread_id])
-            query_d1("DELETE FROM replies WHERE thread_id = ?", [thread_id])
-            query_d1(
+            await query_d1("UPDATE threads SET title = ? WHERE id = ?", ['【このスレッドは管理員によってBANされました】', thread_id])
+            await query_d1("DELETE FROM replies WHERE thread_id = ?", [thread_id])
+            await query_d1(
                 """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 [thread_id, 'あぼーん', 'このスレッドの作成者はBANされました。', '???', 0, None, '', owner_ip]
@@ -3465,34 +3491,34 @@ REPORT_REASONS = {
 }
 
 
-def _user_id_by_public_id(public_id: str):
+async def _user_id_by_public_id(public_id: str):
     """public_id から users.id を引く。存在しなければ None。"""
     if not public_id:
         return None
-    res = query_d1("SELECT id FROM users WHERE public_id = ?", [public_id])
+    res = await query_d1("SELECT id FROM users WHERE public_id = ?", [public_id])
     return res[0]['id'] if res else None
 
 
-def _require_member(request: Request):
+async def _require_member(request: Request):
     """ログイン必須APIの共通チェック。(member_id, エラーレスポンス) を返す。"""
     if not is_member_logged_in(request):
         return None, json_resp({"success": False, "error": "ログインが必要です。"}, 401)
-    if is_banned_request(request, get_client_ip(request)):
+    if await is_banned_request(request, get_client_ip(request)):
         return None, json_resp({"success": False, "error": "この操作は許可されていません。"}, 403)
     return request.session.get('member_id'), None
 
 
-def is_following(follower_id: int, followee_id: int) -> bool:
-    res = query_d1(
+async def is_following(follower_id: int, followee_id: int) -> bool:
+    res = await query_d1(
         "SELECT 1 AS ok FROM follows WHERE follower_id = ? AND followee_id = ? LIMIT 1",
         [follower_id, followee_id]
     )
     return bool(res)
 
 
-def is_mutual_follow(user_a: int, user_b: int) -> bool:
+async def is_mutual_follow(user_a: int, user_b: int) -> bool:
     """相互フォローかどうかを1クエリで判定する。"""
-    res = query_d1(
+    res = await query_d1(
         "SELECT COUNT(*) AS cnt FROM follows "
         "WHERE (follower_id = ? AND followee_id = ?) OR (follower_id = ? AND followee_id = ?)",
         [user_a, user_b, user_b, user_a]
@@ -3500,9 +3526,9 @@ def is_mutual_follow(user_a: int, user_b: int) -> bool:
     return bool(res) and res[0]['cnt'] >= 2
 
 
-def is_blocked_between(user_a: int, user_b: int) -> bool:
+async def is_blocked_between(user_a: int, user_b: int) -> bool:
     """どちらか一方でもブロックしていればTrue（双方向に遮断する）。"""
-    res = query_d1(
+    res = await query_d1(
         "SELECT COUNT(*) AS cnt FROM blocks "
         "WHERE (blocker_id = ? AND blocked_id = ?) OR (blocker_id = ? AND blocked_id = ?)",
         [user_a, user_b, user_b, user_a]
@@ -3510,19 +3536,19 @@ def is_blocked_between(user_a: int, user_b: int) -> bool:
     return bool(res) and res[0]['cnt'] > 0
 
 
-def can_dm(sender_id: int, target_id: int) -> tuple[bool, str]:
+async def can_dm(sender_id: int, target_id: int) -> tuple[bool, str]:
     """DM送信可否を判定する。(可否, 不可の理由) を返す。"""
     if sender_id == target_id:
         return False, "自分自身にDMを送ることはできません。"
-    if is_blocked_between(sender_id, target_id):
+    if await is_blocked_between(sender_id, target_id):
         return False, "この相手とはやり取りできません。"
-    if not is_mutual_follow(sender_id, target_id):
+    if not await is_mutual_follow(sender_id, target_id):
         return False, "DMは相互フォローの相手にのみ送信できます。"
     return True, ""
 
 
-def get_follow_counts(user_id: int) -> dict:
-    res = query_d1(
+async def get_follow_counts(user_id: int) -> dict:
+    res = await query_d1(
         "SELECT "
         " (SELECT COUNT(*) FROM follows WHERE followee_id = ?) AS followers, "
         " (SELECT COUNT(*) FROM follows WHERE follower_id = ?) AS following",
@@ -3533,13 +3559,13 @@ def get_follow_counts(user_id: int) -> dict:
     return {'followers': res[0]['followers'], 'following': res[0]['following']}
 
 
-def get_unread_dm_count(request: Request) -> int:
+async def get_unread_dm_count(request: Request) -> int:
     """未読DM件数。未ログイン時は0。ヘッダーのバッジ表示に使う。"""
     if not is_member_logged_in(request):
         return 0
     member_id = request.session.get('member_id')
     try:
-        res = query_d1(
+        res = await query_d1(
             "SELECT COUNT(*) AS cnt FROM dm_messages m "
             "JOIN dm_conversations c ON c.id = m.conversation_id "
             "WHERE (c.user_a_id = ? OR c.user_b_id = ?) "
@@ -3552,18 +3578,18 @@ def get_unread_dm_count(request: Request) -> int:
         return 0
 
 
-def _get_or_create_conversation(user_a: int, user_b: int) -> int:
+async def _get_or_create_conversation(user_a: int, user_b: int) -> int:
     """2人分の会話IDを返す。無ければ作る。user_a_id < user_b_id で正規化する。"""
     lo, hi = (user_a, user_b) if user_a < user_b else (user_b, user_a)
-    res = query_d1(
+    res = await query_d1(
         "SELECT id FROM dm_conversations WHERE user_a_id = ? AND user_b_id = ?", [lo, hi]
     )
     if res:
         return res[0]['id']
-    query_d1(
+    await query_d1(
         "INSERT INTO dm_conversations (user_a_id, user_b_id) VALUES (?, ?)", [lo, hi]
     )
-    res = query_d1(
+    res = await query_d1(
         "SELECT id FROM dm_conversations WHERE user_a_id = ? AND user_b_id = ?", [lo, hi]
     )
     return res[0]['id'] if res else None
@@ -3626,27 +3652,27 @@ async def dm_ws(websocket: WebSocket):
 # ---------------------------------------------------------------------
 @app.post('/api/follow/{public_id}')
 async def api_follow_toggle(request: Request, public_id: str):
-    member_id, err = _require_member(request)
+    member_id, err = await _require_member(request)
     if err:
         return err
 
-    target_id = _user_id_by_public_id(public_id)
+    target_id = await _user_id_by_public_id(public_id)
     if not target_id:
         return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
     if target_id == member_id:
         return json_resp({"success": False, "error": "自分自身はフォローできません。"}, 400)
-    if is_blocked_between(member_id, target_id):
+    if await is_blocked_between(member_id, target_id):
         return json_resp({"success": False, "error": "この相手はフォローできません。"}, 403)
 
     try:
-        if is_following(member_id, target_id):
-            query_d1(
+        if await is_following(member_id, target_id):
+            await query_d1(
                 "DELETE FROM follows WHERE follower_id = ? AND followee_id = ?",
                 [member_id, target_id]
             )
             following = False
         else:
-            query_d1(
+            await query_d1(
                 "INSERT INTO follows (follower_id, followee_id) VALUES (?, ?)",
                 [member_id, target_id]
             )
@@ -3655,18 +3681,18 @@ async def api_follow_toggle(request: Request, public_id: str):
         print(f"フォロー処理エラー: {e}")
         return json_resp({"success": False, "error": "処理に失敗しました。"}, 500)
 
-    counts = get_follow_counts(target_id)
+    counts = await get_follow_counts(target_id)
     return json_resp({
         "success": True,
         "following": following,
-        "mutual": is_mutual_follow(member_id, target_id),
+        "mutual": await is_mutual_follow(member_id, target_id),
         "followers_count": counts['followers'],
     })
 
 
-def _render_follow_list(request: Request, public_id: str, mode: str):
+async def _render_follow_list(request: Request, public_id: str, mode: str):
     """mode: 'followers' or 'following'"""
-    target = query_d1(
+    target = await query_d1(
         "SELECT id, username, public_id FROM users WHERE public_id = ?", [public_id]
     )
     if not target:
@@ -3685,25 +3711,25 @@ def _render_follow_list(request: Request, public_id: str, mode: str):
             "FROM follows f JOIN users u ON u.id = f.followee_id "
             "WHERE f.follower_id = ? ORDER BY f.id DESC LIMIT 200"
         )
-    users = query_d1(sql, [target['id']]) or []
+    users = await query_d1(sql, [target['id']]) or []
 
     return templates.TemplateResponse(request, 'follow_list.html', {
         'profile_user': target,
         'mode': mode,
         'users': users,
-        'counts': get_follow_counts(target['id']),
-        'unread_dm_count': get_unread_dm_count(request),
+        'counts': await get_follow_counts(target['id']),
+        'unread_dm_count': await get_unread_dm_count(request),
     })
 
 
 @app.get('/profile/{public_id}/followers')
 async def followers_page(request: Request, public_id: str):
-    return _render_follow_list(request, public_id, 'followers')
+    return await _render_follow_list(request, public_id, 'followers')
 
 
 @app.get('/profile/{public_id}/following')
 async def following_page(request: Request, public_id: str):
-    return _render_follow_list(request, public_id, 'following')
+    return await _render_follow_list(request, public_id, 'following')
 
 
 # ---------------------------------------------------------------------
@@ -3711,34 +3737,34 @@ async def following_page(request: Request, public_id: str):
 # ---------------------------------------------------------------------
 @app.post('/api/block/{public_id}')
 async def api_block_toggle(request: Request, public_id: str):
-    member_id, err = _require_member(request)
+    member_id, err = await _require_member(request)
     if err:
         return err
 
-    target_id = _user_id_by_public_id(public_id)
+    target_id = await _user_id_by_public_id(public_id)
     if not target_id:
         return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
     if target_id == member_id:
         return json_resp({"success": False, "error": "自分自身はブロックできません。"}, 400)
 
     try:
-        existing = query_d1(
+        existing = await query_d1(
             "SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ? LIMIT 1",
             [member_id, target_id]
         )
         if existing:
-            query_d1(
+            await query_d1(
                 "DELETE FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
                 [member_id, target_id]
             )
             blocked = False
         else:
-            query_d1(
+            await query_d1(
                 "INSERT INTO blocks (blocker_id, blocked_id) VALUES (?, ?)",
                 [member_id, target_id]
             )
             # ブロックしたら双方のフォロー関係も解除する（相互フォロー＝DM可のため）
-            query_d1(
+            await query_d1(
                 "DELETE FROM follows WHERE (follower_id = ? AND followee_id = ?) "
                 "OR (follower_id = ? AND followee_id = ?)",
                 [member_id, target_id, target_id, member_id]
@@ -3760,7 +3786,7 @@ async def dm_list(request: Request):
         return RedirectResponse(url='/login')
     member_id = request.session.get('member_id')
 
-    conversations = query_d1(
+    conversations = await query_d1(
         "SELECT c.id AS conversation_id, "
         "       u.username, u.public_id, u.icon_path, "
         "       c.last_message_at, "
@@ -3776,7 +3802,7 @@ async def dm_list(request: Request):
     ) or []
 
     # 相互フォロー（＝DMを新規に送れる相手）の一覧
-    mutuals = query_d1(
+    mutuals = await query_d1(
         "SELECT u.username, u.public_id, u.icon_path FROM follows f1 "
         "JOIN follows f2 ON f2.follower_id = f1.followee_id AND f2.followee_id = f1.follower_id "
         "JOIN users u ON u.id = f1.followee_id "
@@ -3787,7 +3813,7 @@ async def dm_list(request: Request):
     return templates.TemplateResponse(request, 'messages.html', {
         'conversations': conversations,
         'mutuals': mutuals,
-        'unread_dm_count': get_unread_dm_count(request),
+        'unread_dm_count': await get_unread_dm_count(request),
     })
 
 
@@ -3797,17 +3823,17 @@ async def dm_conversation(request: Request, public_id: str):
         return RedirectResponse(url='/login')
     member_id = request.session.get('member_id')
 
-    partner = query_d1(
+    partner = await query_d1(
         "SELECT id, username, public_id, icon_path FROM users WHERE public_id = ?", [public_id]
     )
     if not partner:
         return text_resp("そのユーザーは見つかりませんでした。", 404)
     partner = partner[0]
 
-    allowed, reason = can_dm(member_id, partner['id'])
+    allowed, reason = await can_dm(member_id, partner['id'])
 
     messages = []
-    conv_res = query_d1(
+    conv_res = await query_d1(
         "SELECT id FROM dm_conversations WHERE (user_a_id = ? AND user_b_id = ?) "
         "OR (user_a_id = ? AND user_b_id = ?)",
         [member_id, partner['id'], partner['id'], member_id]
@@ -3815,7 +3841,7 @@ async def dm_conversation(request: Request, public_id: str):
     conversation_id = conv_res[0]['id'] if conv_res else None
 
     if conversation_id:
-        raw = query_d1(
+        raw = await query_d1(
             "SELECT id, sender_id, content, created_at, read_at FROM dm_messages "
             "WHERE conversation_id = ? ORDER BY id DESC LIMIT ?",
             [conversation_id, DM_HISTORY_LIMIT]
@@ -3835,7 +3861,7 @@ async def dm_conversation(request: Request, public_id: str):
 
         # 開いた時点で相手からの未読を既読にする
         try:
-            query_d1(
+            await query_d1(
                 "UPDATE dm_messages SET read_at = datetime('now') "
                 "WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL",
                 [conversation_id, member_id]
@@ -3849,7 +3875,7 @@ async def dm_conversation(request: Request, public_id: str):
         'can_send': allowed,
         'deny_reason': reason,
         'report_reasons': REPORT_REASONS,
-        'unread_dm_count': get_unread_dm_count(request),
+        'unread_dm_count': await get_unread_dm_count(request),
     })
 
 
@@ -3866,7 +3892,7 @@ def _to_jst_string(value):
 
 @app.post('/api/dm/{public_id}/send')
 async def api_dm_send(request: Request, public_id: str):
-    member_id, err = _require_member(request)
+    member_id, err = await _require_member(request)
     if err:
         return err
 
@@ -3877,11 +3903,11 @@ async def api_dm_send(request: Request, public_id: str):
     if len(content) > DM_MAX_LENGTH:
         return json_resp({"success": False, "error": f"本文は{DM_MAX_LENGTH}文字以内にしてください。"}, 400)
 
-    target_id = _user_id_by_public_id(public_id)
+    target_id = await _user_id_by_public_id(public_id)
     if not target_id:
         return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
 
-    allowed, reason = can_dm(member_id, target_id)
+    allowed, reason = await can_dm(member_id, target_id)
     if not allowed:
         return json_resp({"success": False, "error": reason}, 403)
 
@@ -3896,19 +3922,19 @@ async def api_dm_send(request: Request, public_id: str):
     safe_content = html.escape(content)
 
     try:
-        conversation_id = _get_or_create_conversation(member_id, target_id)
+        conversation_id = await _get_or_create_conversation(member_id, target_id)
         if not conversation_id:
             return json_resp({"success": False, "error": "会話の作成に失敗しました。"}, 500)
 
-        query_d1(
+        await query_d1(
             "INSERT INTO dm_messages (conversation_id, sender_id, content) VALUES (?, ?, ?)",
             [conversation_id, member_id, safe_content]
         )
-        query_d1(
+        await query_d1(
             "UPDATE dm_conversations SET last_message_at = datetime('now') WHERE id = ?",
             [conversation_id]
         )
-        res = query_d1(
+        res = await query_d1(
             "SELECT id, sender_id, content, created_at FROM dm_messages "
             "WHERE conversation_id = ? ORDER BY id DESC LIMIT 1",
             [conversation_id]
@@ -3921,7 +3947,7 @@ async def api_dm_send(request: Request, public_id: str):
     if new_message:
         new_message['created_at'] = _to_jst_string(new_message.get('created_at'))
 
-        sender_public_id = get_member_public_id(request)
+        sender_public_id = await get_member_public_id(request)
         # 受信側へプッシュ（相手がどのページを開いていてもバッジを更新できる）
         await dm_manager.send_to_user(target_id, {
             "type": "dm_new",
@@ -3950,7 +3976,7 @@ async def api_dm_poll(request: Request, public_id: str):
     フロント側は数秒おきにこれを叩き、WebSocketの受信と重複しないよう
     メッセージIDで重複排除する。
     """
-    member_id, err = _require_member(request)
+    member_id, err = await _require_member(request)
     if err:
         return err
 
@@ -3960,11 +3986,11 @@ async def api_dm_poll(request: Request, public_id: str):
     except (TypeError, ValueError):
         after_id = 0
 
-    target_id = _user_id_by_public_id(public_id)
+    target_id = await _user_id_by_public_id(public_id)
     if not target_id:
         return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
 
-    conv_res = query_d1(
+    conv_res = await query_d1(
         "SELECT id FROM dm_conversations WHERE (user_a_id = ? AND user_b_id = ?) "
         "OR (user_a_id = ? AND user_b_id = ?)",
         [member_id, target_id, target_id, member_id]
@@ -3974,7 +4000,7 @@ async def api_dm_poll(request: Request, public_id: str):
     conversation_id = conv_res[0]['id']
 
     try:
-        rows = query_d1(
+        rows = await query_d1(
             "SELECT id, sender_id, content, created_at FROM dm_messages "
             "WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 50",
             [conversation_id, after_id]
@@ -3982,7 +4008,7 @@ async def api_dm_poll(request: Request, public_id: str):
 
         if rows:
             # ポーリングで取得した = 開いて見ているとみなし、相手からの分は既読にする
-            query_d1(
+            await query_d1(
                 "UPDATE dm_messages SET read_at = datetime('now') "
                 "WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL",
                 [conversation_id, member_id]
@@ -4010,7 +4036,7 @@ async def api_dm_poll(request: Request, public_id: str):
 
 @app.get('/api/dm/unread_count')
 async def api_dm_unread_count(request: Request):
-    return json_resp({"count": get_unread_dm_count(request)})
+    return json_resp({"count": await get_unread_dm_count(request)})
 
 
 # ---------------------------------------------------------------------
@@ -4018,7 +4044,7 @@ async def api_dm_unread_count(request: Request):
 # ---------------------------------------------------------------------
 @app.post('/api/report')
 async def api_report(request: Request):
-    member_id, err = _require_member(request)
+    member_id, err = await _require_member(request)
     if err:
         return err
 
@@ -4037,7 +4063,7 @@ async def api_report(request: Request):
 
     try:
         # 同一対象への重複通報を防ぐ（未対応のものが既にあれば受け付けたことにする）
-        dup = query_d1(
+        dup = await query_d1(
             "SELECT id FROM reports WHERE reporter_id = ? AND target_type = ? "
             "AND target_id = ? AND status = 'open' LIMIT 1",
             [member_id, target_type, target_id]
@@ -4045,7 +4071,7 @@ async def api_report(request: Request):
         if dup:
             return json_resp({"success": True, "already": True})
 
-        query_d1(
+        await query_d1(
             "INSERT INTO reports (reporter_id, target_type, target_id, reason, detail) "
             "VALUES (?, ?, ?, ?, ?)",
             [member_id, target_type, target_id, reason, html.escape(detail)]
@@ -4066,7 +4092,7 @@ async def admin_dashboard(request: Request):
     if status not in ('open', 'resolved', 'rejected'):
         status = 'open'
 
-    reports = query_d1(
+    reports = await query_d1(
         "SELECT r.*, u.username AS reporter_name, u.public_id AS reporter_public_id "
         "FROM reports r LEFT JOIN users u ON u.id = r.reporter_id "
         "WHERE r.status = ? ORDER BY r.created_at DESC LIMIT 200",
@@ -4089,14 +4115,14 @@ async def admin_dashboard(request: Request):
             except (TypeError, ValueError):
                 reply_id = None
             if reply_id:
-                reply_res = query_d1(
+                reply_res = await query_d1(
                     "SELECT thread_id, content, author, poster_public_id FROM replies WHERE id = ?",
                     [reply_id]
                 )
                 if reply_res:
                     reply_row = reply_res[0]
                     r_thread_id = reply_row['thread_id']
-                    pos_res = query_d1(
+                    pos_res = await query_d1(
                         "SELECT COUNT(*) AS cnt FROM replies WHERE thread_id = ? AND id <= ?",
                         [r_thread_id, reply_id]
                     )
@@ -4106,42 +4132,42 @@ async def admin_dashboard(request: Request):
                     r['reply_author'] = reply_row.get('author')
                     r['reply_poster_public_id'] = reply_row.get('poster_public_id')
 
-    open_count_res = query_d1("SELECT COUNT(*) AS cnt FROM reports WHERE status = 'open'")
+    open_count_res = await query_d1("SELECT COUNT(*) AS cnt FROM reports WHERE status = 'open'")
 
     try:
-        trend = query_d1(
+        trend = await query_d1(
             "SELECT substr(created_at, 1, 10) AS day, "
             "COUNT(*) AS pv, COUNT(DISTINCT visitor_token) AS uniques "
             "FROM page_views WHERE created_at >= datetime('now', '-14 days') "
             "GROUP BY day ORDER BY day ASC"
         ) or []
 
-        summary_res = query_d1(
+        summary_res = await query_d1(
             "SELECT COUNT(*) AS pv, COUNT(DISTINCT visitor_token) AS uniques "
             "FROM page_views WHERE created_at >= datetime('now', '-7 days')"
         )
         summary = summary_res[0] if summary_res else {'pv': 0, 'uniques': 0}
 
-        popular_threads = query_d1(
+        popular_threads = await query_d1(
             "SELECT pv.thread_id AS thread_id, COUNT(*) AS views, t.title AS title "
             "FROM page_views pv JOIN threads t ON t.id = pv.thread_id "
             "WHERE pv.thread_id IS NOT NULL AND pv.created_at >= datetime('now', '-7 days') "
             "GROUP BY pv.thread_id ORDER BY views DESC LIMIT 10"
         ) or []
 
-        referrers = query_d1(
+        referrers = await query_d1(
             "SELECT CASE WHEN referrer_host IS NULL OR referrer_host = '' THEN '(direct / 直接アクセス)' "
             "ELSE referrer_host END AS host, COUNT(*) AS cnt "
             "FROM page_views WHERE created_at >= datetime('now', '-7 days') "
             "GROUP BY host ORDER BY cnt DESC LIMIT 10"
         ) or []
 
-        devices = query_d1(
+        devices = await query_d1(
             "SELECT device, COUNT(*) AS cnt FROM page_views "
             "WHERE created_at >= datetime('now', '-7 days') GROUP BY device ORDER BY cnt DESC"
         ) or []
 
-        browsers = query_d1(
+        browsers = await query_d1(
             "SELECT browser, COUNT(*) AS cnt FROM page_views "
             "WHERE created_at >= datetime('now', '-7 days') GROUP BY browser ORDER BY cnt DESC"
         ) or []
@@ -4187,8 +4213,8 @@ async def api_admin_delete_thread(request: Request, thread_id: int):
     if not can_manage_board(request):
         return json_resp({"success": False, "error": "権限がありません。"}, 403)
     try:
-        query_d1("DELETE FROM threads WHERE id = ?", [thread_id])
-        query_d1("DELETE FROM replies WHERE thread_id = ?", [thread_id])
+        await query_d1("DELETE FROM threads WHERE id = ?", [thread_id])
+        await query_d1("DELETE FROM replies WHERE thread_id = ?", [thread_id])
     except Exception as e:
         print(f"スレッド削除エラー(admin): {e}")
         return json_resp({"success": False, "error": "削除に失敗しました。"}, 500)
@@ -4203,7 +4229,7 @@ async def api_admin_delete_reply(request: Request, reply_id: int):
     if not can_manage_board(request):
         return json_resp({"success": False, "error": "権限がありません。"}, 403)
     try:
-        query_d1(
+        await query_d1(
             """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
                WHERE id = ?""",
             ['あぼーん', 'この書き込みは管理員によって削除されました。', '???', 0, '', reply_id]
@@ -4225,7 +4251,7 @@ async def api_admin_report_status(request: Request, report_id: int):
         return json_resp({"success": False, "error": "不正なステータスです。"}, 400)
 
     try:
-        query_d1(
+        await query_d1(
             "UPDATE reports SET status = ?, handled_by = ?, handled_at = datetime('now') WHERE id = ?",
             [new_status, request.session.get('member_id'), report_id]
         )
