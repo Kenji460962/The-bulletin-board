@@ -248,8 +248,17 @@
             const name = nameInput.value.trim();
             const formData = new URLSearchParams();
             formData.append('name', name);
-            const r = await fetch("{{ url_for('shogi_create') }}", { method: 'POST', body: formData });
-            if (r.redirected) { window.location.href = r.url; }
+            try {
+                const r = await fetch("{{ url_for('shogi_create') }}", { method: 'POST', body: formData });
+                if (r.redirected) {
+                    window.location.href = r.url;
+                } else {
+                    alert(`部屋の作成に失敗しました。（ステータス: ${r.status}）`);
+                }
+            } catch (e) {
+                console.error(e);
+                alert('通信エラーが発生しました。');
+            }
         });
         document.getElementById('joinBtn').addEventListener('click', async () => {
             const code = document.getElementById('joinCode').value.trim().toUpperCase();
