@@ -52,40 +52,81 @@ redis_client = None
 _redis_listener_task = None
 _cache_cleanup_task = None
 
+# ---------------------------------------------------------------------
+# 共有 non-blocking HTTP クライアント
+# ---------------------------------------------------------------------
+# D1 / proxycheck / Supabase への呼び出しはすべてこのクライアントに集約して
+# 接続(TCP+TLS)を使い回す。旧実装は httpx.post/get をその都度呼んでいたため
+# 毎回ハンドシェイクが発生し、さらに run_in_threadpool 経由で anyio の
+# スレッド上限(既定40)を消費していた。スレッドが枯渇するとイベントループが
+# 実質停止し、リバースプロキシのタイムアウトで 504 が返る原因になっていた。
+_http_client: httpx.AsyncClient | None = None
+
+D1_QUERY_TIMEOUT = httpx.Timeout(6.0, connect=3.0)   # D1 REST 用の明示タイムアウト(リトライ込みでもnginxの30s以内に収める)
+D1_MAX_RETRIES = 1                                   # 読み取りクエリの再試行回数(最悪2回×6s=12sで打ち切る)
+D1_SLOW_QUERY_MS = 500.0                             # 低速クエリ警告の閾値(ms)
+_d1_slow_query_total = 0                             # /api/server_stats 表示用カウンタ
+
+# ---------------------------------------------------------------------
+# アクセス解析(page_views)書き込みキュー
+# ---------------------------------------------------------------------
+# 旧実装はリクエストごとに asyncio.to_thread で新規スレッドを生成していた。
+# bot 等の連打でスレッド枠が枯渇し、本来のユーザー応答が順番待ちになる。
+# 有界キュー + 専用ライター1本に変え、あふれたら記録を捨てる(応答を優先)。
+PV_QUEUE_MAXSIZE = 1000
+_pv_queue: asyncio.Queue = asyncio.Queue(maxsize=PV_QUEUE_MAXSIZE)
+_pv_writer_task = None
+
 
 async def _redis_listener():
     """全workerで常駐し、他workerがpublishしたイベントを受け取って
-    自プロセス内のWebSocket接続にだけ配信する(=各プロセスが自分の担当分だけ配る)。"""
-    pubsub = redis_client.pubsub()
-    await pubsub.subscribe(REALTIME_CHANNEL)
-    try:
-        async for message in pubsub.listen():
-            if message.get('type') != 'message':
-                continue
-            try:
-                data = json.loads(message['data'])
-            except Exception:
-                continue
-            kind = data.get('kind')
-            try:
-                if kind == 'thread_reply':
-                    await manager.broadcast_local(data['thread_id'], data['reply'])
-                elif kind == 'dm_message':
-                    await dm_manager.send_to_user_local(data['user_id'], data['payload'])
-            except Exception as e:
-                print(f"Redisリアルタイム配信の処理エラー: {e}")
-    except asyncio.CancelledError:
-        pass
-    finally:
+    自プロセス内のWebSocket接続にだけ配信する(=各プロセスが自分の担当分だけ配る)。
+
+    旧実装は CancelledError しか捕捉していなかったため、Redisの瞬断で
+    このタスクが黙って死ぬと以降リアルタイム配信が二度と復活しなかった。
+    例外時は指数バックオフで購読を張り直す。"""
+    backoff = 1.0
+    while True:
         try:
-            await pubsub.unsubscribe(REALTIME_CHANNEL)
-        except Exception:
-            pass
+            pubsub = redis_client.pubsub()
+            await pubsub.subscribe(REALTIME_CHANNEL)
+            backoff = 1.0  # 購読に成功したらバックオフを戻す
+            async for message in pubsub.listen():
+                if message.get('type') != 'message':
+                    continue
+                try:
+                    data = json.loads(message['data'])
+                except Exception:
+                    continue
+                kind = data.get('kind')
+                try:
+                    if kind == 'thread_reply':
+                        await manager.broadcast_local(data['thread_id'], data['reply'])
+                    elif kind == 'dm_message':
+                        await dm_manager.send_to_user_local(data['user_id'], data['payload'])
+                except Exception as e:
+                    print(f"Redisリアルタイム配信の処理エラー: {e}")
+        except asyncio.CancelledError:
+            # シャットダウン要求。ここは静かに抜ける。
+            raise
+        except Exception as e:
+            print(f"Redis受信ループ異常({e}) — {backoff:.0f}秒後に再接続します。")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 30.0)
 
 
 @app.on_event("startup")
 async def _startup_redis():
     global redis_client, _redis_listener_task, _cache_cleanup_task
+    global _http_client, _pv_writer_task
+    # 共有HTTPクライアントは「動いているイベントループ」の中で生成する必要がある。
+    # ここで1度だけ作ることで、以降すべてのD1/proxycheck呼び出しが
+    # 接続プールとキープアライブを再利用できるようになる。
+    _http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0, connect=5.0),
+        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+    )
+    _prime_psutil_cpu()
     try:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
         await redis_client.ping()
@@ -102,28 +143,44 @@ async def _startup_redis():
     # 際限なく肥大化し、最終的にメモリ上限超過でプロセスが落ちる原因になる。
     # そのため定期的に古いエントリを掃除するバックグラウンドタスクを起動しておく。
     _cache_cleanup_task = asyncio.create_task(_cleanup_memory_caches_loop())
+    # アクセス解析の書き込みは専用ライター1本に集約する(スレッドを増やさない)
+    _pv_writer_task = asyncio.create_task(_pv_writer())
 
 
 @app.on_event("shutdown")
 async def _shutdown_redis():
     global redis_client, _redis_listener_task, _cache_cleanup_task
+    global _http_client, _pv_writer_task
     if _redis_listener_task:
         _redis_listener_task.cancel()
         try:
             await _redis_listener_task
-        except Exception:
+        except (asyncio.CancelledError, Exception):
             pass
     if _cache_cleanup_task:
         _cache_cleanup_task.cancel()
         try:
             await _cache_cleanup_task
-        except Exception:
+        except (asyncio.CancelledError, Exception):
+            pass
+    if _pv_writer_task:
+        # キューに残っている分を書き切ってから止める(最大でも数秒)
+        _pv_writer_task.cancel()
+        try:
+            await _pv_writer_task
+        except (asyncio.CancelledError, Exception):
             pass
     if redis_client:
         try:
             await redis_client.close()
         except Exception:
             pass
+    if _http_client:
+        try:
+            await _http_client.aclose()
+        except Exception:
+            pass
+        _http_client = None
 
 
 # =========================
@@ -177,8 +234,14 @@ app.add_middleware(SessionMiddleware, secret_key=FLASK_SECRET_KEY)
 
 
 
-psutil.cpu_percent(interval=None)
-
+def _prime_psutil_cpu():
+    """psutil.cpu_percent() は「初回呼び出しが基準点」になるため、起動時に
+    一度だけ呼んでおく。旧実装は import 直後に呼んでいたが、それは
+    ライブラリ読み込み直後のCPU使用率を測ってしまうため起動フックへ移した。"""
+    try:
+        psutil.cpu_percent(interval=None)
+    except Exception:
+        pass
 
 
 class ConnectionManager:
@@ -304,17 +367,34 @@ def _classify_user_agent(ua: str):
     return device, browser
 
 
-def _log_page_view_sync(path, thread_id, visitor_token, referrer_host, device, browser):
-    # この関数はasyncio.to_thread()で別スレッド上で実行されるため、
-    # asyncラッパーのquery_d1ではなく、同期版の_query_d1_syncを直接呼ぶ。
+def _log_page_view_enqueue(path, thread_id, visitor_token, referrer_host, device, browser):
+    """アクセス解析の1件を書き込みキューに積む(ノンブロッキング)。
+
+    旧実装はリクエストごとに asyncio.to_thread で新規スレッドを生成しており、
+    GET / の連打だけでスレッド枠が枯渇し、本来のユーザー応答が待たされていた。
+    キューが満杯のときは記録を捨てる(応答速度を最優先する)。
+    """
     try:
-        _query_d1_sync(
-            "INSERT INTO page_views (path, thread_id, visitor_token, referrer_host, device, browser) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            [path, thread_id, visitor_token, referrer_host, device, browser]
+        _pv_queue.put_nowait(
+            (path, thread_id, visitor_token, referrer_host, device, browser)
         )
-    except Exception as e:
-        print(f"アクセス解析ログエラー: {e}")
+    except asyncio.QueueFull:
+        pass
+
+
+async def _pv_writer():
+    """キューに積まれたアクセス解析を、専用の1タスクから順にDBへ書く。
+    スレッドを新規生成しないので、アクセス急増時もユーザー応答を圧迫しない。"""
+    sql = ("INSERT INTO page_views (path, thread_id, visitor_token, "
+           "referrer_host, device, browser) VALUES (?, ?, ?, ?, ?, ?)")
+    while True:
+        args = await _pv_queue.get()
+        try:
+            await query_d1(sql, list(args))
+        except Exception as e:
+            print(f"アクセス解析ログエラー: {e}")
+        finally:
+            _pv_queue.task_done()
 
 
 @app.middleware("http")
@@ -353,10 +433,10 @@ async def track_page_views(request: Request, call_next):
 
         device, browser = _classify_user_agent(request.headers.get('user-agent', ''))
 
-        # awaitせず投げっぱなしにして、記録処理がレスポンス速度に影響しないようにする
-        asyncio.create_task(asyncio.to_thread(
-            _log_page_view_sync, path, thread_id, visitor_token, referrer_host, device, browser
-        ))
+        # 有界キューに積むだけ(ノンブロッキング)。実際の書き込みは _pv_writer が行う。
+        _log_page_view_enqueue(
+            path, thread_id, visitor_token, referrer_host, device, browser
+        )
     except Exception as e:
         print(f"アクセス解析トラッキングエラー: {e}")
 
@@ -397,34 +477,75 @@ CF_D1_DATABASE_ID = os.environ.get('CF_D1_DATABASE_ID')
 CF_D1_API_TOKEN = os.environ.get('CF_D1_API_TOKEN')
 
 
-def _query_d1_sync(sql, params=None):
+# D1への書き込み系(INSERT/UPDATE/DELETE/REPLACE)かどうかを判定する。
+# 書き込みは「タイムアウト後にもう一度送る」と二重適用のおそれがあるため、
+# 「確実に処理されていない」ステータス(429/502/503)以外は再試行しない。
+_D1_WRITE_RE = re.compile(r"\s*(INSERT|UPDATE|DELETE|REPLACE)\b", re.IGNORECASE)
+
+
+async def query_d1(sql, params=None):
+    """Cloudflare D1 へ非同期で問い合わせる。
+
+    旧実装は同期 httpx を run_in_threadpool に逃がしていただけで、
+    anyio のスレッド上限(既定40)を消費し尽くすとイベントループが実質停止し、
+    リバースプロキシのタイムアウト→504 の主要因になっていた。
+    共有 AsyncClient + 明示タイムアウト + 限定的なリトライに置き換える。
+    """
+    global _d1_slow_query_total
     if not CF_D1_ACCOUNT_ID or not CF_D1_DATABASE_ID or not CF_D1_API_TOKEN:
         return []
+    if _http_client is None:
+        # 起動フック完了前に呼ばれた場合の保険(通常は到達しない)
+        print("D1 API通信エラー: HTTPクライアント未初期化")
+        return []
 
-    url = f"https://api.cloudflare.com/client/v4/accounts/{CF_D1_ACCOUNT_ID}/d1/database/{CF_D1_DATABASE_ID}/query"
+    url = (f"https://api.cloudflare.com/client/v4/accounts/{CF_D1_ACCOUNT_ID}"
+           f"/d1/database/{CF_D1_DATABASE_ID}/query")
     headers = {
         "Authorization": f"Bearer {CF_D1_API_TOKEN}",
         "Content-Type": "application/json"
     }
-    try:
-        resp = httpx.post(url, json={"sql": sql, "params": params or []}, headers=headers, timeout=10.0)
-        data = resp.json()
-        if data.get('success'):
-            res = data.get('result', [])
-            if res and 'results' in res[0]:
-                return res[0]['results']
-        else:
+    is_write = bool(_D1_WRITE_RE.match(sql or ""))
+    max_retries = 1 if is_write else D1_MAX_RETRIES
+
+    for attempt in range(max_retries + 1):
+        started = time.perf_counter()
+        try:
+            resp = await _http_client.post(
+                url, json={"sql": sql, "params": params or []},
+                headers=headers, timeout=D1_QUERY_TIMEOUT
+            )
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            if elapsed_ms >= D1_SLOW_QUERY_MS:
+                _d1_slow_query_total += 1
+                print(f"D1 低速クエリ: {elapsed_ms:.0f}ms / {sql[:120]}")
+
+            # 429/502/503 は「D1側が処理を受け付けていない」ことが確実なので
+            # 書き込みでも再試行してよい。500/504は処理済みか不明なので
+            # 読み取りのみ再試行する。
+            if resp.status_code in (429, 502, 503) or (
+                resp.status_code in (500, 504) and not is_write
+            ):
+                if attempt < max_retries:
+                    await asyncio.sleep(0.3 * (2 ** attempt))
+                    continue
+                print(f"D1 Query Error: HTTP {resp.status_code}")
+                return []
+
+            data = resp.json()
+            if data.get('success'):
+                res = data.get('result', [])
+                if res and 'results' in res[0]:
+                    return res[0]['results']
             print(f"D1 Query Error: {data.get('errors')}")
-    except Exception as e:
-        print(f"D1 API通信エラー: {e}")
+            return []
+        except Exception as e:
+            if attempt < max_retries:
+                await asyncio.sleep(0.3 * (2 ** attempt))
+                continue
+            print(f"D1 API通信エラー: {e}")
+            return []
     return []
-
-
-async def query_d1(sql, params=None):
-    """_query_d1_sync（同期・ブロッキングなhttpx呼び出し）をスレッドプールに逃がし、
-    イベントループを止めないようにするための非同期ラッパー。
-    ロジック自体は_query_d1_syncから変更していない。"""
-    return await run_in_threadpool(_query_d1_sync, sql, params)
 
 
 
@@ -627,6 +748,11 @@ LAST_THREAD_TIMES = {}
 LAST_REPLY_TIMES = {}
 LAST_REPLY_SIGNATURES = {}
 
+# 「BANされていない」と判定したIPだけを短期キャッシュする。
+# BAN(True)側は即時反映させたいのでキャッシュしない。
+_BANNED_IP_CACHE = {}
+_BANNED_IP_CACHE_TTL = 30
+
 
 def get_daily_user_id(ip_address):
     today_str = datetime.now().strftime('%Y-%m-%d')
@@ -663,7 +789,10 @@ _PROXY_CHECK_CACHE = {}
 _PROXY_CACHE_TTL = 60 * 60 * 24
 
 
-def is_proxy_or_vpn(ip):
+async def is_proxy_or_vpn(ip):
+    """proxycheck.io でプロキシ/VPN判定する。
+    旧実装は同期 httpx.get で、呼び出し側が run_in_threadpool に載せていた。
+    共有 AsyncClient を使う非同期関数に変更し、スレッドを消費しないようにする。"""
     if not ip:
         return False
     cached = _PROXY_CHECK_CACHE.get(ip)
@@ -676,7 +805,12 @@ def is_proxy_or_vpn(ip):
         params = {"vpn": "1", "asn": "0", "risk": "1"}
         if PROXYCHECK_API_KEY:
             params["key"] = PROXYCHECK_API_KEY
-        resp = httpx.get(f"https://proxycheck.io/v2/{ip}", params=params, timeout=2.5)
+        if _http_client is None:
+            return False
+        resp = await _http_client.get(
+            f"https://proxycheck.io/v2/{ip}", params=params,
+            timeout=httpx.Timeout(3.0, connect=2.5)
+        )
         data = resp.json()
         info = data.get(ip, {})
         if info.get("proxy") == "yes":
@@ -694,8 +828,14 @@ def is_proxy_or_vpn(ip):
 async def is_banned_ip(ip):
     if not ip:
         return False
+    # 全リクエストがここを通るため、D1往復を削る目的で「非BAN」だけ30秒キャッシュする。
+    cached_at = _BANNED_IP_CACHE.get(ip)
+    if cached_at is not None and time.time() - cached_at < _BANNED_IP_CACHE_TTL:
+        return False
     try:
         res = await query_d1("SELECT * FROM banned_ips WHERE ip_address = ?", [ip])
+        if not res:
+            _BANNED_IP_CACHE[ip] = time.time()
         return len(res) > 0
     except Exception as e:
         print(f"BANチェックエラー: {e}")
@@ -2982,13 +3122,22 @@ async def index(request: Request):
                         pinned_threads.append(threads.pop(i))
                         break
 
-            for pid in pinned_ids:
-                if any(int(pt['id']) == pid for pt in pinned_threads):
-                    continue
+            # 固定スレは最大4件なので、1件ずつSELECTせずIN句で1往復にまとめる。
+            # (旧実装は最大4回の追加ラウンドトリップを発生させていた)
+            missing_ids = [
+                pid for pid in pinned_ids
+                if not any(int(pt['id']) == pid for pt in pinned_threads)
+            ]
+            if missing_ids:
                 try:
-                    pinned_res = await _fetch_threads_with_stats("WHERE t.id = ?", [pid], order_sql)
-                    if pinned_res:
-                        pinned_threads.append(pinned_res[0])
+                    placeholders = ",".join("?" for _ in missing_ids)
+                    pinned_res = await _fetch_threads_with_stats(
+                        f"WHERE t.id IN ({placeholders})", missing_ids, order_sql
+                    )
+                    by_id = {int(r['id']): r for r in pinned_res}
+                    for pid in missing_ids:
+                        if pid in by_id:
+                            pinned_threads.append(by_id[pid])
                 except Exception as pe:
                     print(f"固定スレッド取得エラー: {pe}")
 
@@ -3101,7 +3250,7 @@ async def create_thread(request: Request):
     now = time.time()
 
     thread_cooldown = 300
-    if not is_admin and await run_in_threadpool(is_proxy_or_vpn, client_ip):
+    if not is_admin and await is_proxy_or_vpn(client_ip):
         thread_cooldown = 900
 
     if not is_admin:
@@ -3593,6 +3742,8 @@ async def server_metrics():
         "memory_total_mb": memory_limit_mb,
         "net_rx_kbps": rx_kbps,
         "net_tx_kbps": tx_kbps,
+        # D1が遅い=504の予兆。この数値が増え続けたらDB側を疑う。
+        "d1_slow_query_total": _d1_slow_query_total,
         "timestamp": time.time()
     }
 
@@ -3609,8 +3760,20 @@ DM_COOLDOWN_SECONDS = 1
 LAST_DM_TIMES: dict[int, float] = {}
 
 
-_CACHE_CLEANUP_INTERVAL_SECONDS = 600  # 10分おきに掃除する
+_CACHE_CLEANUP_INTERVAL_SECONDS = 120  # 2分おきに掃除する(512MBでは1時間分の蓄積でも危険なため)
 _STALE_ENTRY_MAX_AGE_SECONDS = 3600    # どのクールダウンよりも十分長い猶予（1時間）を持たせて破棄する
+
+
+def _cap_dict_size(d: dict, max_entries: int):
+    """辞書が想定外に肥大化しないよう、エントリ数の上限を強制する。
+    上限を超えた分は「最も古い(=挿入順で先頭の)」ものから落とす。
+    クールダウン判定は数秒〜数十分で無意味になるため、多少落ちても実害はない。
+    512MB環境ではこの上限が最後の安全弁になる。"""
+    if len(d) <= max_entries:
+        return
+    overflow = len(d) - max_entries
+    for k in list(d.keys())[:overflow]:
+        d.pop(k, None)
 
 
 def _prune_expired(d: dict, now: float, ttl: float, get_timestamp=None):
@@ -3640,10 +3803,15 @@ async def _cleanup_memory_caches_loop():
             _prune_expired(LAST_REPLY_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             _prune_expired(LAST_REPLY_SIGNATURES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             _prune_expired(LAST_DM_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            # 経過時間による掃除に加え、件数上限でも必ず有界にする
+            for _d in (LAST_THREAD_TIMES, LAST_REPLY_TIMES, LAST_REPLY_SIGNATURES,
+                       LAST_DM_TIMES, _PROXY_CHECK_CACHE, _BANNED_IP_CACHE):
+                _cap_dict_size(_d, 20000)
             _prune_expired(
                 _PROXY_CHECK_CACHE, now, _PROXY_CACHE_TTL,
                 get_timestamp=lambda v: v["checked_at"]
             )
+            _prune_expired(_BANNED_IP_CACHE, now, 300)
         except Exception as e:
             print(f"メモリキャッシュ掃除エラー: {e}")
 
@@ -4444,4 +4612,18 @@ async def api_admin_report_status(request: Request, report_id: int):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    uvicorn.run(app, host='0.0.0.0', port=port)
+    # 512MB環境では worker は1つに固定する(増やすと1プロセスあたりの常駐メモリで即OOM)。
+    # limit_concurrency により、過負荷時は「無応答で504」ではなく
+    # 「即座に503」を返して早く失敗させる(ユーザー体験・復旧速度の両方が改善する)。
+    uvicorn.run(
+        app,
+        host='0.0.0.0',
+        port=port,
+        workers=1,
+        limit_concurrency=64,
+        timeout_keep_alive=65,   # Cloudflare のキープアライブを再利用する
+        backlog=128,
+        proxy_headers=True,
+        forwarded_allow_ips='127.0.0.1',
+        timeout_graceful_shutdown=10,
+    )
