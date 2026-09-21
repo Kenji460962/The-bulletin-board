@@ -50,6 +50,7 @@ REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 REALTIME_CHANNEL = 'bbs:realtime'
 redis_client = None
 _redis_listener_task = None
+_cache_cleanup_task = None
 
 
 async def _redis_listener():
@@ -84,7 +85,7 @@ async def _redis_listener():
 
 @app.on_event("startup")
 async def _startup_redis():
-    global redis_client, _redis_listener_task
+    global redis_client, _redis_listener_task, _cache_cleanup_task
     try:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
         await redis_client.ping()
@@ -96,14 +97,26 @@ async def _startup_redis():
               f"複数worker構成ではリアルタイム配信が一部の閲覧者に届かなくなるため、"
               f"Redisの起動状況を確認してください。")
 
+    # レート制限・重複投稿判定・プロキシ判定などに使うメモリ上の辞書は、
+    # エントリを削除する仕組みがないと稼働時間とアクセス数に比例して
+    # 際限なく肥大化し、最終的にメモリ上限超過でプロセスが落ちる原因になる。
+    # そのため定期的に古いエントリを掃除するバックグラウンドタスクを起動しておく。
+    _cache_cleanup_task = asyncio.create_task(_cleanup_memory_caches_loop())
+
 
 @app.on_event("shutdown")
 async def _shutdown_redis():
-    global redis_client, _redis_listener_task
+    global redis_client, _redis_listener_task, _cache_cleanup_task
     if _redis_listener_task:
         _redis_listener_task.cancel()
         try:
             await _redis_listener_task
+        except Exception:
+            pass
+    if _cache_cleanup_task:
+        _cache_cleanup_task.cancel()
+        try:
+            await _cache_cleanup_task
         except Exception:
             pass
     if redis_client:
@@ -3594,6 +3607,45 @@ DM_MAX_LENGTH = 1000
 DM_HISTORY_LIMIT = 200
 DM_COOLDOWN_SECONDS = 1
 LAST_DM_TIMES: dict[int, float] = {}
+
+
+_CACHE_CLEANUP_INTERVAL_SECONDS = 600  # 10分おきに掃除する
+_STALE_ENTRY_MAX_AGE_SECONDS = 3600    # どのクールダウンよりも十分長い猶予（1時間）を持たせて破棄する
+
+
+def _prune_expired(d: dict, now: float, ttl: float, get_timestamp=None):
+    """dのうち、タイムスタンプがttl秒より古いエントリを削除する。
+    get_timestampを指定すると、値(dict等)からタイムスタンプを取り出す関数として使う。"""
+    if get_timestamp is None:
+        stale_keys = [k for k, v in d.items() if now - v > ttl]
+    else:
+        stale_keys = [k for k, v in d.items() if now - get_timestamp(v) > ttl]
+    for k in stale_keys:
+        d.pop(k, None)
+
+
+async def _cleanup_memory_caches_loop():
+    """LAST_THREAD_TIMES / LAST_REPLY_TIMES / LAST_REPLY_SIGNATURES / LAST_DM_TIMES /
+    _PROXY_CHECK_CACHE は、投稿やアクセスのたびにエントリが増える一方で、
+    これまで削除される仕組みが無かった。クールダウン判定に使う情報は本来
+    数秒〜数時間で不要になるにもかかわらず、ユニークIPや投稿数に比例して
+    プロセスのメモリを際限なく消費し続け、長時間稼働させると
+    メモリ上限超過でプロセスが落ちる（＝サーバーが頻繁に落ちる）主要因になっていた。
+    このタスクは定期的に古いエントリを削除し、辞書のサイズを有界に保つ。"""
+    while True:
+        await asyncio.sleep(_CACHE_CLEANUP_INTERVAL_SECONDS)
+        try:
+            now = time.time()
+            _prune_expired(LAST_THREAD_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            _prune_expired(LAST_REPLY_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            _prune_expired(LAST_REPLY_SIGNATURES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            _prune_expired(LAST_DM_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            _prune_expired(
+                _PROXY_CHECK_CACHE, now, _PROXY_CACHE_TTL,
+                get_timestamp=lambda v: v["checked_at"]
+            )
+        except Exception as e:
+            print(f"メモリキャッシュ掃除エラー: {e}")
 
 REPORT_REASONS = {
     'spam': 'スパム・宣伝',
