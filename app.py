@@ -26,6 +26,7 @@ from markupsafe import Markup, escape
 import io
 from PIL import Image, ImageOps
 import uvicorn
+import redis.asyncio as aioredis
 
 load_dotenv()
 
@@ -33,6 +34,83 @@ app = FastAPI()
 
 
 templates = Jinja2Templates(directory="templates")
+
+
+# =========================
+# 複数worker間でのリアルタイム配信共有(Redis Pub/Sub)
+# =========================
+# ConnectionManager/DMConnectionManagerが持つWebSocket接続は各workerプロセスの
+# メモリ上にしか存在しない。そのため「投稿を受け付けたworker」と「閲覧者が
+# 繋がっているworker」が別プロセスだと、素の状態ではリアルタイム配信が届かない。
+# これを解決するため、実際の配信はRedisのPub/Subを経由して全workerに伝播させる。
+# REDIS_URLが未設定/接続不可の場合は、単一worker構成のときと同じく
+# 「自プロセス内の接続にのみ配信」にフォールバックする(動作は継続するが、
+# 複数worker構成では配信が届かない閲覧者が出ることに注意)。
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+REALTIME_CHANNEL = 'bbs:realtime'
+redis_client = None
+_redis_listener_task = None
+
+
+async def _redis_listener():
+    """全workerで常駐し、他workerがpublishしたイベントを受け取って
+    自プロセス内のWebSocket接続にだけ配信する(=各プロセスが自分の担当分だけ配る)。"""
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe(REALTIME_CHANNEL)
+    try:
+        async for message in pubsub.listen():
+            if message.get('type') != 'message':
+                continue
+            try:
+                data = json.loads(message['data'])
+            except Exception:
+                continue
+            kind = data.get('kind')
+            try:
+                if kind == 'thread_reply':
+                    await manager.broadcast_local(data['thread_id'], data['reply'])
+                elif kind == 'dm_message':
+                    await dm_manager.send_to_user_local(data['user_id'], data['payload'])
+            except Exception as e:
+                print(f"Redisリアルタイム配信の処理エラー: {e}")
+    except asyncio.CancelledError:
+        pass
+    finally:
+        try:
+            await pubsub.unsubscribe(REALTIME_CHANNEL)
+        except Exception:
+            pass
+
+
+@app.on_event("startup")
+async def _startup_redis():
+    global redis_client, _redis_listener_task
+    try:
+        redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+        await redis_client.ping()
+        _redis_listener_task = asyncio.create_task(_redis_listener())
+        print(f"Redis接続OK ({REDIS_URL})。複数worker間のリアルタイム配信が有効です。")
+    except Exception as e:
+        redis_client = None
+        print(f"Redis接続エラー: {e} — リアルタイム配信は自プロセス内のみに縮退します。"
+              f"複数worker構成ではリアルタイム配信が一部の閲覧者に届かなくなるため、"
+              f"Redisの起動状況を確認してください。")
+
+
+@app.on_event("shutdown")
+async def _shutdown_redis():
+    global redis_client, _redis_listener_task
+    if _redis_listener_task:
+        _redis_listener_task.cancel()
+        try:
+            await _redis_listener_task
+        except Exception:
+            pass
+    if redis_client:
+        try:
+            await redis_client.close()
+        except Exception:
+            pass
 
 
 # =========================
@@ -105,7 +183,10 @@ class ConnectionManager:
             if not conns:
                 del self.active_connections[thread_id]
 
-    async def broadcast(self, thread_id: int, reply: dict):
+    async def broadcast_local(self, thread_id: int, reply: dict):
+        """同一プロセス内でこのthread_idに接続しているWebSocketにのみ配信する。
+        複数worker構成では、各プロセスがRedis経由でこれを呼び合うことで
+        プロセスをまたいだ配信を実現する（下のbroadcast()を参照）。"""
         conns = list(self.active_connections.get(thread_id, []))
         if not conns:
             return
@@ -117,6 +198,22 @@ class ConnectionManager:
                 dead.append(ws)
         for ws in dead:
             self.disconnect(thread_id, ws)
+
+    async def broadcast(self, thread_id: int, reply: dict):
+        """全worker配下の接続に配信する。Redisが使えるときはpublishして
+        全プロセスのリスナーにbroadcast_local()を呼ばせる。Redis未接続時は
+        このプロセス内だけの配信にフォールバックする(単一worker構成と同じ挙動)。"""
+        if redis_client is None:
+            await self.broadcast_local(thread_id, reply)
+            return
+        try:
+            await redis_client.publish(REALTIME_CHANNEL, json.dumps({
+                "kind": "thread_reply", "thread_id": thread_id, "reply": reply
+            }))
+        except Exception as e:
+            print(f"Redis publish エラー(thread broadcast): {e}")
+            # Redis障害時でも、少なくとも自プロセス内の閲覧者には届ける
+            await self.broadcast_local(thread_id, reply)
 
 
 manager = ConnectionManager()
@@ -3613,7 +3710,8 @@ class DMConnectionManager:
             if not conns:
                 del self.connections[user_id]
 
-    async def send_to_user(self, user_id: int, payload: dict):
+    async def send_to_user_local(self, user_id: int, payload: dict):
+        """同一プロセス内でこのuser_idに接続しているWebSocketにのみ配信する。"""
         conns = list(self.connections.get(user_id, []))
         dead = []
         for ws in conns:
@@ -3623,6 +3721,19 @@ class DMConnectionManager:
                 dead.append(ws)
         for ws in dead:
             self.disconnect(user_id, ws)
+
+    async def send_to_user(self, user_id: int, payload: dict):
+        """全worker配下の接続に配信する。ConnectionManager.broadcast()と同じ方針。"""
+        if redis_client is None:
+            await self.send_to_user_local(user_id, payload)
+            return
+        try:
+            await redis_client.publish(REALTIME_CHANNEL, json.dumps({
+                "kind": "dm_message", "user_id": user_id, "payload": payload
+            }))
+        except Exception as e:
+            print(f"Redis publish エラー(DM送信): {e}")
+            await self.send_to_user_local(user_id, payload)
 
 
 dm_manager = DMConnectionManager()
