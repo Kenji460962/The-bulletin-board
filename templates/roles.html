@@ -2,13 +2,13 @@
 <html lang="ja">
 <head>
     <!-- 元からあったWebPファビコン（ブラウザのタブ用としてそのまま残す） -->
-    <link rel="icon" href="{{ url_for('static', filename='favicon.webp') }}" type="image/webp">
+    <link rel="icon" href="{{ url_for('static', path='favicon.webp') }}" type="image/webp">
 
     <!-- iOS (iPhone) ホーム画面用アイコン（※180x180のPNG画像を1枚追加） -->
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', path='apple-touch-icon.png') }}">
 
     <!-- Android用 Web App Manifest -->
-    <link rel="manifest" href="{{ url_for('static', filename='site.webmanifest') }}">
+    <link rel="manifest" href="{{ url_for('static', path='site.webmanifest') }}">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>運営・役職メンバー一覧 - talk-ch トークちゃんねる</title>
@@ -79,8 +79,8 @@
             color: #ff2233;
         }
         .role-pr {
-            background-color: rgba(0, 255, 228, 0.1);
-            color: #00FFE4;
+            background-color: rgba(0, 225, 136, 0.1);
+            color: #00E188;
         }
         .role-box {
             background-color: rgba(69, 112, 255, 0.1);
@@ -127,13 +127,13 @@
                 <tr>
                     <td><span class="role-badge role-admin">管理人★</span></td>
                     <td style="font-weight: bold;">ペンギン★</td>
-                    <td style="font-size: 13px; color: #555;">サイトの構築・開発、サーバー管理全般</span>(ID:????)</td>
+                    <td style="font-size: 13px; color: #555;">サイトの構築・開発、サーバー管理全般(ID:????)</td>
                 </tr>
                 
                 <tr>
                     <td><span class="role-badge role-admin">副管理人・会計</span></td>
                     <td style="font-weight: bold;">Mino★</td>
-                    <td style="font-size: 13px; color: #555;">管理人の補佐、会計作業</span>(ID:????)</td>
+                    <td style="font-size: 13px; color: #555;">管理人の補佐、会計作業(ID:????)</td>
                 </tr>
                 
             
@@ -155,7 +155,7 @@
                 <tr>
                     <td><span class="role-badge role-proposal">提案収集長</span></td>
                     <td style="font-weight: bold;">
-                        <span style="color: #FF7F50;">車エビ</span> <span style="font-size: 11px; color: #777; font-weight: normal;"></span>
+                        <span style="color: #000000;">車エビ</span> <span style="font-size: 11px; color: #777; font-weight: normal;"></span>
                     </td>
                     <td style="font-size: 13px; color: #555;">掲示板の不満、不平、提案をまとめ、掲示板の発展に貢献（ペンギンからの雑用も含む）(https://scratch.mit.edu/users/talk-ch_kurumaebi/)</td>
                 </tr>
