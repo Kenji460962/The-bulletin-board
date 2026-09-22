@@ -36,7 +36,13 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- レンダリングブロックを避けるため、フォントCSSは非同期で取得してから適用する -->
+    <link rel="preload" as="style"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap"
+          onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap">
+    </noscript>
 
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3410577348918125"
      crossorigin="anonymous"></script>
@@ -1652,8 +1658,14 @@
             console.error('サーバー負荷の取得に失敗しました:', err);
         }
     }
-    pollServerStats();
-    setInterval(pollServerStats, 4000);
+    // フォントや他のリソースと読み込みを取り合わないよう、
+    // ページの主要な描画が終わってから統計取得を開始する
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            pollServerStats();
+            setInterval(pollServerStats, 4000);
+        }, 1000);
+    });
 
     (function() {
         var sidebar = document.getElementById('app-sidebar');
