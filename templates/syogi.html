@@ -249,7 +249,7 @@
             const formData = new URLSearchParams();
             formData.append('name', name);
             try {
-                const r = await fetch("{{ url_for('shogi_create') }}", { method: 'POST', body: formData });
+                const r = await fetch("/shogi/create", { method: 'POST', body: formData });
                 if (r.redirected) {
                     window.location.href = r.url;
                 } else {
