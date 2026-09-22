@@ -4674,6 +4674,22 @@ async def api_admin_report_status(request: Request, report_id: int):
     return json_resp({"success": True, "status": new_status})
 
 
+# =========================
+# リバースプロキシ(Cloudflare)配下でのスキーム認識
+# =========================
+# gunicorn + UvicornWorker構成では、uvicorn.run()に渡すproxy_headers/forwarded_allow_ips
+# (下のif __name__=='__main__'ブロック内)は効かない。そのままだとアプリからは全リクエストが
+# 「http」に見えてしまい、request.url_for()等が生成する絶対URLがhttp://になる。
+# HTTPSページからそのURLへfetch()すると、ブラウザにMixed Contentとしてブロックされる
+# (このバグで将棋の部屋作成が壊れていた)。
+# ProxyHeadersMiddlewareでX-Forwarded-Proto等を信頼させることで、gunicorn経由でも
+# アプリが「https」を正しく認識できるようにする。
+# trusted_hosts='127.0.0.1'としているのは、gunicornが127.0.0.1:8000にbindしており、
+# 手前のCloudflare/プロキシからの接続はローカルから来るため。
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     # 512MB環境では worker は1つに固定する(増やすと1プロセスあたりの常駐メモリで即OOM)。
