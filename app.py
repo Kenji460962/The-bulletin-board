@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, Plai
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.concurrency import run_in_threadpool
 from datetime import datetime, timedelta
 import json
@@ -231,6 +232,10 @@ FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_1234
 
 
 app.add_middleware(SessionMiddleware, secret_key=FLASK_SECRET_KEY)
+# HTML/JSONレスポンスをgzip圧縮する。thread.html/index.htmlなど数十~100KB超の
+# ページが多いため、転送量削減の効果が大きい(min_size未満は圧縮コストの方が
+# 高くつくのでそのまま返す)。
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 
@@ -1366,10 +1371,13 @@ async def rankings(request: Request):
             [game, n]
         ) or []
 
+    othello_ranking, chess_ranking, shogi_ranking = await asyncio.gather(
+        top_n('othello'), top_n('chess'), top_n('shogi')
+    )
     return templates.TemplateResponse(request, 'rankings.html', {
-        'othello_ranking': await top_n('othello'),
-        'chess_ranking': await top_n('chess'),
-        'shogi_ranking': await top_n('shogi'),
+        'othello_ranking': othello_ranking,
+        'chess_ranking': chess_ranking,
+        'shogi_ranking': shogi_ranking,
     })
 
 
@@ -1499,17 +1507,41 @@ def _calc_win_rate(wins: int, losses: int, draws: int):
 
 @app.get('/profile/{public_id}')
 async def profile_view(request: Request, public_id: str):
-    res = await query_d1(
-        "SELECT id, username, public_id, bio, icon_path, created_at FROM users WHERE public_id = ?",
-        [public_id]
+    # ユーザー本体・作成スレ数・総レス数はpublic_id(URLの値)だけで引けるので、
+    # 互いに依存する所がなく最初からまとめて並列に投げられる。
+    # (旧実装は「ユーザー取得→ゲーム3種を1つずつ→スレ数→レス数→…」と
+    #  10回前後のD1往復を全部直列にしていたため、プロフィールが特に重かった)
+    res, thread_count_res, reply_count_res = await asyncio.gather(
+        query_d1(
+            "SELECT id, username, public_id, bio, icon_path, created_at FROM users WHERE public_id = ?",
+            [public_id]
+        ),
+        query_d1("SELECT COUNT(*) as cnt FROM threads WHERE user_id = ?", [public_id]),
+        # threads.user_id には会員のpublic_idが入るが、replies.user_id は運営投稿時に "STAFF"
+        # が入る仕様のため、レス数は必ず poster_public_id 側で数える。
+        query_d1("SELECT COUNT(*) as cnt FROM replies WHERE poster_public_id = ?", [public_id]),
     )
     if not res:
         return text_resp("そのユーザーは見つかりませんでした。", 404)
     profile_user = res[0]
+    board_stats = {
+        'thread_count': thread_count_res[0]['cnt'] if thread_count_res else 0,
+        'reply_count': reply_count_res[0]['cnt'] if reply_count_res else 0,
+    }
+
     member_key = f"member:{profile_user['id']}"
+
+    # ゲーム3種の成績・フォロー数・ログイン中会員情報・未読DM件数も互いに独立なので並列化
+    othello_res, chess_res, shogi_res, follow_counts, current_member, unread_dm_count = await asyncio.gather(
+        query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'othello']),
+        query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'chess']),
+        query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'shogi']),
+        get_follow_counts(profile_user['id']),
+        get_current_member(request),
+        get_unread_dm_count(request),
+    )
     games = {}
-    for g in ('othello', 'chess', 'shogi'):
-        gr = await query_d1("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, g])
+    for g, gr in (('othello', othello_res), ('chess', chess_res), ('shogi', shogi_res)):
         if gr:
             row = gr[0]
             row['win_rate'] = _calc_win_rate(row.get('wins'), row.get('losses'), row.get('draws'))
@@ -1517,19 +1549,6 @@ async def profile_view(request: Request, public_id: str):
         else:
             games[g] = None
 
-    # 掲示板実績（作成スレッド数・総レス数）
-    # threads.user_id / replies.user_id には会員のpublic_idが保存されている
-    # 掲示板実績（作成スレッド数・総レス数）
-    # threads.user_id には会員のpublic_idが入るが、replies.user_id は運営投稿時に "STAFF"
-    # が入る仕様のため、レス数は必ず poster_public_id 側で数える。
-    thread_count_res = await query_d1("SELECT COUNT(*) as cnt FROM threads WHERE user_id = ?", [public_id])
-    reply_count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE poster_public_id = ?", [public_id])
-    board_stats = {
-        'thread_count': thread_count_res[0]['cnt'] if thread_count_res else 0,
-        'reply_count': reply_count_res[0]['cnt'] if reply_count_res else 0,
-    }
-
-    current_member = await get_current_member(request)
     is_own_profile = bool(current_member) and str(current_member['id']) == str(profile_user['id'])
 
     # フォロー／ブロック／DMの状態（未ログイン・自分自身の場合はすべてFalse）
@@ -1537,13 +1556,17 @@ async def profile_view(request: Request, public_id: str):
     if current_member and not is_own_profile:
         me = current_member['id']
         other = profile_user['id']
-        follow_state['following'] = await is_following(me, other)
-        follow_state['followed_by'] = await is_following(other, me)
-        follow_state['mutual'] = follow_state['following'] and follow_state['followed_by']
-        blocked_res = await query_d1(
-            "SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ? LIMIT 1",
-            [me, other]
+        following, followed_by, blocked_res = await asyncio.gather(
+            is_following(me, other),
+            is_following(other, me),
+            query_d1(
+                "SELECT 1 AS ok FROM blocks WHERE blocker_id = ? AND blocked_id = ? LIMIT 1",
+                [me, other]
+            ),
         )
+        follow_state['following'] = following
+        follow_state['followed_by'] = followed_by
+        follow_state['mutual'] = following and followed_by
         follow_state['blocked'] = bool(blocked_res)
 
     return templates.TemplateResponse(request, 'profile.html', {
@@ -1552,10 +1575,10 @@ async def profile_view(request: Request, public_id: str):
         'board_stats': board_stats,
         'is_own_profile': is_own_profile,
         'current_member': current_member,
-        'follow_counts': await get_follow_counts(profile_user['id']),
+        'follow_counts': follow_counts,
         'follow_state': follow_state,
         'report_reasons': REPORT_REASONS,
-        'unread_dm_count': await get_unread_dm_count(request),
+        'unread_dm_count': unread_dm_count,
     })
 
 
@@ -3137,79 +3160,19 @@ async def index(request: Request):
         sort = DEFAULT_THREAD_SORT
     order_sql = THREAD_SORT_SQL[sort]
 
-    try:
-        where_clauses = []
-        where_params = []
-        if search_query:
-            where_clauses.append("t.title LIKE ?")
-            where_params.append(f"%{search_query}%")
-        if category:
-            where_clauses.append("t.category = ?")
-            where_params.append(category)
-        if tag:
-            # tagsはJSON配列文字列で保存しているので、部分一致で引っかける簡易的な絞り込み
-            where_clauses.append("t.tags LIKE ?")
-            where_params.append(f'%"{tag}"%')
-        where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-
-        threads = await _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=per_page, offset=start_index)
-
-        has_next = len(threads) == per_page
-
-        pinned_ids = [4, 3, 2, 1]
-        pinned_threads = []
-
-        # 固定表示は「検索・カテゴリ絞り込み・並び替えなし」かつ1ページ目の時だけ行う
-        show_pinned = (not search_query) and (not category) and (not tag) and sort == DEFAULT_THREAD_SORT and page == 1
-
-        if show_pinned:
-            for pid in pinned_ids:
-                for i, t in enumerate(threads):
-                    if int(t['id']) == pid:
-                        pinned_threads.append(threads.pop(i))
-                        break
-
-            # 固定スレは最大4件なので、1件ずつSELECTせずIN句で1往復にまとめる。
-            # (旧実装は最大4回の追加ラウンドトリップを発生させていた)
-            missing_ids = [
-                pid for pid in pinned_ids
-                if not any(int(pt['id']) == pid for pt in pinned_threads)
-            ]
-            if missing_ids:
-                try:
-                    placeholders = ",".join("?" for _ in missing_ids)
-                    pinned_res = await _fetch_threads_with_stats(
-                        f"WHERE t.id IN ({placeholders})", missing_ids, order_sql
-                    )
-                    by_id = {int(r['id']): r for r in pinned_res}
-                    for pid in missing_ids:
-                        if pid in by_id:
-                            pinned_threads.append(by_id[pid])
-                except Exception as pe:
-                    print(f"固定スレッド取得エラー: {pe}")
-
-            for pt in pinned_threads:
-                pt['is_pinned'] = True
-                threads.insert(0, pt)
-
-        for t in threads:
-            if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
-                t['is_pinned'] = True
-            if not t.get('category'):
-                t['category'] = DEFAULT_THREAD_CATEGORY
-            t['tags_list'] = _parse_tags(t.get('tags'))
-
-        try:
-            admin_res = await query_d1("SELECT message FROM admin_messages WHERE id = ?", [1])
-            admin_message = admin_res[0]['message'] if admin_res else "ここに管理者の一言が表示されます。"
-        except Exception as ae:
-            admin_message = "管理者の一言の取得に失敗しました。"
-
-    except Exception as e:
-        print(f"スレッド一覧取得エラー: {e}")
-        threads = []
-        has_next = False
-        admin_message = "管理者の一言の取得に失敗しました。"
+    where_clauses = []
+    where_params = []
+    if search_query:
+        where_clauses.append("t.title LIKE ?")
+        where_params.append(f"%{search_query}%")
+    if category:
+        where_clauses.append("t.category = ?")
+        where_params.append(category)
+    if tag:
+        # tagsはJSON配列文字列で保存しているので、部分一致で引っかける簡易的な絞り込み
+        where_clauses.append("t.tags LIKE ?")
+        where_params.append(f'%"{tag}"%')
+    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
 
     user_token = request.cookies.get('user_bbs_token')
     is_new_user = False
@@ -3217,16 +3180,93 @@ async def index(request: Request):
         user_token = str(uuid.uuid4())
         is_new_user = True
 
-    active_count = await update_and_get_user_counts(user_token, "lobby")
+    # スレ一覧本体と、スレの中身に依存しない他の問い合わせ(管理者の一言・
+    # 閲覧人数・ログイン中会員情報・未読DM件数)は互いに無関係なので、
+    # 直列にawaitせず並列に投げてD1往復の回数分の待ち時間を潰す。
+    # (トップページは最もアクセスされるページなので、ここの直列化が
+    #  サイト全体の体感速度に一番効いていた)
+    threads_result, admin_result, active_count_result, current_member_result, unread_dm_result = await asyncio.gather(
+        _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=per_page, offset=start_index),
+        query_d1("SELECT message FROM admin_messages WHERE id = ?", [1]),
+        update_and_get_user_counts(user_token, "lobby"),
+        get_current_member(request),
+        get_unread_dm_count(request),
+        return_exceptions=True,
+    )
+
+    if isinstance(admin_result, Exception) or not admin_result:
+        admin_message = "ここに管理者の一言が表示されます。" if not isinstance(admin_result, Exception) else "管理者の一言の取得に失敗しました。"
+    else:
+        admin_message = admin_result[0]['message']
+
+    active_count = 0 if isinstance(active_count_result, Exception) else active_count_result
+    current_member = None if isinstance(current_member_result, Exception) else current_member_result
+    unread_dm_count = 0 if isinstance(unread_dm_result, Exception) else unread_dm_result
+
+    if isinstance(threads_result, Exception):
+        print(f"スレッド一覧取得エラー: {threads_result}")
+        threads = []
+        has_next = False
+    else:
+        try:
+            threads = threads_result
+            has_next = len(threads) == per_page
+
+            pinned_ids = [4, 3, 2, 1]
+            pinned_threads = []
+
+            # 固定表示は「検索・カテゴリ絞り込み・並び替えなし」かつ1ページ目の時だけ行う
+            show_pinned = (not search_query) and (not category) and (not tag) and sort == DEFAULT_THREAD_SORT and page == 1
+
+            if show_pinned:
+                for pid in pinned_ids:
+                    for i, t in enumerate(threads):
+                        if int(t['id']) == pid:
+                            pinned_threads.append(threads.pop(i))
+                            break
+
+                # 固定スレは最大4件なので、1件ずつSELECTせずIN句で1往復にまとめる。
+                # (旧実装は最大4回の追加ラウンドトリップを発生させていた)
+                missing_ids = [
+                    pid for pid in pinned_ids
+                    if not any(int(pt['id']) == pid for pt in pinned_threads)
+                ]
+                if missing_ids:
+                    try:
+                        placeholders = ",".join("?" for _ in missing_ids)
+                        pinned_res = await _fetch_threads_with_stats(
+                            f"WHERE t.id IN ({placeholders})", missing_ids, order_sql
+                        )
+                        by_id = {int(r['id']): r for r in pinned_res}
+                        for pid in missing_ids:
+                            if pid in by_id:
+                                pinned_threads.append(by_id[pid])
+                    except Exception as pe:
+                        print(f"固定スレッド取得エラー: {pe}")
+
+                for pt in pinned_threads:
+                    pt['is_pinned'] = True
+                    threads.insert(0, pt)
+
+            for t in threads:
+                if t.get('is_pinned') or int(t['id']) in [1, 2, 3, 4]:
+                    t['is_pinned'] = True
+                if not t.get('category'):
+                    t['category'] = DEFAULT_THREAD_CATEGORY
+                t['tags_list'] = _parse_tags(t.get('tags'))
+        except Exception as e:
+            print(f"スレッド一覧取得エラー: {e}")
+            threads = []
+            has_next = False
+
     is_admin_user = can_manage_board(request)
-    current_member = await get_current_member(request)
 
     response = templates.TemplateResponse(request, 'index.html', {
         'threads': threads,
         'admin_message': admin_message,
         'is_admin_user': is_admin_user,
         'current_member': current_member,
-        'unread_dm_count': await get_unread_dm_count(request),
+        'unread_dm_count': unread_dm_count,
         'active_count': active_count,
         'current_page': page,
         'has_next': has_next,
@@ -3621,7 +3661,7 @@ async def thread_view(request: Request, thread_id: int):
         # D1のAPI応答サイズ制限対策として、直近分だけ取得する(古い順に並べ直す)
         # 初回表示はテンプレート描画・転送量・体感速度への影響が大きいため、
         # 必要最小限だけ取得し、残りは「もっと見る」ボタンの追加取得に任せる。
-        RECENT_REPLIES_LIMIT = 50
+        RECENT_REPLIES_LIMIT = 300
         thread_res, count_res, replies_res = await asyncio.gather(
             query_d1("SELECT * FROM threads WHERE id = ?", [thread_id]),
             query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id]),
@@ -4211,34 +4251,36 @@ async def dm_list(request: Request):
         return RedirectResponse(url='/login')
     member_id = request.session.get('member_id')
 
-    conversations = await query_d1(
-        "SELECT c.id AS conversation_id, "
-        "       u.username, u.public_id, u.icon_path, "
-        "       c.last_message_at, "
-        "       (SELECT m.content FROM dm_messages m WHERE m.conversation_id = c.id "
-        "          ORDER BY m.id DESC LIMIT 1) AS last_content, "
-        "       (SELECT COUNT(*) FROM dm_messages m2 WHERE m2.conversation_id = c.id "
-        "          AND m2.sender_id != ? AND m2.read_at IS NULL) AS unread_count "
-        "FROM dm_conversations c "
-        "JOIN users u ON u.id = CASE WHEN c.user_a_id = ? THEN c.user_b_id ELSE c.user_a_id END "
-        "WHERE (c.user_a_id = ? OR c.user_b_id = ?) AND c.last_message_at IS NOT NULL "
-        "ORDER BY c.last_message_at DESC LIMIT 100",
-        [member_id, member_id, member_id, member_id]
-    ) or []
-
-    # 相互フォロー（＝DMを新規に送れる相手）の一覧
-    mutuals = await query_d1(
-        "SELECT u.username, u.public_id, u.icon_path FROM follows f1 "
-        "JOIN follows f2 ON f2.follower_id = f1.followee_id AND f2.followee_id = f1.follower_id "
-        "JOIN users u ON u.id = f1.followee_id "
-        "WHERE f1.follower_id = ? ORDER BY u.username LIMIT 200",
-        [member_id]
-    ) or []
+    conversations, mutuals, unread_dm_count = await asyncio.gather(
+        query_d1(
+            "SELECT c.id AS conversation_id, "
+            "       u.username, u.public_id, u.icon_path, "
+            "       c.last_message_at, "
+            "       (SELECT m.content FROM dm_messages m WHERE m.conversation_id = c.id "
+            "          ORDER BY m.id DESC LIMIT 1) AS last_content, "
+            "       (SELECT COUNT(*) FROM dm_messages m2 WHERE m2.conversation_id = c.id "
+            "          AND m2.sender_id != ? AND m2.read_at IS NULL) AS unread_count "
+            "FROM dm_conversations c "
+            "JOIN users u ON u.id = CASE WHEN c.user_a_id = ? THEN c.user_b_id ELSE c.user_a_id END "
+            "WHERE (c.user_a_id = ? OR c.user_b_id = ?) AND c.last_message_at IS NOT NULL "
+            "ORDER BY c.last_message_at DESC LIMIT 100",
+            [member_id, member_id, member_id, member_id]
+        ),
+        # 相互フォロー（＝DMを新規に送れる相手）の一覧
+        query_d1(
+            "SELECT u.username, u.public_id, u.icon_path FROM follows f1 "
+            "JOIN follows f2 ON f2.follower_id = f1.followee_id AND f2.followee_id = f1.follower_id "
+            "JOIN users u ON u.id = f1.followee_id "
+            "WHERE f1.follower_id = ? ORDER BY u.username LIMIT 200",
+            [member_id]
+        ),
+        get_unread_dm_count(request),
+    )
 
     return templates.TemplateResponse(request, 'messages.html', {
-        'conversations': conversations,
-        'mutuals': mutuals,
-        'unread_dm_count': await get_unread_dm_count(request),
+        'conversations': conversations or [],
+        'mutuals': mutuals or [],
+        'unread_dm_count': unread_dm_count,
     })
 
 
@@ -4248,20 +4290,22 @@ async def dm_conversation(request: Request, public_id: str):
         return RedirectResponse(url='/login')
     member_id = request.session.get('member_id')
 
-    partner = await query_d1(
-        "SELECT id, username, public_id, icon_path FROM users WHERE public_id = ?", [public_id]
+    partner_res, unread_dm_count = await asyncio.gather(
+        query_d1("SELECT id, username, public_id, icon_path FROM users WHERE public_id = ?", [public_id]),
+        get_unread_dm_count(request),
     )
-    if not partner:
+    if not partner_res:
         return text_resp("そのユーザーは見つかりませんでした。", 404)
-    partner = partner[0]
-
-    allowed, reason = await can_dm(member_id, partner['id'])
+    partner = partner_res[0]
 
     messages = []
-    conv_res = await query_d1(
-        "SELECT id FROM dm_conversations WHERE (user_a_id = ? AND user_b_id = ?) "
-        "OR (user_a_id = ? AND user_b_id = ?)",
-        [member_id, partner['id'], partner['id'], member_id]
+    (allowed, reason), conv_res = await asyncio.gather(
+        can_dm(member_id, partner['id']),
+        query_d1(
+            "SELECT id FROM dm_conversations WHERE (user_a_id = ? AND user_b_id = ?) "
+            "OR (user_a_id = ? AND user_b_id = ?)",
+            [member_id, partner['id'], partner['id'], member_id]
+        ),
     )
     conversation_id = conv_res[0]['id'] if conv_res else None
 
@@ -4284,15 +4328,14 @@ async def dm_conversation(request: Request, public_id: str):
                     str(m['content'])
                 )
 
-        # 開いた時点で相手からの未読を既読にする
-        try:
-            await query_d1(
-                "UPDATE dm_messages SET read_at = datetime('now') "
-                "WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL",
-                [conversation_id, member_id]
-            )
-        except Exception as e:
-            print(f"既読処理エラー: {e}")
+        # 開いた時点で相手からの未読を既読にする。
+        # 表示するmessagesは既に組み立て済みなので、この既読UPDATEの完了を
+        # 待つ必要はなく、バックグラウンドで実行してレスポンスを速く返す。
+        asyncio.create_task(query_d1(
+            "UPDATE dm_messages SET read_at = datetime('now') "
+            "WHERE conversation_id = ? AND sender_id != ? AND read_at IS NULL",
+            [conversation_id, member_id]
+        ))
 
     return templates.TemplateResponse(request, 'dm_conversation.html', {
         'partner': partner,
@@ -4300,7 +4343,7 @@ async def dm_conversation(request: Request, public_id: str):
         'can_send': allowed,
         'deny_reason': reason,
         'report_reasons': REPORT_REASONS,
-        'unread_dm_count': await get_unread_dm_count(request),
+        'unread_dm_count': unread_dm_count,
     })
 
 
