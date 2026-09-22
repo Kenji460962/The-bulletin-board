@@ -81,6 +81,7 @@
             --radius-pill: 4px;
             --sidebar-w: 240px;
             --bg-image: url("{{ url_for('static', path='IMG_0565.png') }}");
+            --nav-hover: rgba(17, 24, 39, 0.06);
         }
 
         html[data-theme="dark"] {
@@ -95,6 +96,7 @@
             --primary-soft: rgba(91, 147, 245, 0.12);
             --amber-soft: rgba(180, 83, 9, 0.15);
             --bg-image: url("{{ url_for('static', path='IMG_0566.png') }}");
+            --nav-hover: rgba(255, 255, 255, 0.08);
         }
 
         * { box-sizing: border-box; }
@@ -170,31 +172,35 @@
             letter-spacing: 0.03em;
             padding: 14px 8px 6px;
         }
-        .side-nav { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+        .side-nav { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
         .side-nav-item {
             appearance: none;
             width: 100%;
-            display: flex; align-items: center;
+            display: flex; align-items: center; gap: 14px;
             background: transparent;
             border: none;
-            border-left: 3px solid transparent; /* インジケーター分の余白を常に確保（active時のズレ防止） */
-            color: #8b949e;
+            color: var(--text-muted);
             font-family: inherit;
-            font-size: 15px;
+            font-size: 15.5px;
             font-weight: 600;
             line-height: 1.6;
             text-decoration: none;
-            padding: 8px 8px;
-            border-radius: var(--radius-sm);
+            padding: 10px 16px;
+            border-radius: 999px; /* ベジェ曲線で完全な丸みを持たせたピル型 */
             cursor: pointer;
             text-align: left;
-            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+            transition: background 0.15s ease, color 0.15s ease;
         }
-        .side-nav-item:hover { background: var(--bg); color: var(--text); }
+        .side-nav-item .nav-icon {
+            flex: 0 0 auto;
+            width: 22px; height: 22px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .side-nav-item .nav-icon svg { width: 100%; height: 100%; }
+        .side-nav-item:hover { background: var(--nav-hover); color: var(--text); }
         .side-nav-item.active {
-            background: rgba(37, 99, 235, 0.12);
-            border-left-color: var(--primary);
-            color: #ffffff;
+            background: var(--primary-soft);
+            color: var(--primary);
             font-weight: 700;
         }
 
@@ -915,10 +921,22 @@
 
             <div class="side-section-label">メニュー</div>
             <nav class="side-nav">
-                <button class="side-nav-item active" data-tab="lobby-tab" onclick="switchTab('lobby-tab', this)">ロビー</button>
-                <button class="side-nav-item" data-tab="threads-tab" onclick="switchTab('threads-tab', this)">スレ一覧</button>
-                <button class="side-nav-item" data-tab="games-tab" onclick="switchTab('games-tab', this)">ゲーム</button>
-                <button class="side-nav-item" data-tab="guide-tab" onclick="switchTab('guide-tab', this)">使い方</button>
+                <button class="side-nav-item active" data-tab="lobby-tab" onclick="switchTab('lobby-tab', this)">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9a1 1 0 0 0 1 1h4v-6h3v6h4a1 1 0 0 0 1-1v-9"/></svg></span>
+                    <span class="nav-label">ロビー</span>
+                </button>
+                <button class="side-nav-item" data-tab="threads-tab" onclick="switchTab('threads-tab', this)">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>
+                    <span class="nav-label">スレ一覧</span>
+                </button>
+                <button class="side-nav-item" data-tab="games-tab" onclick="switchTab('games-tab', this)">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15.2" cy="13" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r="1" fill="currentColor" stroke="none"/></svg></span>
+                    <span class="nav-label">ゲーム</span>
+                </button>
+                <button class="side-nav-item" data-tab="guide-tab" onclick="switchTab('guide-tab', this)">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.7 1.2c0 1.6-2.2 1.8-2.2 3.3"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg></span>
+                    <span class="nav-label">使い方</span>
+                </button>
             </nav>
 
             <div class="side-collapsible-head" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">
@@ -926,12 +944,26 @@
                 <span class="chev">▾</span>
             </div>
             <nav class="side-collapsible-body">
-                <a class="side-nav-item" href="{{ url_for('archive_list') }}">過去スレ</a>
-                <a class="side-nav-item" href="{{ url_for('privacy') }}" target="_blank">プライバシーポリシー</a>
-                <a class="side-nav-item" href="{{ url_for('terms') }}" target = "_blank">利用規約</a>
-                
-                <a class="side-nav-item" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">通報窓口、お問い合わせ</a>
-                <a class="side-nav-item" href="{{ url_for('roles') }}" target="_blank">運営体制・役職</a>
+                <a class="side-nav-item" href="{{ url_for('archive_list') }}">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="22" height="5" rx="1"/><path d="M21 8v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg></span>
+                    <span class="nav-label">過去スレ</span>
+                </a>
+                <a class="side-nav-item" href="{{ url_for('privacy') }}" target="_blank">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5.5v5c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10v-5L12 2Z"/></svg></span>
+                    <span class="nav-label">プライバシーポリシー</span>
+                </a>
+                <a class="side-nav-item" href="{{ url_for('terms') }}" target = "_blank">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg></span>
+                    <span class="nav-label">利用規約</span>
+                </a>
+                <a class="side-nav-item" href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><polyline points="22 6 12 13 2 6"/></svg></span>
+                    <span class="nav-label">通報窓口、お問い合わせ</span>
+                </a>
+                <a class="side-nav-item" href="{{ url_for('roles') }}" target="_blank">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+                    <span class="nav-label">運営体制・役職</span>
+                </a>
             </nav>
         </aside>
 
