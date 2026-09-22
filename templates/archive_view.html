@@ -4,66 +4,123 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ thread.title }}（過去ログ） - talk-ch</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
             --bg-color: #0f172a;
             --panel-bg: #1e293b;
+            --panel-hover: #253352;
             --border-color: #334155;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
+            --text-faint: #64748b;
             --accent-color: #38bdf8;
+            --accent-soft: rgba(56, 189, 248, 0.13);
         }
         * { box-sizing: border-box; }
         body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-color);
+            font-family: 'Inter', "Hiragino Kaku Gothic ProN", sans-serif;
+            background:
+                radial-gradient(680px 320px at 50% -10%, rgba(56, 189, 248, 0.08), transparent 65%),
+                var(--bg-color);
             color: var(--text-main);
             margin: 0;
-            padding: 16px;
+            padding: 28px 16px 60px;
             display: flex;
             flex-direction: column;
             align-items: center;
+            min-height: 100vh;
         }
         a { color: var(--accent-color); text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .top-nav { width: 100%; max-width: 640px; margin-bottom: 12px; font-size: 13px; display: flex; justify-content: space-between; }
+
+        .top-nav {
+            width: 100%; max-width: 640px; margin-bottom: 18px; font-size: 13px;
+            display: flex; justify-content: space-between;
+        }
+        .top-nav a { color: var(--text-muted); display: inline-flex; align-items: center; gap: 5px; transition: color 0.15s ease; }
+        .top-nav a:hover { color: var(--accent-color); }
+
         .panel {
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 16px 20px;
+            border-radius: 14px;
+            padding: 18px 20px;
             width: 100%;
             max-width: 640px;
             margin-bottom: 16px;
+            box-shadow: 0 12px 28px -18px rgba(0, 0, 0, 0.55);
         }
-        h1 { font-size: 18px; margin: 0 0 4px 0; }
+        .header-panel { padding: 16px 20px; }
         .archive-badge {
-            display: inline-block;
-            background: rgba(56, 189, 248, 0.15);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--accent-soft);
             color: var(--accent-color);
             font-size: 12px;
-            padding: 3px 8px;
-            border-radius: 4px;
-            margin-bottom: 8px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 999px;
+            margin-bottom: 10px;
         }
+        h1 { font-size: 18px; font-weight: 700; margin: 0; line-height: 1.5; letter-spacing: -0.005em; }
+
+        .posts-panel { padding: 4px 20px; }
         .post-item {
             border-bottom: 1px solid var(--border-color);
-            padding: 10px 0;
+            padding: 14px 0;
+            scroll-margin-top: 16px;
         }
         .post-item:last-child { border-bottom: none; }
         .post-meta {
             font-size: 12px;
             color: var(--text-muted);
-            margin-bottom: 4px;
+            margin-bottom: 6px;
             display: flex;
+            align-items: center;
             gap: 8px;
             flex-wrap: wrap;
         }
-        .post-num { color: var(--accent-color); font-weight: 600; }
-        .post-content { font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-        .post-image { max-width: 100%; border-radius: 6px; margin-top: 6px; }
-        .empty { color: var(--text-muted); font-size: 14px; }
+        .post-num {
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 26px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 6px;
+            background: var(--accent-soft);
+            color: var(--accent-color);
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .post-author { color: var(--text-main); font-weight: 500; }
+        .role-admin { color: #f87171 !important; font-weight: 700; }
+        .role-sub-admin { color: #60a5fa !important; font-weight: 700; }
+        .role-moderator { color: #34d399 !important; font-weight: 700; }
+        .role-pr { color: #4ade80 !important; font-weight: 700; }
+        .role-proposal { color: #fb923c !important; font-weight: 700; }
+        .role-log { color: #38bdf8 !important; font-weight: 700; }
+        .role-patrol { color: #c084fc !important; font-weight: 700; }
+        .post-meta .dot { color: var(--text-faint); }
+        .post-meta .post-id { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 11.5px; color: var(--text-faint); }
+        .post-content {
+            font-size: 14.5px;
+            line-height: 1.75;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--text-main);
+        }
+        .post-image-link { display: inline-block; margin-top: 8px; }
+        .post-image {
+            max-width: 100%;
+            max-height: 360px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            display: block;
+        }
+        .empty { color: var(--text-muted); font-size: 14px; text-align: center; padding: 30px 0; }
     </style>
 </head>
 <body>
@@ -73,24 +130,44 @@
         <a href="{{ url_for('archive_list') }}">過去ログ一覧へ</a>
     </div>
 
-    <div class="panel">
+    <div class="panel header-panel">
         <div class="archive-badge">📦 過去ログ（アーカイブ済み・書き込み不可）</div>
         <h1>{{ thread.title }}</h1>
     </div>
 
-    <div class="panel">
+    <div class="panel posts-panel">
         {% if replies %}
             {% for r in replies %}
-            <div class="post-item">
+            {% set role_cls = 'post-author' %}
+            {% if r.role == 'admin' or r.is_admin %}
+                {% set role_cls = 'role-admin' %}
+            {% elif r.role == 'sub_admin' %}
+                {% set role_cls = 'role-sub-admin' %}
+            {% elif r.role == 'moderator' %}
+                {% set role_cls = 'role-moderator' %}
+            {% elif r.role == 'pr' %}
+                {% set role_cls = 'role-pr' %}
+            {% elif r.role == 'proposal' %}
+                {% set role_cls = 'role-proposal' %}
+            {% elif r.role == 'log' %}
+                {% set role_cls = 'role-log' %}
+            {% elif r.role == 'patrol' %}
+                {% set role_cls = 'role-patrol' %}
+            {% endif %}
+            <div class="post-item" id="p{{ loop.index }}">
                 <div class="post-meta">
-                    <span class="post-num">#{{ loop.index }}</span>
-                    <span>{{ r.author }}{% if r.is_admin or r.role in ['admin', 'sub_admin', 'moderator'] %}★{% endif %}</span>
+                    <span class="post-num">{{ loop.index }}</span>
+                    <span class="{{ role_cls }}">{{ r.author }}{% if r.role == 'admin' or r.is_admin %}★{% endif %}</span>
+                    <span class="dot">·</span>
                     <span>{{ r.date }}</span>
-                    <span>ID:{{ r.user_id }}</span>
+                    <span class="dot">·</span>
+                    <span class="post-id">ID:{{ r.user_id }}</span>
                 </div>
                 <div class="post-content">{{ r.content | safe }}</div>
                 {% if r.image_url %}
-                <a href="{{ r.image_url }}" target="_blank"><img src="{{ r.image_url }}" class="post-image" loading="lazy"></a>
+                <a class="post-image-link" href="{{ r.image_url }}" target="_blank">
+                    <img src="{{ r.image_url }}" class="post-image" loading="lazy">
+                </a>
                 {% endif %}
             </div>
             {% endfor %}
