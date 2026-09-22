@@ -710,6 +710,43 @@ def process_avatar_image(raw_bytes: bytes) -> bytes:
     return buf.getvalue()
 
 
+REPLY_IMAGE_MAX_DIMENSION = 1600  # 投稿画像の長辺の最大ピクセル数(アップスケールはしない)
+REPLY_IMAGE_WEBP_QUALITY = 85
+
+
+def process_reply_image(raw_bytes: bytes, orig_ext: str) -> tuple[bytes, str]:
+    """投稿画像をアップロード前に軽量化する。
+    スマホ撮影の写真(数MB・数千px四方)がそのままR2に置かれると、
+    そのスレを開いた閲覧者全員がフルサイズをダウンロードすることになり
+    表示速度に直結するため、長辺を上限内に縮小しWebPへ変換して容量を落とす。
+    アニメーションGIFはWebP変換で動きが失われるため、サイズ上限チェックのみでそのまま返す。
+    破損ファイルや非対応形式の場合はValueErrorを送出する(呼び出し側でアップロード自体をスキップする)。
+    """
+    try:
+        img = Image.open(io.BytesIO(raw_bytes))
+        img.load()
+    except Exception:
+        raise ValueError("invalid_image")
+
+    if getattr(img, "is_animated", False):
+        return raw_bytes, orig_ext
+
+    img = ImageOps.exif_transpose(img)
+
+    has_alpha = img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info)
+    img = img.convert('RGBA') if has_alpha else img.convert('RGB')
+
+    w, h = img.size
+    longest = max(w, h)
+    if longest > REPLY_IMAGE_MAX_DIMENSION:
+        scale = REPLY_IMAGE_MAX_DIMENSION / longest
+        img = img.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format='WEBP', quality=REPLY_IMAGE_WEBP_QUALITY, method=6)
+    return buf.getvalue(), '.webp'
+
+
 RESEND_API_KEY = os.environ.get('RESEND_API_KEY')
 RESEND_FROM_EMAIL = os.environ.get('RESEND_FROM_EMAIL', 'noreply@example.com')
 SITE_BASE_URL = os.environ.get('SITE_BASE_URL', 'http://localhost:8080')
@@ -3479,13 +3516,19 @@ async def thread_view(request: Request, thread_id: int):
         if upload is not None and getattr(upload, 'filename', ''):
             try:
                 orig_filename = secure_filename(upload.filename)
-                ext = os.path.splitext(orig_filename)[1]
-                unique_filename = f"{uuid.uuid4()}{ext}"
+                orig_ext = os.path.splitext(orig_filename)[1]
+                raw_bytes = await upload.read()
+                # CPUバウンドな画像処理はイベントループを塞がないようスレッドプールへ逃がす
+                processed_bytes, new_ext = await run_in_threadpool(process_reply_image, raw_bytes, orig_ext)
+                unique_filename = f"{uuid.uuid4()}{new_ext}"
+                content_type = 'image/webp' if new_ext == '.webp' else (upload.content_type or 'application/octet-stream')
                 await run_in_threadpool(
-                    s3_client.upload_fileobj, upload.file, R2_BUCKET_NAME, unique_filename,
-                    ExtraArgs={'ContentType': upload.content_type}
+                    s3_client.upload_fileobj, io.BytesIO(processed_bytes), R2_BUCKET_NAME, unique_filename,
+                    ExtraArgs={'ContentType': content_type}
                 )
                 image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
+            except ValueError:
+                print("投稿画像処理エラー: 不正な画像ファイルのためアップロードをスキップしました")
             except Exception as e:
                 print(f"R2 Upload Error: {e}")
 
@@ -3521,22 +3564,36 @@ async def thread_view(request: Request, thread_id: int):
                         content_str = re.sub(r'&gt;&gt;(\d+)|>>(\d+)', r'<a href="#post-\1\2" class="post-anchor" onclick="scrollToPost(\1\2); return false;">&gt;&gt;\1\2</a>', content_str)
                         new_reply['content'] = content_str
 
-                    try:
-                        thread_res = await query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
-                        op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
-                        new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
-                    except Exception as ope:
-                        new_reply['is_op'] = False
+                    # スレ主判定用のスレ情報・通し番号用の総数・投稿者アイコンは互いに
+                    # 依存しないD1問い合わせ(+セッションキャッシュ)なので並列に投げる。
+                    # return_exceptions=Trueで、どれか1つが失敗しても他の結果は活かす
+                    # (旧実装の「クエリごとにtry/exceptでフォールバック」と同じ耐障害性を保つ)。
+                    new_reply['is_op'] = False
+                    new_reply['post_num'] = None
+                    new_reply['icon_path'] = None
 
-                    try:
-                        total_count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
-                        new_reply['post_num'] = total_count_res[0]['cnt'] if total_count_res else None
-                    except Exception:
-                        new_reply['post_num'] = None
+                    gather_tasks = [
+                        query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id]),
+                        query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id]),
+                    ]
+                    if poster_public_id:
+                        gather_tasks.append(get_member_icon_path(request))
+
+                    gather_results = await asyncio.gather(*gather_tasks, return_exceptions=True)
+
+                    thread_res = gather_results[0]
+                    if not isinstance(thread_res, Exception) and thread_res:
+                        op_user_id = resolve_op_user_id(thread_res[0])
+                        new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
+
+                    total_count_res = gather_results[1]
+                    if not isinstance(total_count_res, Exception) and total_count_res:
+                        new_reply['post_num'] = total_count_res[0]['cnt']
 
                     # アバターURL: 投稿者が会員ならセッションキャッシュから取得(DB再問い合わせ不要)。
                     # ゲスト/STAFF投稿の場合はNoneのままでフロント側がフォールバック表示する。
-                    new_reply['icon_path'] = await get_member_icon_path(request) if poster_public_id else None
+                    if poster_public_id and len(gather_results) > 2 and not isinstance(gather_results[2], Exception):
+                        new_reply['icon_path'] = gather_results[2]
 
                     await manager.broadcast(thread_id, new_reply)
                     return {"success": True, "reply": new_reply}
@@ -3546,26 +3603,30 @@ async def thread_view(request: Request, thread_id: int):
         return json_resp({"success": False, "error": "書き込み内容が空です。"}, 400)
 
     try:
-        thread_res = await query_d1("SELECT * FROM threads WHERE id = ?", [thread_id])
+        # スレッド本体・合計レス数・直近レス一覧はお互いに依存しないので、
+        # 逐次awaitではなくasyncio.gatherでD1へ並列に投げる。
+        # (D1クエリ1本ごとにCloudflare APIへの往復が発生するため、直列だと
+        # 待ち時間が単純に足し算になっていた)
+        # D1のAPI応答サイズ制限対策として、直近300件だけ取得する(古い順に並べ直す)
+        RECENT_REPLIES_LIMIT = 300
+        thread_res, count_res, replies_res = await asyncio.gather(
+            query_d1("SELECT * FROM threads WHERE id = ?", [thread_id]),
+            query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id]),
+            query_d1(
+                """SELECT r.*, u.icon_path AS icon_path
+                   FROM replies r
+                   LEFT JOIN users u ON u.public_id = r.poster_public_id
+                   WHERE r.thread_id = ?
+                   ORDER BY r.id DESC LIMIT ?""",
+                [thread_id, RECENT_REPLIES_LIMIT]
+            ),
+        )
         if not thread_res:
             return text_resp("スレッドが見つかりません", 404)
         thread = thread_res[0]
         thread['tags_list'] = _parse_tags(thread.get('tags'))
 
-        # 合計レス数を取得(通し番号の計算とページングに使う)
-        count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
         total_reply_count = count_res[0]['cnt'] if count_res else 0
-
-        # D1のAPI応答サイズ制限対策として、直近300件だけ取得する(古い順に並べ直す)
-        RECENT_REPLIES_LIMIT = 300
-        replies_res = await query_d1(
-            """SELECT r.*, u.icon_path AS icon_path
-               FROM replies r
-               LEFT JOIN users u ON u.public_id = r.poster_public_id
-               WHERE r.thread_id = ?
-               ORDER BY r.id DESC LIMIT ?""",
-            [thread_id, RECENT_REPLIES_LIMIT]
-        )
         loaded_replies = list(reversed(replies_res)) if replies_res else []
         start_num = total_reply_count - len(loaded_replies) + 1
         for i, r in enumerate(loaded_replies):
@@ -3601,9 +3662,12 @@ async def thread_view(request: Request, thread_id: int):
         is_new_user = True
 
     location_key = f"thread_{thread_id}"
-    active_count = await update_and_get_user_counts(user_token, location_key)
-
-    current_member = await get_current_member(request)
+    # 閲覧人数更新・ログイン中会員情報・未読DM件数も互いに依存しないので並列化する
+    active_count, current_member, unread_dm_count = await asyncio.gather(
+        update_and_get_user_counts(user_token, location_key),
+        get_current_member(request),
+        get_unread_dm_count(request),
+    )
 
     response = templates.TemplateResponse(request, 'thread.html', {
         'thread': thread,
@@ -3613,7 +3677,7 @@ async def thread_view(request: Request, thread_id: int):
         'op_user_id': op_user_id,
         'current_member': current_member,
         'report_reasons': REPORT_REASONS,
-        'unread_dm_count': await get_unread_dm_count(request),
+        'unread_dm_count': unread_dm_count,
         'current_member_json': json.dumps(current_member, ensure_ascii=False) if current_member else 'null',
     })
 
