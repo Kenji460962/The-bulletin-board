@@ -37,7 +37,15 @@
     
     <title>{{ thread.title }}</title>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- レンダリングブロックを避けるため、フォントCSSは非同期で取得してから適用する -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style"
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+          onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    </noscript>
 
     <script>
         (function() {
@@ -434,7 +442,7 @@
         </div>
     </div>
 
-    <div class="posts-container" id="postsContainer">
+    <div class="posts-container" id="postsContainer" style="visibility: hidden;">
         {% if thread.has_older %}
         <div id="load-older-wrap" style="text-align: center; padding: 8px 0 16px 0;" data-oldest-loaded-id="{{ thread.replies[0].id if thread.replies else '' }}">
             <button id="load-older-btn" type="button" style="background: rgba(255,255,255,0.1); color: var(--text-main); border: 1px solid var(--border-color); padding: 6px 16px; border-radius: 4px; font-size: 13px; cursor: pointer;">
@@ -508,6 +516,22 @@
         </div>
         {% endfor %}
     </div>
+
+    <script>
+        // レス一覧のHTMLが構築され次第、アニメーションなしで即座に最下部へ移動させてから表示する。
+        // （.posts-containerにはCSSでscroll-behavior:smoothが設定されているため、
+        //   一時的にautoへ切り替えないと初回表示が「スーッと動いて見える」ため）
+        (function() {
+            var c = document.getElementById('postsContainer');
+            if (!c) return;
+            c.style.scrollBehavior = 'auto';
+            c.scrollTop = c.scrollHeight;
+            c.style.visibility = '';
+            requestAnimationFrame(function() {
+                c.style.scrollBehavior = ''; // 以降のスクロールは元のスムーズ挙動に戻す
+            });
+        })();
+    </script>
 
     <button id="scroll-to-bottom-btn" style="
         position: fixed;
