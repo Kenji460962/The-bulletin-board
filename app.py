@@ -925,11 +925,16 @@ async def get_current_member(request: Request):
     member_id = request.session.get('member_id')
     if not member_id:
         return None
+    # 未キャッシュ時(初回)はどちらもD1往復が発生し得るため並列化しておく
+    public_id, icon_path = await asyncio.gather(
+        get_member_public_id(request),
+        get_member_icon_path(request),
+    )
     return {
         'id': member_id,
         'username': request.session.get('member_username'),
-        'public_id': await get_member_public_id(request),
-        'icon_path': await get_member_icon_path(request),
+        'public_id': public_id,
+        'icon_path': icon_path,
     }
 
 
@@ -1300,14 +1305,19 @@ async def update_and_get_user_counts(current_token, location):
         VALUES (?, ?, ?) 
         ON CONFLICT(token) DO UPDATE SET location=excluded.location, last_seen=excluded.last_seen
         """
-        await query_d1(sql_upsert, [current_token, location, now.isoformat()])
+        # 自分の在室情報の書き込みはレスポンスをブロックしない。
+        # D1へのHTTP往復が1回増えるだけでページ表示が体感で遅くなるため、
+        # バックグラウンドで実行し、結果を待たずに人数取得へ進む
+        # （カウントが自分の分だけ1人分ズレることがあるが表示上は無害）。
+        asyncio.create_task(query_d1(sql_upsert, [current_token, location, now.isoformat()]))
 
     sql_count = "SELECT COUNT(*) as cnt FROM active_users WHERE location = ? AND last_seen >= ?"
     res = await query_d1(sql_count, [location, cutoff])
     count = res[0]['cnt'] if res and len(res) > 0 else 0
 
     if random.random() < 0.05:
-        await query_d1("DELETE FROM active_users WHERE last_seen < ?", [cutoff])
+        # 古いレコードの掃除も同様にバックグラウンドへ逃がす
+        asyncio.create_task(query_d1("DELETE FROM active_users WHERE last_seen < ?", [cutoff]))
 
     return count
 
@@ -3334,22 +3344,23 @@ async def get_older_replies(request: Request, thread_id: int):
         return json_resp({"success": False, "error": "before_idが必要です", "replies": [], "has_more": False}, 400)
 
     try:
-        count_res = await query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ? AND id < ?", [thread_id, before_id])
-        count_before = count_res[0]['cnt'] if count_res else 0
-
         LOAD_LIMIT = 300
-        older_res = await query_d1(
-            """SELECT r.*, u.icon_path AS icon_path
-               FROM replies r
-               LEFT JOIN users u ON u.public_id = r.poster_public_id
-               WHERE r.thread_id = ? AND r.id < ?
-               ORDER BY r.id DESC LIMIT ?""",
-            [thread_id, before_id, LOAD_LIMIT]
+        # 件数カウント・過去レス本体・スレ情報(スレ主判定用)は互いに依存しないので並列に投げる
+        count_res, older_res, thread_res = await asyncio.gather(
+            query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ? AND id < ?", [thread_id, before_id]),
+            query_d1(
+                """SELECT r.*, u.icon_path AS icon_path
+                   FROM replies r
+                   LEFT JOIN users u ON u.public_id = r.poster_public_id
+                   WHERE r.thread_id = ? AND r.id < ?
+                   ORDER BY r.id DESC LIMIT ?""",
+                [thread_id, before_id, LOAD_LIMIT]
+            ),
+            query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id]),
         )
+        count_before = count_res[0]['cnt'] if count_res else 0
         older_replies = list(reversed(older_res)) if older_res else []
         start_num = count_before - len(older_replies) + 1
-
-        thread_res = await query_d1("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
         op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
 
         formatted_replies = []
@@ -3607,8 +3618,10 @@ async def thread_view(request: Request, thread_id: int):
         # 逐次awaitではなくasyncio.gatherでD1へ並列に投げる。
         # (D1クエリ1本ごとにCloudflare APIへの往復が発生するため、直列だと
         # 待ち時間が単純に足し算になっていた)
-        # D1のAPI応答サイズ制限対策として、直近300件だけ取得する(古い順に並べ直す)
-        RECENT_REPLIES_LIMIT = 300
+        # D1のAPI応答サイズ制限対策として、直近分だけ取得する(古い順に並べ直す)
+        # 初回表示はテンプレート描画・転送量・体感速度への影響が大きいため、
+        # 必要最小限だけ取得し、残りは「もっと見る」ボタンの追加取得に任せる。
+        RECENT_REPLIES_LIMIT = 50
         thread_res, count_res, replies_res = await asyncio.gather(
             query_d1("SELECT * FROM threads WHERE id = ?", [thread_id]),
             query_d1("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id]),
