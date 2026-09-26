@@ -82,6 +82,10 @@
             --sidebar-w: 240px;
             --bg-image: url("{{ url_for('static', path='IMG_0565.png') }}");
             --nav-hover: rgba(17, 24, 39, 0.06);
+            /* 背景写真(富士山)の上に薄く重ねる色。写真をそのまま出すと
+               文字と被って読みにくくなるため、--bgに近い色を7割程度の
+               不透明度で重ねて写真を少し霞ませ、コントラストを確保する。 */
+            --bg-overlay: rgba(246, 248, 250, 0.78);
         }
 
         html[data-theme="dark"] {
@@ -97,6 +101,7 @@
             --amber-soft: rgba(180, 83, 9, 0.15);
             --bg-image: url("{{ url_for('static', path='IMG_0566.png') }}");
             --nav-hover: rgba(255, 255, 255, 0.08);
+            --bg-overlay: rgba(15, 17, 21, 0.78);
         }
 
         * { box-sizing: border-box; }
@@ -119,6 +124,18 @@
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
+            z-index: -1;
+        }
+
+        /* 富士山の写真の上に薄い色を重ねて、写真の柄と文字が
+           直接重なって読みにくくなるのを防ぐ(ライト/ダークとも同じ仕組み)。
+           body::before(写真)の直後に置くことで、写真の上・本文コンテンツの
+           下というちょうど良い重なり順になる。 */
+        body::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: var(--bg-overlay);
             z-index: -1;
         }
 
