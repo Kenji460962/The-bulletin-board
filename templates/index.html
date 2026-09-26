@@ -82,10 +82,13 @@
             --sidebar-w: 240px;
             --bg-image: url("{{ url_for('static', path='IMG_0565.png') }}");
             --nav-hover: rgba(17, 24, 39, 0.06);
-            /* サイドバーや各パネルなど「文字が乗る面」だけに敷く、すりガラス風の
-               半透明背景。ページ全体を暗くするのではなく、文字がある場所だけ
-               背景写真をぼかして読みやすくするために使う。 */
-            --glass-bg: rgba(255, 255, 255, 0.72);
+            /* 写真の上に乗る文字に付ける「縁取り(ハロー)」。パネルに背景を
+               敷くのではなく、文字の輪郭を背景色でぼかして縁取ることで、
+               写真をそのまま全面に見せつつ文字だけ読みやすくする。 */
+            --text-halo:
+                0 0 4px rgba(255, 255, 255, 0.95),
+                0 0 10px rgba(255, 255, 255, 0.8),
+                0 1px 3px rgba(255, 255, 255, 0.9);
         }
 
         html[data-theme="dark"] {
@@ -101,7 +104,10 @@
             --amber-soft: rgba(180, 83, 9, 0.15);
             --bg-image: url("{{ url_for('static', path='IMG_0566.png') }}");
             --nav-hover: rgba(255, 255, 255, 0.08);
-            --glass-bg: rgba(22, 24, 29, 0.72);
+            --text-halo:
+                0 0 4px rgba(15, 17, 21, 0.95),
+                0 0 10px rgba(15, 17, 21, 0.8),
+                0 1px 3px rgba(15, 17, 21, 0.9);
         }
 
         * { box-sizing: border-box; }
@@ -146,9 +152,7 @@
         .sidebar {
             width: var(--sidebar-w);
             flex: 0 0 var(--sidebar-w);
-            background: var(--glass-bg);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
+            background: transparent;
             border-right: 1px solid var(--card-border);
             min-height: 100vh;
             padding: 18px 14px 24px;
@@ -157,6 +161,7 @@
             align-self: flex-start;
             max-height: 100vh;
             overflow-y: auto;
+            text-shadow: var(--text-halo);
         }
 
         .brand-block { padding: 2px 8px 16px; border-bottom: 1px solid var(--card-border); margin-bottom: 10px; }
@@ -417,16 +422,30 @@
         .content-section.active { display: block; }
 
         .glass-panel {
-            background: var(--glass-bg);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
+            background: transparent;
             border: none;
             border-bottom: 1px solid var(--card-border);
             border-radius: 0;
             padding: 16px 0;
             margin-bottom: 0;
+            text-shadow: var(--text-halo);
         }
         .main-col .glass-panel:first-child { padding-top: 0; }
+
+        /* サイドバー/パネル/フッターの文字には縁取り(ハロー)を継承させるが、
+           すでに不透明な背景を持つチップ・ボタン・入力欄はハローが不要
+           (むしろ滲んで見えるので)、ここで打ち消しておく。 */
+        .search-box, .search-box *,
+        .icon-btn, .icon-btn-primary, a.icon-btn,
+        .filter-pill,
+        .thread-badge,
+        .cat-red, .cat-blue, .cat-purple, .cat-slate, .cat-pink, .cat-teal, .cat-indigo, .cat-amber, .cat-gray,
+        .delete-thread-btn,
+        .thread-op-avatar, .member-pill-avatar, .member-pill,
+        .side-nav-item.active,
+        input, textarea, button {
+            text-shadow: none;
+        }
 
         .panel-title {
             font-size: 16px;
@@ -807,9 +826,7 @@
         .site-footer {
             max-width: 760px;
             margin: 16px auto 0;
-            background: var(--glass-bg);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
+            background: transparent;
             border-top: 1px solid var(--card-border);
             padding: 14px 2px 4px;
             display: flex;
@@ -817,6 +834,7 @@
             justify-content: space-between;
             gap: 16px;
             flex-wrap: wrap;
+            text-shadow: var(--text-halo);
         }
         .site-footer-copy {
             color: var(--text-faint);
