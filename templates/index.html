@@ -82,10 +82,10 @@
             --sidebar-w: 240px;
             --bg-image: url("{{ url_for('static', path='IMG_0565.png') }}");
             --nav-hover: rgba(17, 24, 39, 0.06);
-            /* 背景写真(富士山)の上に薄く重ねる色。写真をそのまま出すと
-               文字と被って読みにくくなるため、--bgに近い色を7割程度の
-               不透明度で重ねて写真を少し霞ませ、コントラストを確保する。 */
-            --bg-overlay: rgba(246, 248, 250, 0.78);
+            /* サイドバーや各パネルなど「文字が乗る面」だけに敷く、すりガラス風の
+               半透明背景。ページ全体を暗くするのではなく、文字がある場所だけ
+               背景写真をぼかして読みやすくするために使う。 */
+            --glass-bg: rgba(255, 255, 255, 0.72);
         }
 
         html[data-theme="dark"] {
@@ -101,7 +101,7 @@
             --amber-soft: rgba(180, 83, 9, 0.15);
             --bg-image: url("{{ url_for('static', path='IMG_0566.png') }}");
             --nav-hover: rgba(255, 255, 255, 0.08);
-            --bg-overlay: rgba(15, 17, 21, 0.78);
+            --glass-bg: rgba(22, 24, 29, 0.72);
         }
 
         * { box-sizing: border-box; }
@@ -127,18 +127,6 @@
             z-index: -1;
         }
 
-        /* 富士山の写真の上に薄い色を重ねて、写真の柄と文字が
-           直接重なって読みにくくなるのを防ぐ(ライト/ダークとも同じ仕組み)。
-           body::before(写真)の直後に置くことで、写真の上・本文コンテンツの
-           下というちょうど良い重なり順になる。 */
-        body::after {
-            content: "";
-            position: fixed;
-            inset: 0;
-            background: var(--bg-overlay);
-            z-index: -1;
-        }
-
         a { color: inherit; }
 
         /* ==================================================
@@ -158,7 +146,9 @@
         .sidebar {
             width: var(--sidebar-w);
             flex: 0 0 var(--sidebar-w);
-            background: transparent;
+            background: var(--glass-bg);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
             border-right: 1px solid var(--card-border);
             min-height: 100vh;
             padding: 18px 14px 24px;
@@ -427,7 +417,9 @@
         .content-section.active { display: block; }
 
         .glass-panel {
-            background: transparent;
+            background: var(--glass-bg);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
             border: none;
             border-bottom: 1px solid var(--card-border);
             border-radius: 0;
@@ -815,7 +807,9 @@
         .site-footer {
             max-width: 760px;
             margin: 16px auto 0;
-            background: transparent;
+            background: var(--glass-bg);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
             border-top: 1px solid var(--card-border);
             padding: 14px 2px 4px;
             display: flex;
