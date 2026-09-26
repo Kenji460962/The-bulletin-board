@@ -10,12 +10,13 @@ import json
 import html
 import os
 import hashlib
+import hmac
 import uuid
 import time
 import re
 import asyncio
 import random
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, parse_qsl, urlencode, quote
 import httpx
 import boto3
 import psutil
@@ -54,6 +55,24 @@ redis_client = None
 _redis_listener_task = None
 _cache_cleanup_task = None
 
+# =========================
+# AdGem Offer Wall 連携
+# =========================
+# ADGEM_APP_ID          : AdGemダッシュボード > Properties & Apps で発行される、
+#                          talk-ch.com用のProperty/App ID。
+# ADGEM_POSTBACK_SECRET_KEY : AdGemダッシュボードでPostback Keyを発行した際に
+#                          表示される値(発行時に一度しか表示されないので必ず控える)。
+#                          postback(サーバー間通知)のverifierパラメータの検証に使う。
+# ADGEM_WHITELIST_IPS   : AdGemのpostback送信元IPをカンマ区切りで指定(任意・推奨)。
+#                          未設定の場合はIP制限を行わず、verifier検証のみで防御する。
+# ADGEM_POINTS_MULTIPLIER : postbackの{amount}(AdGem側の仮想通貨量)を
+#                          talk-chポイントへ変換する倍率。既定は等倍(1pt=1amount)。
+ADGEM_APP_ID = os.environ.get('ADGEM_APP_ID', '')
+ADGEM_POSTBACK_SECRET_KEY = os.environ.get('ADGEM_POSTBACK_SECRET_KEY', '')
+ADGEM_WHITELIST_IPS = {ip.strip() for ip in os.environ.get('ADGEM_WHITELIST_IPS', '').split(',') if ip.strip()}
+ADGEM_POINTS_MULTIPLIER = float(os.environ.get('ADGEM_POINTS_MULTIPLIER', '1'))
+
+
 # ---------------------------------------------------------------------
 # 共有 non-blocking HTTP クライアント
 # ---------------------------------------------------------------------
@@ -78,6 +97,53 @@ _d1_slow_query_total = 0                             # /api/server_stats 表示�
 PV_QUEUE_MAXSIZE = 1000
 _pv_queue: asyncio.Queue = asyncio.Queue(maxsize=PV_QUEUE_MAXSIZE)
 _pv_writer_task = None
+
+
+async def _ensure_adgem_schema():
+    """AdGem連携に必要なカラム/テーブルを起動時に用意する(冪等)。
+
+    usersへのALTER TABLEは、カラムが既に存在する場合にエラーになるが、
+    それは「前回起動時に追加済み」という意味なので無視してよい。
+    """
+    conn = await _get_db_conn()
+    for ddl in (
+        "ALTER TABLE users ADD COLUMN points INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE users ADD COLUMN adgem_player_id TEXT",
+    ):
+        try:
+            await conn.execute(ddl)
+        except Exception:
+            pass
+    # adgem_player_id は「ユーザーごとに1つ」を保証する(NULL同士の重複は許容)。
+    await conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_adgem_player_id "
+        "ON users(adgem_player_id) WHERE adgem_player_id IS NOT NULL"
+    )
+    # request_id にUNIQUE制約を張ることで、AdGemからのpostback再送(最大31回リトライされる)
+    # を受け取ってもポイントを二重に付与しないようにする(不正防止の要)。
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS adgem_conversions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id TEXT NOT NULL UNIQUE,
+            transaction_id TEXT,
+            player_id TEXT NOT NULL,
+            user_id INTEGER,
+            offer_id TEXT,
+            amount INTEGER NOT NULL,
+            points_awarded INTEGER NOT NULL,
+            ip_address TEXT,
+            raw_query TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    # request_id(postback単位のID)に加え、transaction_id(会員ごとに1回しか
+    # 消化できないはずの取引ID)にも一意性を持たせる。万一AdGem側が同じ取引を
+    # 別のrequest_idで再送してきても、これで二重付与を止められる。
+    await conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_adgem_conversions_transaction_id "
+        "ON adgem_conversions(transaction_id) WHERE transaction_id IS NOT NULL AND transaction_id != ''"
+    )
+    await conn.commit()
 
 
 async def _redis_listener():
@@ -133,6 +199,7 @@ async def _startup_redis():
     # ローカル SQLite(aiosqlite)コネクションを起動時に一度だけ確立する。
     # イベントループ稼働中に開く必要があるため、この起動フック内で生成する。
     await _get_db_conn()
+    await _ensure_adgem_schema()
 
     try:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
@@ -999,6 +1066,190 @@ async def get_member_icon_path(request: Request):
         icon_path = None
     request.session['member_icon_path'] = icon_path
     return icon_path
+
+
+# =========================
+# AdGem Offer Wall 連携
+# =========================
+
+async def get_or_create_adgem_player_id(member_id: int) -> str:
+    """会員ごとに固定のAdGem player_idを発行/取得する。
+
+    player_idは「推測されないランダムな値」にしておく(連番のuser.idをそのまま
+    使うと、第三者が別ユーザーのplayer_idを類推してオファーウォールを開ける
+    ようになってしまう)。AdGem側の要件に合わせ小文字英数字のみで生成する。
+    """
+    res = await execute_query("SELECT adgem_player_id FROM users WHERE id = ?", [member_id])
+    existing = res[0]['adgem_player_id'] if res else None
+    if existing:
+        return existing
+
+    for _ in range(5):
+        candidate = secrets.token_hex(16)  # 32文字の小文字英数字
+        dup = await execute_query("SELECT id FROM users WHERE adgem_player_id = ?", [candidate])
+        if not dup:
+            await execute_query("UPDATE users SET adgem_player_id = ? WHERE id = ?", [candidate, member_id])
+            return candidate
+    raise RuntimeError("adgem_player_idの生成に失敗しました(再試行上限に到達)")
+
+
+async def _adgem_record_conversion_once(
+    request_id, transaction_id, player_id, user_id, offer_id,
+    amount, points_awarded, ip_address, raw_query
+) -> bool:
+    """postbackをrequest_id単位、かつtransaction_id単位でも1回だけ記録する。
+
+    adgem_conversionsにはrequest_id(UNIQUE)とtransaction_id(UNIQUE、
+    空文字/NULLは対象外)の両方に一意制約を張ってある。AdGemが同一postbackを
+    再送する場合(最大31回)はrequest_idが同じになるはずだが、万一取引自体が
+    別のrequest_idで再送されても、transaction_id側の制約で二重付与を防げる。
+
+    execute_query()はエラーを内部で握りつぶして[]を返す仕様のため、
+    「UNIQUE制約違反(=重複受信)」を判定するにはここだけ専用の低レベル
+    実装にする必要がある。
+    """
+    conn = await _get_db_conn()
+    async with _db_lock:
+        try:
+            await conn.execute(
+                "INSERT INTO adgem_conversions "
+                "(request_id, transaction_id, player_id, user_id, offer_id, amount, points_awarded, ip_address, raw_query) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [request_id, transaction_id, player_id, user_id, offer_id, amount, points_awarded, ip_address, raw_query]
+            )
+            await conn.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            # request_id重複 = AdGemからの同一postbackの再送。ポイント加算はスキップする。
+            await conn.rollback()
+            return False
+        except Exception as e:
+            await conn.rollback()
+            print(f"AdGem postback記録エラー: {e}")
+            return False
+
+
+@app.get('/offerwall')
+async def offerwall_page(request: Request):
+    """ログイン会員向けのAdGem Offer Wall埋め込みページ。"""
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+
+    public_id = await get_member_public_id(request)
+    if public_id and await is_banned_member_public_id(public_id):
+        return text_resp("利用できません。", 403)
+
+    if not ADGEM_APP_ID:
+        return text_resp("Offer Wallは現在準備中です。", 503)
+
+    member_id = request.session.get('member_id')
+    player_id = await get_or_create_adgem_player_id(member_id)
+
+    points_res = await execute_query("SELECT points FROM users WHERE id = ?", [member_id])
+    points = points_res[0]['points'] if points_res else 0
+
+    return templates.TemplateResponse(request, 'offerwall.html', {
+        'adgem_app_id': ADGEM_APP_ID,
+        'adgem_player_id': player_id,
+        'points': points,
+    })
+
+
+@app.get('/api/postbacks/adgem')
+async def adgem_postback(request: Request):
+    """AdGemからのServer Postback受信エンドポイント。
+
+    AdGemダッシュボードのPostback URLに
+    https://talk-ch.com/api/postbacks/adgem を設定し、以下のマクロを含めること:
+    ?player_id={player_id}&amount={amount}&transaction_id={transaction_id}
+    &offer_id={offer_id}&conversion_datetime={conversion_datetime}
+    (request_id と verifier はPostback Key発行後、AdGem側が自動付与する)
+
+    検証は2段階:
+      1. (任意・推奨) 送信元IPがAdGemのホワイトリストIPと一致するか
+      2. verifierパラメータ = HMAC-SHA256(このURLからverifierだけ除いたもの, Postback Key)
+         が一致するか(必須。これが不一致のリクエストは絶対に処理しない)
+    """
+    client_ip = get_client_ip(request)
+
+    if ADGEM_WHITELIST_IPS and client_ip not in ADGEM_WHITELIST_IPS:
+        print(f"AdGem postback: 許可されていないIPからの受信を拒否しました ({client_ip})")
+        return PlainTextResponse('forbidden', status_code=403)
+
+    if not ADGEM_POSTBACK_SECRET_KEY:
+        print("AdGem postback: ADGEM_POSTBACK_SECRET_KEY未設定のため受信を拒否しました")
+        return PlainTextResponse('server not configured', status_code=500)
+
+    query_pairs = parse_qsl(str(request.url.query), keep_blank_values=True)
+    verifier = None
+    filtered_params = []
+    for key, value in query_pairs:
+        if key == 'verifier':
+            verifier = value
+        else:
+            filtered_params.append((key, value))
+
+    if not verifier:
+        print("AdGem postback: verifierパラメータがありません")
+        return PlainTextResponse('missing verifier', status_code=403)
+
+    # AdGemが署名を計算したのと同じURL(scheme+host+path+verifier以外のクエリ、
+    # RFC3986でエンコード)を再構築してHMAC-SHA256を計算し、一致するか比較する。
+    # AdGemダッシュボードに登録したPostback URLとscheme/host/pathが完全一致している
+    # 必要がある(例: 末尾スラッシュの有無やhttp/httpsの違いでも不一致になる)。
+    query_string = urlencode(filtered_params, quote_via=quote)
+    url_without_verifier = f"{request.url.scheme}://{request.url.hostname}{request.url.path}"
+    if query_string:
+        url_without_verifier += f"?{query_string}"
+
+    calculated_hash = hmac.new(
+        ADGEM_POSTBACK_SECRET_KEY.encode('utf-8'),
+        url_without_verifier.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(calculated_hash, verifier):
+        print(f"AdGem postback: verifier不一致(不正な可能性) url={url_without_verifier}")
+        return PlainTextResponse('invalid verifier', status_code=403)
+
+    params = dict(filtered_params)
+    player_id = (params.get('player_id') or '').strip()
+    request_id = (params.get('request_id') or '').strip()
+    transaction_id = params.get('transaction_id', '')
+    offer_id = params.get('offer_id', '')
+
+    if not player_id or not request_id:
+        print(f"AdGem postback: player_idまたはrequest_idが欠落しています ({dict(filtered_params)})")
+        return PlainTextResponse('missing required fields', status_code=400)
+
+    try:
+        amount = int(round(float(params.get('amount', '0') or '0')))
+    except (TypeError, ValueError):
+        amount = 0
+
+    user_res = await execute_query("SELECT id FROM users WHERE adgem_player_id = ?", [player_id])
+    if not user_res:
+        print(f"AdGem postback: 未知のplayer_idを受信しました ({player_id})")
+        return PlainTextResponse('unknown player', status_code=400)
+    user_id = user_res[0]['id']
+
+    # インストール系postback(nonpayable_install_goal=true)は報酬対象外なので、
+    # 記録だけ行いポイントは付与しない(将来インストールpostbackを有効化した場合への保険)。
+    is_nonpayable = params.get('nonpayable_install_goal') == 'true'
+    points_awarded = 0 if is_nonpayable else max(0, round(amount * ADGEM_POINTS_MULTIPLIER))
+
+    recorded = await _adgem_record_conversion_once(
+        request_id, transaction_id, player_id, user_id, offer_id,
+        amount, points_awarded, client_ip, str(request.url.query)
+    )
+    if not recorded:
+        # 重複postback。AdGemには200を返して「受信済み・再送不要」であることを伝える。
+        return PlainTextResponse('OK (duplicate)', status_code=200)
+
+    if points_awarded > 0:
+        await execute_query("UPDATE users SET points = points + ? WHERE id = ?", [points_awarded, user_id])
+
+    return PlainTextResponse('OK', status_code=200)
 
 
 def _make_token() -> str:
