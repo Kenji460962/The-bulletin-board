@@ -1309,6 +1309,80 @@ async def adgem_postback(request: Request):
     return PlainTextResponse('OK', status_code=200)
 
 
+# =========================
+# ポイント付与: ゲーム勝敗・スレへのレス
+# =========================
+# AdGemのpostbackと同様、実際の残高増減とidempotency制御はすべて
+# points_service.add_points() に委譲する。ここではあくまで
+# 「talk-ch独自の付与ルール(誰にいくつ渡すか)」を判断するだけで、
+# users.pointsやpoint_historyには一切直接触れない。
+GAME_POINTS_WIN = 20
+GAME_POINTS_LOSS = 5
+GAME_LABELS = {'othello': 'オセロ', 'chess': 'チェス', 'shogi': '将棋'}
+THREAD_REPLY_POINTS = 2
+
+
+async def _award_game_result_points(game: str, room_code: str,
+                                     member_id_a, result_a: float,
+                                     member_id_b, result_b: float):
+    """対局終了時、ログイン会員である対局者にポイントを付与する。
+
+    - ゲスト(member_idがNone)はusersテーブルの行を持たないため付与対象外。
+    - 引き分け(result=0.5)は今回の付与ルール(勝利+20/敗北+5)の対象外として
+      仕様上未定義のため、ポイントは付与しない(オセロ・チェスの持将棋/千日手等)。
+    - idempotency_key に room_code(対局ごとに使い捨てで再利用されない一意な
+      部屋コード)とuser_idを含めることで、着手の同時実行等により勝敗確定処理が
+      複数回走っても同じユーザーへの二重付与を防ぐ。
+    """
+    label = GAME_LABELS.get(game, game)
+    for member_id, result in ((member_id_a, result_a), (member_id_b, result_b)):
+        if not member_id:
+            continue
+        try:
+            user_id = int(member_id)
+        except (TypeError, ValueError):
+            continue
+        if result == 1:
+            delta, reason, desc = GAME_POINTS_WIN, 'game_win', f'{label}で勝利'
+        elif result == 0:
+            delta, reason, desc = GAME_POINTS_LOSS, 'game_loss', f'{label}で敗北'
+        else:
+            continue  # 引き分け: 付与ルール未定義のためスキップ
+        try:
+            await points_service.add_points(
+                user_id, delta, reason=reason, description=desc, source='game',
+                idempotency_key=f'game:{game}:{room_code}:{user_id}',
+            )
+        except Exception as e:
+            print(f"ゲームポイント付与エラー({game}, room={room_code}, user={user_id}): {e}")
+
+
+async def _award_thread_reply_points(thread_id: int, op_public_id: str, reply_id):
+    """自分が立てたスレに自分以外のユーザーがレスした時、スレ主にポイントを付与する。
+
+    スレッド作成には必ずログインが必要なため、op_public_idは常に
+    users.public_idを指す。念のためusersテーブルに実在するか確認してから
+    付与する(ログイン機能導入前の古いスレ等、IPベースのop_user_idが渡って
+    きてしまった場合の保険)。
+    idempotency_key に replies.id を使うことで、同じレスに対する処理が
+    再実行されても二重付与されない。
+    """
+    try:
+        user_res = await execute_query("SELECT id FROM users WHERE public_id = ?", [op_public_id])
+        if not user_res:
+            return
+        op_id = user_res[0]['id']
+        await points_service.add_points(
+            op_id, THREAD_REPLY_POINTS,
+            reason='thread_reply_bonus',
+            description=f'自分のスレ(#{thread_id})へのレス',
+            source='thread',
+            idempotency_key=f'thread_reply:{reply_id}',
+        )
+    except Exception as e:
+        print(f"スレレスポイント付与エラー(thread={thread_id}, reply={reply_id}): {e}")
+
+
 def _make_token() -> str:
     return secrets.token_urlsafe(32)
 
@@ -2921,6 +2995,9 @@ async def game_move(request: Request, room_code: str):
             result_black = 1 if winner == 'B' else (0 if winner == 'W' else 0.5)
             await apply_game_result('othello', black_key, r.get('black_name') or '名無しさん',
                                white_key, r.get('white_name') or '名無しさん', result_black)
+            await _award_game_result_points('othello', code,
+                                             r.get('black_member_id'), result_black,
+                                             r.get('white_member_id'), 1 - result_black)
 
     now = datetime.utcnow().isoformat()
     await execute_query(
@@ -3106,6 +3183,9 @@ async def chess_move(request: Request, room_code: str):
         result_white = 0.5 if winner == 'draw' else (1 if winner == 'w' else 0)
         await apply_game_result('chess', white_key, r.get('white_name') or '名無しさん',
                            black_key, r.get('black_name') or '名無しさん', result_white)
+        await _award_game_result_points('chess', code,
+                                         r.get('white_member_id'), result_white,
+                                         r.get('black_member_id'), 1 - result_white)
 
     new_board_json = json.dumps(board)
     new_ep_json = json.dumps(new_en_passant) if new_en_passant else None
@@ -3301,6 +3381,9 @@ async def shogi_move(request: Request, room_code: str):
         result_sente = 1 if winner == 's' else 0
         await apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
                            gote_key, r.get('gote_name') or '名無しさん', result_sente)
+        await _award_game_result_points('shogi', code,
+                                         r.get('sente_member_id'), result_sente,
+                                         r.get('gote_member_id'), 1 - result_sente)
 
     now = datetime.utcnow().isoformat()
     await execute_query(
@@ -3372,6 +3455,9 @@ async def shogi_drop(request: Request, room_code: str):
         result_sente = 1 if winner == 's' else 0
         await apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
                            gote_key, r.get('gote_name') or '名無しさん', result_sente)
+        await _award_game_result_points('shogi', code,
+                                         r.get('sente_member_id'), result_sente,
+                                         r.get('gote_member_id'), 1 - result_sente)
 
     now = datetime.utcnow().isoformat()
     await execute_query(
@@ -3947,6 +4033,9 @@ async def thread_view(request: Request, thread_id: int):
                     if not isinstance(thread_res, Exception) and thread_res:
                         op_user_id = resolve_op_user_id(thread_res[0])
                         new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
+                        if op_user_id and not new_reply['is_op']:
+                            # 自分が立てたスレに自分以外がレスした場合のみスレ主にポイント付与。
+                            await _award_thread_reply_points(thread_id, op_user_id, new_reply['id'])
 
                     total_count_res = gather_results[1]
                     if not isinstance(total_count_res, Exception) and total_count_res:
