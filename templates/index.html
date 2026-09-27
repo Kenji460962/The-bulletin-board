@@ -178,41 +178,40 @@
             flex-direction: column;
         }
 
-        /* ---- サイドバー最下部：ログイン中はアイコン＋ユーザー名（X/ChatGPT風）、
-           未ログイン時はログイン・新規登録ボタンをここに置く ---- */
+        /* ---- サイドバー最下部：ログイン中のみ、アイコン＋ユーザー名の白いカードを
+           常に画面下部に固定表示する（サイドバーをスクロールしても動かない）。
+           未ログイン時はこの要素自体を描画しない（ログイン導線は右上トップバー側）。 ---- */
         .sidebar-account {
+            position: sticky;
+            bottom: 0;
             margin-top: auto;
-            padding-top: 14px;
-            border-top: 1px solid var(--card-border);
+            padding-top: 10px;
+            padding-bottom: 2px;
+            z-index: 5;
         }
-        .sidebar-account-row {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .sidebar-account-btn {
+        .sidebar-account-card {
             appearance: none;
-            flex: 1 1 auto;
-            min-width: 0;
+            width: 100%;
             display: flex;
             align-items: center;
             gap: 10px;
-            background: transparent;
-            border: none;
-            padding: 8px;
-            border-radius: 999px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 10px 12px;
             cursor: pointer;
             text-align: left;
             font-family: inherit;
             color: var(--text);
-            transition: background 0.15s ease;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.10);
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
         }
-        .sidebar-account-btn:hover { background: var(--nav-hover); }
-        .sidebar-account-btn.active { background: var(--primary-soft); }
+        .sidebar-account-card:hover { border-color: var(--primary); }
+        .sidebar-account-card.active { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
         .sidebar-account-avatar {
             width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto;
             display: flex; align-items: center; justify-content: center;
-            background: var(--card-bg); color: var(--primary);
+            background: var(--primary-soft); color: var(--primary);
             font-size: 15px; font-weight: 700; overflow: hidden;
         }
         .sidebar-account-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -224,23 +223,6 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .sidebar-account-actions {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            flex: 0 0 auto;
-        }
-        .sidebar-account-actions a {
-            display: flex; align-items: center; justify-content: center;
-            width: 30px; height: 30px;
-            border-radius: var(--radius-sm);
-            text-decoration: none;
-            font-size: 14px;
-            color: var(--text-muted);
-        }
-        .sidebar-account-actions a:hover { background: var(--nav-hover); color: var(--primary); }
-        .sidebar-account-auth { display: flex; gap: 8px; }
-        .sidebar-account-auth a { flex: 1 1 0; justify-content: center; }
 
         .brand-block { padding: 2px 8px 16px; border-bottom: 1px solid var(--card-border); margin-bottom: 10px; }
 
@@ -521,7 +503,7 @@
         .delete-thread-btn,
         .thread-op-avatar, .member-pill-avatar, .member-pill,
         .side-nav-item.active,
-        .sidebar-account-avatar, .sidebar-account-actions, .sidebar-account-actions *,
+        .sidebar-account-avatar, .sidebar-account-card, .sidebar-account-card *,
         .my-profile-avatar,
         input, textarea, button {
             text-shadow: none;
@@ -1089,6 +1071,16 @@
                     <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.7 1.2c0 1.6-2.2 1.8-2.2 3.3"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg></span>
                     <span class="nav-label">使い方</span>
                 </button>
+                {% if current_member %}
+                <a class="side-nav-item" href="/messages">
+                    <span class="nav-icon dm-link" id="dm-link">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></span>
+                    <span class="nav-label">メッセージ</span>
+                </a>
+                <a class="side-nav-item" href="{{ url_for('member_logout') }}">
+                    <span class="nav-icon">⏻</span>
+                    <span class="nav-label">ログアウト</span>
+                </a>
+                {% endif %}
             </nav>
 
             <div class="side-collapsible-head" onclick="this.classList.toggle('collapsed'); this.nextElementSibling.classList.toggle('collapsed');">
@@ -1118,36 +1110,27 @@
                 </a>
             </nav>
 
-            <!-- ============ サイドバー最下部：アカウント欄 ============
-                 ログイン中はアイコン＋ユーザー名（X/ChatGPT風）を表示し、クリックしても
-                 ページ遷移はせず、右側メインコンテンツに自分のプロフィールタブを開く。
-                 未ログイン時はここにログイン・新規登録ボタンを表示する。 -->
+            <!-- ============ サイドバー最下部：ユーザーカード ============
+                 ログイン中のみ表示。アイコン＋ユーザー名を白い角丸カードとして、
+                 サイドバーをスクロールしても常に画面下部に固定表示する（sticky）。
+                 クリックしてもページ遷移はせず、右側メインコンテンツに自分のプロフィールタブを開く。
+                 未ログイン時はこの要素自体を出さない（ログイン導線は右上トップバー）。 -->
+            {% if current_member %}
             <div class="sidebar-account">
-                {% if current_member %}
-                <div class="sidebar-account-row">
-                    <button type="button" class="sidebar-account-btn side-nav-item" data-tab="profile-tab" onclick="switchTab('profile-tab', this)" title="マイページを開く">
-                        <span class="sidebar-account-avatar">
-                            {% if current_member.icon_path %}
-                            <img src="{{ current_member.icon_path }}" alt="" loading="lazy">
-                            {% else %}
-                            {{ (current_member.username or '?')[:1] }}
-                            {% endif %}
-                        </span>
-                        <span class="sidebar-account-name">{{ current_member.username }}</span>
-                    </button>
-                    <div class="sidebar-account-actions">
-                        <a href="/messages" class="dm-link" id="dm-link" title="メッセージ">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></a>
-                        <a href="{{ url_for('member_logout') }}" title="ログアウト">⏻</a>
-                    </div>
-                </div>
-                {% else %}
-                <div class="sidebar-account-auth">
-                    <a href="{{ url_for('member_login_form') }}" class="icon-btn">login</a>
-                    <a href="{{ url_for('register_form') }}" class="icon-btn-primary">sign up</a>
-                </div>
-                {% endif %}
+                <button type="button" class="sidebar-account-card" data-tab="profile-tab" onclick="switchTab('profile-tab', this)" title="マイページを開く">
+                    <span class="sidebar-account-avatar">
+                        {% if current_member.icon_path %}
+                        <img src="{{ current_member.icon_path }}" alt="" loading="lazy">
+                        {% else %}
+                        {{ (current_member.username or '?')[:1] }}
+                        {% endif %}
+                    </span>
+                    <span class="sidebar-account-name">{{ current_member.username }}</span>
+                </button>
             </div>
+            {% endif %}
         </aside>
+
 
         <!-- ============ 右側：トップバー＋本文 ============ -->
         <div class="main-wrap">
@@ -1162,6 +1145,10 @@
                         オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
                     </div>
                     <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
+                    {% if not current_member %}
+                    <a href="{{ url_for('member_login_form') }}" class="icon-btn">login</a>
+                    <a href="{{ url_for('register_form') }}" class="icon-btn-primary">sign up</a>
+                    {% endif %}
                 </div>
             </div>
 
@@ -2100,7 +2087,7 @@
         for (var i = 0; i < sections.length; i++) {
             sections[i].classList.remove('active');
         }
-        var buttons = document.querySelectorAll('.side-nav-item[data-tab]');
+        var buttons = document.querySelectorAll('[data-tab]');
         for (var j = 0; j < buttons.length; j++) {
             buttons[j].classList.remove('active');
         }
@@ -2145,7 +2132,7 @@
                 }
             }
         } else if (tabParam === 'profile') {
-            var btns = document.querySelectorAll('.side-nav-item[data-tab]');
+            var btns = document.querySelectorAll('[data-tab]');
             for (var k = 0; k < btns.length; k++) {
                 if (btns[k].getAttribute('data-tab') === 'profile-tab') {
                     switchTab('profile-tab', btns[k]);
