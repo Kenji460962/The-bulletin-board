@@ -3605,6 +3605,26 @@ async def index(request: Request):
     current_member = None if isinstance(current_member_result, Exception) else current_member_result
     unread_dm_count = 0 if isinstance(unread_dm_result, Exception) else unread_dm_result
 
+    # サイドバー最下部から開く「自分のプロフィール」タブ（ページ遷移なしでメイン
+    # コンテンツ内に表示する用）に必要な自己紹介・ポイント・投稿数。
+    # ログイン中の場合のみ取得し、互いに独立なので並列化する。
+    own_bio = None
+    own_points_balance = None
+    own_thread_count = 0
+    own_reply_count = 0
+    if current_member:
+        own_bio_res, own_points_res, own_thread_count_res, own_reply_count_res = await asyncio.gather(
+            execute_query("SELECT bio FROM users WHERE id = ?", [current_member['id']]),
+            points_service.get_balance(current_member['id']),
+            execute_query("SELECT COUNT(*) as cnt FROM threads WHERE user_id = ?", [current_member['public_id']]),
+            execute_query("SELECT COUNT(*) as cnt FROM replies WHERE poster_public_id = ?", [current_member['public_id']]),
+            return_exceptions=True,
+        )
+        own_bio = own_bio_res[0]['bio'] if (own_bio_res and not isinstance(own_bio_res, Exception)) else None
+        own_points_balance = None if isinstance(own_points_res, Exception) else own_points_res
+        own_thread_count = own_thread_count_res[0]['cnt'] if (own_thread_count_res and not isinstance(own_thread_count_res, Exception)) else 0
+        own_reply_count = own_reply_count_res[0]['cnt'] if (own_reply_count_res and not isinstance(own_reply_count_res, Exception)) else 0
+
     if isinstance(threads_result, Exception):
         print(f"スレッド一覧取得エラー: {threads_result}")
         threads = []
@@ -3664,6 +3684,10 @@ async def index(request: Request):
     is_admin_user = can_manage_board(request)
 
     response = templates.TemplateResponse(request, 'index.html', {
+        'own_bio': own_bio,
+        'own_points_balance': own_points_balance,
+        'own_thread_count': own_thread_count,
+        'own_reply_count': own_reply_count,
         'threads': threads,
         'admin_message': admin_message,
         'is_admin_user': is_admin_user,
