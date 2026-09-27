@@ -1,16 +1,3 @@
-import * as THREE from 'three';
-import { buildWorld } from './world.js';
-import { buildPlane, makeNameTag, planeColor } from './plane.js';
-import { NetClient } from './net.js';
-import { EngineSound } from './sound.js';
-
-let gameMode = 'pc';
-
-export function initGame(mode) {
-  gameMode = mode;
-  setupGame();
-}
-
 function setupGame() {
   const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/game';
   const SEND_INTERVAL = 0.1;
@@ -19,25 +6,46 @@ function setupGame() {
 
   const gameContainer = document.getElementById('game-container');
   
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // renderer を作成
+  const renderer = new THREE.WebGLRenderer({ 
+    antialias: true, 
+    alpha: false,
+    powerPreference: 'high-performance'
+  });
   
-  // canvas サイズを正確に設定
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x87b7e8);
+  
+  // canvas を game-container に追加
+  gameContainer.appendChild(renderer.domElement);
+  
+  // サイズ更新関数
   function updateCanvasSize() {
-    const rect = gameContainer.getBoundingClientRect();
-    const w = rect.width || window.innerWidth;
-    const h = rect.height || window.innerHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     renderer.setSize(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    if (camera) {
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
   }
   
+  // 初回サイズ設定
   updateCanvasSize();
-  gameContainer.appendChild(renderer.domElement);
+  
+  window.addEventListener('resize', updateCanvasSize);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 9000);
+  const camera = new THREE.PerspectiveCamera(
+    70, 
+    window.innerWidth / window.innerHeight, 
+    0.1, 
+    9000
+  );
+  
   const world = buildWorld(scene);
+  
+
 
   window.addEventListener('resize', updateCanvasSize);
 
