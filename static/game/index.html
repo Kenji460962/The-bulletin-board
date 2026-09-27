@@ -19,8 +19,8 @@
   .mode-btn.mobile{background:#41b06b;color:#fff}
   .mode-btn.mobile:hover{background:#52c77a}
   
-  canvas{display:block}
-  #game-container{display:none;width:100%;height:100%}
+  #game-container{display:none;width:100%;height:100%;position:relative}
+  #game-container canvas{display:block;width:100%;height:100%}
   
   #menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#1c3a5e88,#0d1b2a99);z-index:10}
   #panel{background:#101d2cee;border:1px solid #3a5a7a;border-radius:14px;padding:28px 32px;color:#dce9f5;width:320px;box-shadow:0 12px 40px #0008}
@@ -36,16 +36,16 @@
   #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#c0392bdd;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;display:none;z-index:20}
   #leaveBtn{position:fixed;left:14px;top:12px;z-index:6;display:none;padding:6px 14px;border:0;border-radius:8px;background:#ffffff2e;color:#fff;cursor:pointer;font-size:12px}
   
-  /* モバイル用オーバーレイコントロール */
-  #mobile-controls{display:none;position:fixed;bottom:20px;left:20px;right:20px;height:140px;background:rgba(16,29,44,0.85);border-radius:12px;padding:12px;color:#dce9f5;font-size:12px;z-index:5}
-  #mobile-controls.active{display:flex;flex-direction:column;gap:8px}
+  /* モバイル操作パネル */
+  #mobile-controls{display:none;position:fixed;bottom:0;left:0;right:0;height:200px;background:linear-gradient(to top, rgba(16,29,44,0.95), rgba(16,29,44,0.85));border-top:1px solid #3a5a7a;z-index:5;padding:10px;box-sizing:border-box;flex-direction:row;gap:10px;align-items:flex-end;justify-content:space-between}
   
-  .control-row{display:flex;gap:8px;justify-content:space-around}
-  .control-button{padding:12px 16px;background:#2f8fe0;border:0;border-radius:8px;color:#fff;cursor:pointer;font-weight:700;flex:1;text-align:center}
-  .control-button:active{background:#4aa3ee;opacity:0.8}
+  #mobile-controls.active{display:flex}
   
-  #speed-display{text-align:center;font-size:14px;margin:4px 0}
-  #altitude-display{text-align:center;font-size:14px;margin:4px 0}
+  .mobile-stick-container{flex:1;display:flex;justify-content:center}
+  .mobile-gauge-container{flex:0.6;display:flex;justify-content:center}
+  
+  #speed-display{position:fixed;bottom:210px;left:50%;transform:translateX(-50%);color:#fff;font:14px ui-monospace,monospace;text-shadow:0 1px 3px #000a;z-index:5}
+  #altitude-display{position:fixed;bottom:230px;left:50%;transform:translateX(-50%);color:#fff;font:14px ui-monospace,monospace;text-shadow:0 1px 3px #000a;z-index:5}
 </style>
 <script type="importmap">
   {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
@@ -93,24 +93,18 @@
 
 <!-- モバイルコントロール -->
 <div id="mobile-controls">
-  <div id="speed-display">SPD --- km/h</div>
-  <div id="altitude-display">ALT --- m</div>
-  <div class="control-row">
-    <button class="control-button" id="btn-thrust-up">⬆️ 加速</button>
-    <button class="control-button" id="btn-thrust-down">⬇️ 減速</button>
+  <div class="mobile-stick-container" id="mobile-left-stick">
+    <!-- キャンバス自動生成 -->
   </div>
-  <div class="control-row">
-    <button class="control-button" id="btn-pitch-up">📈 上昇</button>
-    <button class="control-button" id="btn-pitch-down">📉 下降</button>
-  </div>
-  <div class="control-row">
-    <button class="control-button" id="btn-roll-left">⬅️ 左旋回</button>
-    <button class="control-button" id="btn-roll-right">➡️ 右旋回</button>
+  <div class="mobile-gauge-container" id="mobile-right-gauge">
+    <!-- キャンバス自動生成 -->
   </div>
 </div>
 
+<div id="speed-display" style="display:none">SPD --- km/h</div>
+<div id="altitude-display" style="display:none">ALT --- m</div>
+
 <script type="module">
-  // モード選択
   let gameMode = null;
   
   document.getElementById('btn-pc').addEventListener('click', () => {
@@ -127,43 +121,16 @@
     document.getElementById('mode-selector').style.display = 'none';
     document.getElementById('game-container').style.display = 'block';
     
-    // モバイル版の場合、コントロール表示
     if (gameMode === 'mobile') {
       document.getElementById('mobile-controls').classList.add('active');
-      setupMobileControls();
+      document.getElementById('speed-display').style.display = 'block';
+      document.getElementById('altitude-display').style.display = 'block';
     }
     
-    // メインゲーム読み込み
     import('./js/main.js').then((module) => {
       module.initGame(gameMode);
     });
   }
-  
-  // モバイルコントロールセットアップ
-  function setupMobileControls() {
-    const controls = {
-      'btn-thrust-up': 'KeyW',
-      'btn-thrust-down': 'KeyS',
-      'btn-pitch-up': 'ArrowUp',
-      'btn-pitch-down': 'ArrowDown',
-      'btn-roll-left': 'KeyA',
-      'btn-roll-right': 'KeyD',
-    };
-    
-    Object.entries(controls).forEach(([btnId, keyCode]) => {
-      const btn = document.getElementById(btnId);
-      btn.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        window.dispatchEvent(new KeyboardEvent('keydown', { code: keyCode }));
-      });
-      btn.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        window.dispatchEvent(new KeyboardEvent('keyup', { code: keyCode }));
-      });
-    });
-  }
 </script>
-
-<script type="module" src="./js/main.js" defer></script>
 </body>
 </html>
