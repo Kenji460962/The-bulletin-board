@@ -171,7 +171,76 @@
             max-height: 100vh;
             overflow-y: auto;
             text-shadow: var(--text-halo);
+            /* 最下部のアカウント欄を常にサイドバー最下部へ押し下げるため
+               フレックスカラムにする（中身が少ない時は margin-top:auto で下寄せ、
+               多い時はサイドバー自体のスクロールに従う）。 */
+            display: flex;
+            flex-direction: column;
         }
+
+        /* ---- サイドバー最下部：ログイン中はアイコン＋ユーザー名（X/ChatGPT風）、
+           未ログイン時はログイン・新規登録ボタンをここに置く ---- */
+        .sidebar-account {
+            margin-top: auto;
+            padding-top: 14px;
+            border-top: 1px solid var(--card-border);
+        }
+        .sidebar-account-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .sidebar-account-btn {
+            appearance: none;
+            flex: 1 1 auto;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: transparent;
+            border: none;
+            padding: 8px;
+            border-radius: 999px;
+            cursor: pointer;
+            text-align: left;
+            font-family: inherit;
+            color: var(--text);
+            transition: background 0.15s ease;
+        }
+        .sidebar-account-btn:hover { background: var(--nav-hover); }
+        .sidebar-account-btn.active { background: var(--primary-soft); }
+        .sidebar-account-avatar {
+            width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--card-bg); color: var(--primary);
+            font-size: 15px; font-weight: 700; overflow: hidden;
+        }
+        .sidebar-account-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .sidebar-account-name {
+            min-width: 0;
+            font-size: 14.5px;
+            font-weight: 700;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .sidebar-account-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex: 0 0 auto;
+        }
+        .sidebar-account-actions a {
+            display: flex; align-items: center; justify-content: center;
+            width: 30px; height: 30px;
+            border-radius: var(--radius-sm);
+            text-decoration: none;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+        .sidebar-account-actions a:hover { background: var(--nav-hover); color: var(--primary); }
+        .sidebar-account-auth { display: flex; gap: 8px; }
+        .sidebar-account-auth a { flex: 1 1 0; justify-content: center; }
 
         .brand-block { padding: 2px 8px 16px; border-bottom: 1px solid var(--card-border); margin-bottom: 10px; }
 
@@ -452,9 +521,54 @@
         .delete-thread-btn,
         .thread-op-avatar, .member-pill-avatar, .member-pill,
         .side-nav-item.active,
+        .sidebar-account-avatar, .sidebar-account-actions, .sidebar-account-actions *,
+        .my-profile-avatar,
         input, textarea, button {
             text-shadow: none;
         }
+
+        /* ---- サイドバーの「アカウント」ボタンから開く、自分のプロフィール（ページ内表示） ---- */
+        .my-profile-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 14px;
+        }
+        .my-profile-avatar {
+            width: 64px; height: 64px; border-radius: 50%; flex: 0 0 auto;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--primary-soft); color: var(--primary);
+            font-size: 24px; font-weight: 700; overflow: hidden;
+        }
+        .my-profile-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .my-profile-headtext { min-width: 0; }
+        .my-profile-fulllink {
+            display: inline-block;
+            margin-top: 4px;
+            font-size: 12.5px;
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        .my-profile-fulllink:hover { color: var(--primary); text-decoration: underline; }
+        .my-profile-bio {
+            color: var(--text-muted);
+            font-size: 14.5px;
+            white-space: pre-wrap;
+            margin: 0 0 16px;
+        }
+        .my-profile-stats {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            padding: 14px 0;
+            border-top: 1px solid var(--card-border);
+            border-bottom: 1px solid var(--card-border);
+            margin-bottom: 16px;
+        }
+        .my-profile-stat { flex: 1 1 100px; text-align: center; }
+        .my-profile-stat-value { display: block; font-size: 20px; font-weight: 800; color: var(--text); }
+        .my-profile-stat-label { display: block; font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+        .my-profile-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
         .panel-title {
             font-size: 16px;
@@ -1003,6 +1117,36 @@
                     <span class="nav-label">運営体制・役職</span>
                 </a>
             </nav>
+
+            <!-- ============ サイドバー最下部：アカウント欄 ============
+                 ログイン中はアイコン＋ユーザー名（X/ChatGPT風）を表示し、クリックしても
+                 ページ遷移はせず、右側メインコンテンツに自分のプロフィールタブを開く。
+                 未ログイン時はここにログイン・新規登録ボタンを表示する。 -->
+            <div class="sidebar-account">
+                {% if current_member %}
+                <div class="sidebar-account-row">
+                    <button type="button" class="sidebar-account-btn side-nav-item" data-tab="profile-tab" onclick="switchTab('profile-tab', this)" title="マイページを開く">
+                        <span class="sidebar-account-avatar">
+                            {% if current_member.icon_path %}
+                            <img src="{{ current_member.icon_path }}" alt="" loading="lazy">
+                            {% else %}
+                            {{ (current_member.username or '?')[:1] }}
+                            {% endif %}
+                        </span>
+                        <span class="sidebar-account-name">{{ current_member.username }}</span>
+                    </button>
+                    <div class="sidebar-account-actions">
+                        <a href="/messages" class="dm-link" id="dm-link" title="メッセージ">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></a>
+                        <a href="{{ url_for('member_logout') }}" title="ログアウト">⏻</a>
+                    </div>
+                </div>
+                {% else %}
+                <div class="sidebar-account-auth">
+                    <a href="{{ url_for('member_login_form') }}" class="icon-btn">login</a>
+                    <a href="{{ url_for('register_form') }}" class="icon-btn-primary">sign up</a>
+                </div>
+                {% endif %}
+            </div>
         </aside>
 
         <!-- ============ 右側：トップバー＋本文 ============ -->
@@ -1018,25 +1162,6 @@
                         オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
                     </div>
                     <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
-                    {% if current_member %}
-                    <div class="member-pill">
-                        <a href="{{ url_for('profile_view', public_id=current_member.public_id) }}" style="display: flex; align-items: center; gap: 6px; color: inherit; text-decoration: none;" title="マイページを開く">
-                            <span class="member-pill-avatar">
-                                {% if current_member.icon_path %}
-                                <img src="{{ current_member.icon_path }}" alt="" loading="lazy">
-                                {% else %}
-                                {{ (current_member.username or '?')[:1] }}
-                                {% endif %}
-                            </span>
-                            <span>{{ current_member.username }} さん</span>
-                        </a>
-                        <a href="/messages" class="dm-link" id="dm-link" style="color: inherit; text-decoration: none; margin-left: 6px;">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></a>
-                        <a href="{{ url_for('member_logout') }}" style="color: inherit; text-decoration: underline; margin-left: 4px;">ログアウト</a>
-                    </div>
-                    {% else %}
-                    <a href="{{ url_for('member_login_form') }}" class="icon-btn">login</a>
-                    <a href="{{ url_for('register_form') }}" class="icon-btn-primary">sign up</a>
-                    {% endif %}
                 </div>
             </div>
 
@@ -1404,6 +1529,60 @@
                                 </li>
                             </ul>
                         </div>
+                    </div>
+
+                    <!-- マイプロフィールタブ（サイドバー最下部のアカウント欄から開く。
+                         ページ遷移はせず、ここにスレ一覧などと同じ形式で表示する。
+                         スレッド内のユーザー名クリックは従来通り /profile/... へ遷移する。 -->
+                    <div id="profile-tab" class="content-section">
+                        {% if current_member %}
+                        <div class="glass-panel">
+                            <div class="my-profile-header">
+                                <span class="my-profile-avatar">
+                                    {% if current_member.icon_path %}
+                                    <img src="{{ current_member.icon_path }}" alt="" loading="lazy">
+                                    {% else %}
+                                    {{ (current_member.username or '?')[:1] }}
+                                    {% endif %}
+                                </span>
+                                <div class="my-profile-headtext">
+                                    <h2 class="panel-title" style="margin:0;">{{ current_member.username }}</h2>
+                                    <a class="my-profile-fulllink" href="{{ url_for('profile_view', public_id=current_member.public_id) }}" target="_blank">プロフィールページを開く ↗</a>
+                                </div>
+                            </div>
+
+                            <p class="my-profile-bio">{{ own_bio or '自己紹介はまだ設定されていません。' }}</p>
+
+                            <div class="my-profile-stats">
+                                <div class="my-profile-stat">
+                                    <span class="my-profile-stat-value">{{ own_points_balance if own_points_balance is not none else '―' }}</span>
+                                    <span class="my-profile-stat-label">ポイント</span>
+                                </div>
+                                <div class="my-profile-stat">
+                                    <span class="my-profile-stat-value">{{ own_thread_count }}</span>
+                                    <span class="my-profile-stat-label">作成した板</span>
+                                </div>
+                                <div class="my-profile-stat">
+                                    <span class="my-profile-stat-value">{{ own_reply_count }}</span>
+                                    <span class="my-profile-stat-label">レス数</span>
+                                </div>
+                            </div>
+
+                            <div class="my-profile-actions">
+                                <a href="{{ url_for('profile_view', public_id=current_member.public_id) }}" target="_blank" class="icon-btn">プロフィールページを開く</a>
+                                <a href="{{ url_for('points_page') }}" class="icon-btn">ポイント履歴</a>
+                                <a href="{{ url_for('member_logout') }}" class="icon-btn">ログアウト</a>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="glass-panel">
+                            <p>ログインするとプロフィールを表示できます。</p>
+                            <div style="display:flex; gap:8px; margin-top:8px;">
+                                <a href="{{ url_for('member_login_form') }}" class="icon-btn">login</a>
+                                <a href="{{ url_for('register_form') }}" class="icon-btn-primary">sign up</a>
+                            </div>
+                        </div>
+                        {% endif %}
                     </div>
 
                     <!-- 3. 「その他」タブ -->
@@ -1962,6 +2141,14 @@
             for (var k = 0; k < btns.length; k++) {
                 if (btns[k].getAttribute('data-tab') === 'games-tab') {
                     switchTab('games-tab', btns[k]);
+                    break;
+                }
+            }
+        } else if (tabParam === 'profile') {
+            var btns = document.querySelectorAll('.side-nav-item[data-tab]');
+            for (var k = 0; k < btns.length; k++) {
+                if (btns[k].getAttribute('data-tab') === 'profile-tab') {
+                    switchTab('profile-tab', btns[k]);
                     break;
                 }
             }
