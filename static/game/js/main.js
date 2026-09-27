@@ -4,9 +4,8 @@ import { buildPlane, makeNameTag, planeColor } from './plane.js';
 import { NetClient } from './net.js';
 import { EngineSound } from './sound.js';
 
-let gameMode = 'pc'; // グローバルで保持
+let gameMode = 'pc';
 
-// 外部から呼ばれる初期化関数
 export function initGame(mode) {
   gameMode = mode;
   setupGame();
@@ -19,41 +18,61 @@ function setupGame() {
   const WORLD_R = 7000;
 
   const gameContainer = document.getElementById('game-container');
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.setSize(gameContainer.clientWidth || innerWidth, gameContainer.clientHeight || innerHeight);
+  
+  // canvas サイズを正確に設定
+  function updateCanvasSize() {
+    const rect = gameContainer.getBoundingClientRect();
+    const w = rect.width || window.innerWidth;
+    const h = rect.height || window.innerHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  
+  updateCanvasSize();
   gameContainer.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(70, (gameContainer.clientWidth || innerWidth) / (gameContainer.clientHeight || innerHeight), 0.1, 9000);
+  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 9000);
   const world = buildWorld(scene);
 
-  addEventListener('resize', () => {
-    const w = gameContainer.clientWidth || innerWidth;
-    const h = gameContainer.clientHeight || innerHeight;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-  });
+  window.addEventListener('resize', updateCanvasSize);
 
   const me = {
     pos: new THREE.Vector3(0, 80, 0),
     quat: new THREE.Quaternion(),
     speed: 40,
   };
+  
   const myPlane = buildPlane(planeColor(Math.floor(Math.random() * 8)));
   scene.add(myPlane.group);
 
+  // キー入力管理
   const keys = {};
   
-  addEventListener('keydown', (e) => { 
-    keys[e.code] = true; 
-    sound.ensure(); 
+  window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    sound.ensure();
   });
-  addEventListener('keyup', (e) => { 
-    keys[e.code] = false; 
+  
+  window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
   });
-  addEventListener('pointerdown', () => sound.ensure());
+  
+  window.addEventListener('pointerdown', () => sound.ensure());
+
+  // モバイル用アナログスティック管理
+  const mobileInput = {
+    leftStick: { x: 0, y: 0 },    // x: 旋回(-1=左, 1=右), y: 上昇下降(-1=下降, 1=上昇)
+    rightGauge: 0,                // -1=減速, 0=中立, 1=加速
+  };
+
+  if (gameMode === 'mobile') {
+    setupMobileAnalogSticks(mobileInput);
+  }
 
   const remotes = new Map();
 
@@ -81,9 +100,17 @@ function setupGame() {
   const vFwd = new THREE.Vector3();
 
   function step(dt) {
-    const pitchIn = (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0);
-    const rollIn = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
-    const thrIn = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
+    let pitchIn, rollIn, thrIn;
+
+    if (gameMode === 'mobile') {
+      pitchIn = mobileInput.leftStick.y;      // 上昇/下降
+      rollIn = mobileInput.leftStick.x;       // 左右旋回
+      thrIn = mobileInput.rightGauge;         // 加速減速
+    } else {
+      pitchIn = (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0);
+      rollIn = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
+      thrIn = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0);
+    }
 
     vFwd.set(0, 0, 1).applyQuaternion(me.quat);
     me.speed += thrIn * 30 * dt - vFwd.y * 18 * dt;
@@ -99,7 +126,10 @@ function setupGame() {
     vFwd.set(0, 0, 1).applyQuaternion(me.quat);
     me.pos.addScaledVector(vFwd, me.speed * dt);
 
-    if (me.pos.y < 2) { me.pos.y = 2; me.speed = Math.max(me.speed * 0.9, 20); }
+    if (me.pos.y < 2) {
+      me.pos.y = 2;
+      me.speed = Math.max(me.speed * 0.9, 20);
+    }
     if (me.pos.y > 1500) me.pos.y = 1500;
 
     if (me.pos.x > WORLD_R) me.pos.x = -WORLD_R;
@@ -164,14 +194,25 @@ function setupGame() {
 
   function refreshRoster() {
     const el = document.getElementById('roster');
-    if (!net.joined) { el.innerHTML = ''; return; }
+    if (!net.joined) {
+      el.innerHTML = '';
+      return;
+    }
     const names = ['<b>' + escapeHtml(myName) + ' (あなた)</b>'];
-    for (const [id] of remotes) names.push(escapeHtml(rosterNames.get(id) || `Pilot-${id}`));
+    for (const [id] of remotes) {
+      names.push(escapeHtml(rosterNames.get(id) || `Pilot-${id}`));
+    }
     el.innerHTML = `ルーム: ${escapeHtml(myRoom)}<br>` + names.join('<br>');
   }
 
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[c]));
   }
 
   let myName = '';
@@ -181,17 +222,32 @@ function setupGame() {
   net.onJoined = (m) => {
     document.getElementById('menu').style.display = 'none';
     document.getElementById('leaveBtn').style.display = 'block';
-    for (const p of m.players) { rosterNames.set(p.id, p.name); addRemote(p.id, p.name); }
+    for (const p of m.players) {
+      rosterNames.set(p.id, p.name);
+      addRemote(p.id, p.name);
+    }
     refreshRoster();
   };
-  net.onJoin = (m) => { rosterNames.set(m.id, m.name); addRemote(m.id, m.name); refreshRoster(); };
-  net.onLeave = (m) => { rosterNames.delete(m.id); removeRemote(m.id); refreshRoster(); };
+
+  net.onJoin = (m) => {
+    rosterNames.set(m.id, m.name);
+    addRemote(m.id, m.name);
+    refreshRoster();
+  };
+
+  net.onLeave = (m) => {
+    rosterNames.delete(m.id);
+    removeRemote(m.id);
+    refreshRoster();
+  };
+
   net.onState = (s) => {
     const r = remotes.get(s.id);
     if (!r) return;
     r.snaps.push(s);
     if (r.snaps.length > 12) r.snaps.shift();
   };
+
   net.onError = (m) => {
     const msgs = {
       room_full: 'そのルームは満員です',
@@ -200,6 +256,7 @@ function setupGame() {
     };
     showToast(msgs[m.code] || 'エラー: ' + m.code);
   };
+
   net.onClose = () => {
     for (const [id] of remotes) removeRemote(id);
     rosterNames.clear();
@@ -211,7 +268,10 @@ function setupGame() {
   document.getElementById('joinBtn').onclick = async () => {
     myName = document.getElementById('nameInput').value.trim() || '名無しパイロット';
     myRoom = document.getElementById('roomInput').value.trim();
-    if (!myRoom) { showToast('ルーム名を入力してください'); return; }
+    if (!myRoom) {
+      showToast('ルーム名を入力してください');
+      return;
+    }
     try {
       if (!net.ws || net.ws.readyState > 1) await net.connect();
       net.sendJoin(myRoom, myName);
@@ -219,6 +279,7 @@ function setupGame() {
       showToast('サーバーに接続できません');
     }
   };
+
   document.getElementById('leaveBtn').onclick = () => {
     net.sendLeave();
     document.getElementById('menu').style.display = 'flex';
@@ -230,18 +291,23 @@ function setupGame() {
 
   const hud = document.getElementById('hud');
   let hudAcc = 0;
-  let fpsAcc = 0, fpsCnt = 0, fps = 0;
+  let fpsAcc = 0,
+    fpsCnt = 0,
+    fps = 0;
 
   function updateHud(dt) {
-    fpsAcc += dt; fpsCnt++;
+    fpsAcc += dt;
+    fpsCnt++;
     hudAcc += dt;
     if (hudAcc < 0.25) return;
     fps = Math.round(fpsCnt / fpsAcc);
     fpsAcc = fpsCnt = 0;
     hudAcc = 0;
-    
+
     if (gameMode === 'pc') {
-      hud.textContent = `SPD ${Math.round(me.speed * 3.6)} km/h  ALT ${Math.round(me.pos.y)} m  FPS ${fps}  オンライン ${remotes.size + (net.joined ? 1 : 0)} 機`;
+      hud.textContent = `SPD ${Math.round(me.speed * 3.6)} km/h  ALT ${Math.round(me.pos.y)} m  FPS ${fps}  オンライン ${
+        remotes.size + (net.joined ? 1 : 0)
+      } 機`;
     } else {
       document.getElementById('speed-display').textContent = `SPD ${Math.round(me.speed * 3.6)} km/h`;
       document.getElementById('altitude-display').textContent = `ALT ${Math.round(me.pos.y)} m`;
@@ -278,5 +344,164 @@ function setupGame() {
     updateHud(dt);
     renderer.render(scene, camera);
   }
+
   requestAnimationFrame(loop);
+}
+
+// モバイル用アナログスティック
+function setupMobileAnalogSticks(mobileInput) {
+  const leftStickContainer = document.getElementById('mobile-left-stick');
+  const rightGaugeContainer = document.getElementById('mobile-right-gauge');
+
+  if (!leftStickContainer || !rightGaugeContainer) {
+    console.error('Mobile control containers not found');
+    return;
+  }
+
+  // 左スティック
+  setupAnalogStick(leftStickContainer, (x, y) => {
+    mobileInput.leftStick.x = x;
+    mobileInput.leftStick.y = y;
+  });
+
+  // 右ゲージ
+  setupGauge(rightGaugeContainer, (value) => {
+    mobileInput.rightGauge = value;
+  });
+}
+
+function setupAnalogStick(container, onMove) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 120;
+  canvas.height = 120;
+  container.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  const radius = 50;
+  const innerRadius = 15;
+
+  let touchActive = false;
+  let stickX = 0,
+    stickY = 0;
+
+  function draw() {
+    ctx.fillStyle = 'rgba(16,29,44,0.6)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'rgba(47,143,224,0.3)';
+    ctx.beginPath();
+    ctx.arc(60, 60, radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(47,143,224,0.8)';
+    ctx.beginPath();
+    ctx.arc(60 + stickX * radius, 60 + stickY * radius, innerRadius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  canvas.addEventListener('touchstart', (e) => {
+    touchActive = true;
+    updateStick(e.touches[0]);
+  });
+
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (touchActive) updateStick(e.touches[0]);
+  });
+
+  canvas.addEventListener('touchend', () => {
+    touchActive = false;
+    stickX = 0;
+    stickY = 0;
+    draw();
+  });
+
+  function updateStick(touch) {
+    const rect = canvas.getBoundingClientRect();
+    const x = touch.clientX - rect.left - 60;
+    const y = touch.clientY - rect.top - 60;
+    const dist = Math.sqrt(x * x + y * y);
+
+    if (dist > radius) {
+      stickX = (x / dist) * 1;
+      stickY = (y / dist) * 1;
+    } else {
+      stickX = x / radius;
+      stickY = y / radius;
+    }
+
+    onMove(stickX, stickY);
+    draw();
+  }
+
+  draw();
+}
+
+function setupGauge(container, onChange) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 80;
+  canvas.height = 160;
+  container.appendChild(canvas);
+
+  const ctx = canvas.getContext('2d');
+  let gaugeValue = 0; // -1 = 減速, 0 = 中立, 1 = 加速
+
+  function draw() {
+    ctx.fillStyle = 'rgba(16,29,44,0.6)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = 'rgba(47,143,224,0.5)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(10, 20, 60, 120);
+
+    if (gaugeValue > 0) {
+      ctx.fillStyle = 'rgba(65,176,107,0.8)';
+      const fillHeight = (gaugeValue * 60);
+      ctx.fillRect(10, 80 - fillHeight, 60, fillHeight);
+    } else if (gaugeValue < 0) {
+      ctx.fillStyle = 'rgba(201,59,43,0.8)';
+      const fillHeight = (-gaugeValue * 60);
+      ctx.fillRect(10, 80, 60, fillHeight);
+    }
+
+    ctx.fillStyle = 'rgba(200,200,200,0.6)';
+    ctx.fillRect(10, 78, 60, 4);
+
+    ctx.fillStyle = '#dce9f5';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('加速', 40, 18);
+    ctx.fillText('減速', 40, 155);
+  }
+
+  canvas.addEventListener('touchstart', (e) => {
+    updateGauge(e.touches[0]);
+  });
+
+  canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    updateGauge(e.touches[0]);
+  });
+
+  canvas.addEventListener('touchend', () => {
+    gaugeValue = 0;
+    draw();
+    onChange(0);
+  });
+
+  function updateGauge(touch) {
+    const rect = canvas.getBoundingClientRect();
+    const y = touch.clientY - rect.top;
+
+    if (y < 80) {
+      gaugeValue = Math.max(-1, Math.min(1, (80 - y) / 60));
+    } else {
+      gaugeValue = Math.max(-1, Math.min(1, (y - 80) / 60 * -1));
+    }
+
+    onChange(gaugeValue);
+    draw();
+  }
+
+  draw();
 }
