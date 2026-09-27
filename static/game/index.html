@@ -5,132 +5,131 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <title>TALK SKY - オンラインフライト</title>
 <style>
-  html,body{margin:0;height:100%;overflow:hidden;background:#87b7e8;font-family:system-ui,sans-serif}
+  * { margin: 0; padding: 0; box-sizing: border-box; }
   
-  #mode-selector{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#1c3a5e88,#0d1b2a99);z-index:20}
-  #mode-panel{background:#101d2cee;border:1px solid #3a5a7a;border-radius:14px;padding:40px;color:#dce9f5;width:360px;box-shadow:0 12px 40px #0008;text-align:center}
-  #mode-panel h1{margin:0 0 8px;font-size:28px;letter-spacing:2px;color:#7ec8ff}
-  #mode-panel p{margin:0 0 28px;font-size:13px;color:#8aa5bd;line-height:1.6}
-  
-  .mode-buttons{display:flex;gap:12px;margin-top:20px}
-  .mode-btn{flex:1;padding:16px;border:0;border-radius:8px;cursor:pointer;font-size:15px;font-weight:700;transition:all 0.2s}
-  .mode-btn.pc{background:#2f8fe0;color:#fff}
-  .mode-btn.pc:hover{background:#4aa3ee}
-  .mode-btn.mobile{background:#41b06b;color:#fff}
-  .mode-btn.mobile:hover{background:#52c77a}
-  
-  #game-container{display:none;width:100%;height:100%;position:relative}
-  #game-container canvas{display:block;width:100%;height:100%}
-  
-  #menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(#1c3a5e88,#0d1b2a99);z-index:10}
-  #panel{background:#101d2cee;border:1px solid #3a5a7a;border-radius:14px;padding:28px 32px;color:#dce9f5;width:320px;box-shadow:0 12px 40px #0008}
-  #panel h1{margin:0 0 4px;font-size:26px;letter-spacing:2px;color:#7ec8ff}
-  #panel p.sub{margin:0 0 18px;font-size:12px;color:#8aa5bd}
-  #panel input{width:100%;box-sizing:border-box;margin:6px 0;padding:10px;border-radius:8px;border:1px solid #3a5a7a;background:#0a1622;color:#dce9f5;font-size:14px}
-  #panel button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:8px;cursor:pointer;background:#2f8fe0;color:#fff;font-size:15px;font-weight:700}
-  #panel button:hover{background:#4aa3ee}
-  #help{margin-top:16px;font-size:12px;color:#8aa5bd;line-height:1.7}
-  
-  #hud{position:fixed;left:14px;bottom:12px;color:#fff;font:13px/1.6 ui-monospace,monospace;text-shadow:0 1px 3px #000a;z-index:5;pointer-events:none}
-  #roster{position:fixed;right:14px;top:12px;color:#fff;font:13px/1.7 ui-monospace,monospace;text-align:right;text-shadow:0 1px 3px #000a;z-index:5;pointer-events:none}
-  #toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#c0392bdd;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;display:none;z-index:20}
-  #leaveBtn{position:fixed;left:14px;top:12px;z-index:6;display:none;padding:6px 14px;border:0;border-radius:8px;background:#ffffff2e;color:#fff;cursor:pointer;font-size:12px}
-  
-  /* モバイル操作パネル */
-  #mobile-controls{display:none;position:fixed;bottom:0;left:0;right:0;height:200px;background:linear-gradient(to top, rgba(16,29,44,0.95), rgba(16,29,44,0.85));border-top:1px solid #3a5a7a;z-index:5;padding:10px;box-sizing:border-box;flex-direction:row;gap:10px;align-items:flex-end;justify-content:space-between}
-  
-  #mobile-controls.active{display:flex}
-  
-  .mobile-stick-container{flex:1;display:flex;justify-content:center}
-  .mobile-gauge-container{flex:0.6;display:flex;justify-content:center}
-  
-  #speed-display{position:fixed;bottom:210px;left:50%;transform:translateX(-50%);color:#fff;font:14px ui-monospace,monospace;text-shadow:0 1px 3px #000a;z-index:5}
-  #altitude-display{position:fixed;bottom:230px;left:50%;transform:translateX(-50%);color:#fff;font:14px ui-monospace,monospace;text-shadow:0 1px 3px #000a;z-index:5}
-</style>
-<script type="importmap">
-  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}
-</script>
-</head>
-<body>
-
-<!-- モード選択パネル -->
-<div id="mode-selector">
-  <div id="mode-panel">
-    <h1>TALK SKY</h1>
-    <p>オンラインフライト<br>プレイモードを選択</p>
-    <div class="mode-buttons">
-      <button class="mode-btn pc" id="btn-pc">
-        🖥️ PC<br><span style="font-size:11px">キーボード操作</span>
-      </button>
-      <button class="mode-btn mobile" id="btn-mobile">
-        📱 Mobile<br><span style="font-size:11px">タッチ操作</span>
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- ゲーム本体 -->
-<div id="game-container"></div>
-
-<!-- メニュー（ルーム参加画面） -->
-<div id="menu">
-  <div id="panel">
-    <h1>TALK SKY</h1>
-    <p class="sub">talk-ch.com オンラインフライト — サーバーは通信の中継のみ</p>
-    <input id="nameInput" maxlength="16" placeholder="パイロット名">
-    <input id="roomInput" maxlength="24" placeholder="ルーム名 (例: sky1)">
-    <button id="joinBtn">出発する</button>
-    <div id="help">
-      <span id="help-text">W / S : 加速・減速<br>↑ / ↓ : 上昇・下降<br>A / D : 左右旋回(バンク)</span>
-    </div>
-  </div>
-</div>
-
-<button id="leaveBtn">退出</button>
-<div id="hud"></div>
-<div id="roster"></div>
-<div id="toast"></div>
-
-<!-- モバイルコントロール -->
-<div id="mobile-controls">
-  <div class="mobile-stick-container" id="mobile-left-stick">
-    <!-- キャンバス自動生成 -->
-  </div>
-  <div class="mobile-gauge-container" id="mobile-right-gauge">
-    <!-- キャンバス自動生成 -->
-  </div>
-</div>
-
-<div id="speed-display" style="display:none">SPD --- km/h</div>
-<div id="altitude-display" style="display:none">ALT --- m</div>
-
-<script type="module">
-  let gameMode = null;
-  
-  document.getElementById('btn-pc').addEventListener('click', () => {
-    gameMode = 'pc';
-    startGame();
-  });
-  
-  document.getElementById('btn-mobile').addEventListener('click', () => {
-    gameMode = 'mobile';
-    startGame();
-  });
-  
-  function startGame() {
-    document.getElementById('mode-selector').style.display = 'none';
-    document.getElementById('game-container').style.display = 'block';
-    
-    if (gameMode === 'mobile') {
-      document.getElementById('mobile-controls').classList.add('active');
-      document.getElementById('speed-display').style.display = 'block';
-      document.getElementById('altitude-display').style.display = 'block';
-    }
-    
-    import('./js/main.js').then((module) => {
-      module.initGame(gameMode);
-    });
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #87b7e8;
+    font-family: system-ui, sans-serif;
   }
-</script>
-</body>
-</html>
+  
+  #mode-selector {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(#1c3a5e88, #0d1b2a99);
+    z-index: 20;
+  }
+  
+  #mode-panel {
+    background: #101d2cee;
+    border: 1px solid #3a5a7a;
+    border-radius: 14px;
+    padding: 40px;
+    color: #dce9f5;
+    width: 360px;
+    box-shadow: 0 12px 40px #0008;
+    text-align: center;
+  }
+  
+  #mode-panel h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    letter-spacing: 2px;
+    color: #7ec8ff;
+  }
+  
+  #mode-panel p {
+    margin: 0 0 28px;
+    font-size: 13px;
+    color: #8aa5bd;
+    line-height: 1.6;
+  }
+  
+  .mode-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+  }
+  
+  .mode-btn {
+    flex: 1;
+    padding: 16px;
+    border: 0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 700;
+    transition: all 0.2s;
+  }
+  
+  .mode-btn.pc {
+    background: #2f8fe0;
+    color: #fff;
+  }
+  
+  .mode-btn.pc:hover {
+    background: #4aa3ee;
+  }
+  
+  .mode-btn.mobile {
+    background: #41b06b;
+    color: #fff;
+  }
+  
+  .mode-btn.mobile:hover {
+    background: #52c77a;
+  }
+  
+  #game-container {
+    display: none;
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  
+  #game-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  
+  #menu {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(#1c3a5e88, #0d1b2a99);
+    z-index: 10;
+  }
+  
+  #panel {
+    background: #101d2cee;
+    border: 1px solid #3a5a7a;
+    border-radius: 14px;
+    padding: 28px 32px;
+    color: #dce9f5;
+    width: 320px;
+    box-shadow: 0 12px 40px #0008;
+  }
+  
+  #panel h1 {
+    margin: 0 0 4px;
+    font-size: 26px;
+    letter-spacing: 2px;
+    color: #7ec8ff;
+  }
+  
+  #panel p.sub {
+    margin: 0 0 18px;
+    font-size: 12px;
+    color: #8aa5bd;
+  }*
+
