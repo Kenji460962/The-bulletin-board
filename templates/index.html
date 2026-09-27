@@ -1020,14 +1020,16 @@
                     <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
                     {% if current_member %}
                     <div class="member-pill">
-                        <span class="member-pill-avatar">
-                            {% if current_member.icon_path %}
-                            <img src="{{ current_member.icon_path }}" alt="" loading="lazy">
-                            {% else %}
-                            {{ (current_member.username or '?')[:1] }}
-                            {% endif %}
-                        </span>
-                        <a href="{{ url_for('profile_edit_form') }}" style="color: inherit; text-decoration: none;">{{ current_member.username }} さん</a>
+                        <a href="{{ url_for('profile_view', public_id=current_member.public_id) }}" style="display: flex; align-items: center; gap: 6px; color: inherit; text-decoration: none;" title="マイページを開く">
+                            <span class="member-pill-avatar">
+                                {% if current_member.icon_path %}
+                                <img src="{{ current_member.icon_path }}" alt="" loading="lazy">
+                                {% else %}
+                                {{ (current_member.username or '?')[:1] }}
+                                {% endif %}
+                            </span>
+                            <span>{{ current_member.username }} さん</span>
+                        </a>
                         <a href="/messages" class="dm-link" id="dm-link" style="color: inherit; text-decoration: none; margin-left: 6px;">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></a>
                         <a href="{{ url_for('member_logout') }}" style="color: inherit; text-decoration: underline; margin-left: 4px;">ログアウト</a>
                     </div>
@@ -1420,6 +1422,32 @@
                                 </li>
                             </ul>
                         </div>
+
+                        {% if current_member %}
+                        <div class="glass-panel">
+                            <h3 class="panel-title" style="margin-top: 0;">アカウント</h3>
+                            <ul class="menu-list">
+                                <li>
+                                    <a class="menu-list-item" href="{{ url_for('profile_view', public_id=current_member.public_id) }}">
+                                        <div class="menu-list-text">
+                                            <div class="menu-list-title">マイページ</div>
+                                            <div class="menu-list-desc">プロフィール・ポイント残高・掲示板/ゲーム実績を確認</div>
+                                        </div>
+                                        <div class="menu-list-chevron">›</div>
+                                    </a>
+                                </li>
+                                <li>
+                                    <a class="menu-list-item" href="{{ url_for('points_page') }}">
+                                        <div class="menu-list-text">
+                                            <div class="menu-list-title">ポイント履歴</div>
+                                            <div class="menu-list-desc">ポイント残高と獲得・利用履歴を確認</div>
+                                        </div>
+                                        <div class="menu-list-chevron">›</div>
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                        {% endif %}
 
                         <div class="glass-panel">
                             <h3 class="panel-title" style="margin-top: 0;">その他メニュー</h3>
