@@ -82,19 +82,17 @@
             --sidebar-w: 240px;
             --bg-image: url("{{ url_for('static', path='IMG_0565.png') }}");
             --nav-hover: rgba(17, 24, 39, 0.06);
-            /* 写真の上に乗る文字に付ける「縁取り(ハロー)」。パネルに背景を
-               敷くのではなく、文字の輪郭を縁取ることで、写真をそのまま
-               全面に見せつつ文字だけ読みやすくする。
-               ぼかしだけだと--text-muted/--text-faintのような薄い色の文字は
-               縁がにじんで逆に見にくくなるため、四方向の1pxの実線ストローク
-               (輪郭線)を土台にして、その上にぼかしハローを重ねている。 */
+            /* 写真の上に乗る文字に付ける、ごく薄い「縁取り」。
+               文字全体が白っぽく光って見える大きな「影(グロー)」ではなく、
+               グリフの輪郭の一番外側だけにうっすら白が乗るごく細いストローク
+               に留める。これにより、背景が明るい場所ではほぼ見えず、
+               背景の濃い部分と文字が重なった時だけ、輪郭部分の
+               コントラストが自然に確保される。 */
             --text-halo:
-                -1px -1px 0 rgba(255, 255, 255, 0.95),
-                 1px -1px 0 rgba(255, 255, 255, 0.95),
-                -1px  1px 0 rgba(255, 255, 255, 0.95),
-                 1px  1px 0 rgba(255, 255, 255, 0.95),
-                 0 0 6px rgba(255, 255, 255, 0.9),
-                 0 0 12px rgba(255, 255, 255, 0.7);
+                -1px -1px 1px rgba(255, 255, 255, 0.6),
+                 1px -1px 1px rgba(255, 255, 255, 0.6),
+                -1px  1px 1px rgba(255, 255, 255, 0.6),
+                 1px  1px 1px rgba(255, 255, 255, 0.6);
         }
 
         html[data-theme="dark"] {
@@ -157,41 +155,54 @@
             min-height: 100vh;
         }
 
-        /* ---- 左サイドバー ---- */
+        /* ---- 左サイドバー ----
+           サイドバー自体はスクロールしない箱（overflow:hidden）にし、
+           内部を「スクロールするメニュー領域(.sidebar-scroll)」と
+           「常に画面下部に固定されるユーザー情報(.sidebar-account)」の
+           2段フレックスカラムに分割する。 */
         .sidebar {
             width: var(--sidebar-w);
             flex: 0 0 var(--sidebar-w);
             background: transparent;
             border-right: 1px solid var(--card-border);
-            min-height: 100vh;
-            padding: 18px 14px 24px;
+            height: 100vh;
             position: sticky;
             top: 0;
             align-self: flex-start;
-            max-height: 100vh;
-            overflow-y: auto;
             text-shadow: var(--text-halo);
-            /* 最下部のアカウント欄を常にサイドバー最下部へ押し下げるため
-               フレックスカラムにする（中身が少ない時は margin-top:auto で下寄せ、
-               多い時はサイドバー自体のスクロールに従う）。 */
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
 
-        /* ---- サイドバー最下部：ログイン中のみ、アイコン＋ユーザー名の白いカードを
-           常に画面下部に固定表示する（サイドバーをスクロールしても動かない）。
+        /* ---- スクロールするメニュー領域：ロビー／スレ一覧／ゲーム／使い方／メッセージ／
+           「その他」メニューなど、ユーザー情報カード以外のすべてがここに入る。
+           この領域だけが縦スクロールし、ユーザー情報カードはスクロールに追従しない。 ---- */
+        .sidebar-scroll {
+            flex: 1 1 auto;
+            min-height: 0; /* flex子要素を正しく縮められるようにし、内部スクロールを機能させる */
+            overflow-y: auto;
+            padding: 18px 14px 12px;
+        }
+
+        /* ---- サイドバー最下部：ログイン中のみ、アイコン＋ユーザー名のカードと
+           ログアウトアイコンを、常に画面下部に固定表示する
+           （.sidebar-scroll の外に置かれるフレックスの2段目なので、
+           サイドバーをスクロールしても動かない）。
            未ログイン時はこの要素自体を描画しない（ログイン導線は右上トップバー側）。 ---- */
         .sidebar-account {
-            position: sticky;
-            bottom: 0;
-            margin-top: auto;
-            padding-top: 10px;
-            padding-bottom: 2px;
-            z-index: 5;
+            flex: 0 0 auto;
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+            padding: 10px 14px 20px;
+            border-top: 1px solid var(--card-border);
         }
         .sidebar-account-card {
             appearance: none;
             width: 100%;
+            min-width: 0;
+            flex: 1 1 auto;
             display: flex;
             align-items: center;
             gap: 10px;
@@ -223,6 +234,25 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+
+        /* ---- ログアウトアイコンボタン：ユーザー情報カードの横に、同じ高さで並べる。
+           大きな文字ボタンにはせず、アイコンのみ。 ---- */
+        .sidebar-logout-btn {
+            flex: 0 0 auto;
+            width: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            color: var(--text-muted);
+            text-decoration: none;
+            cursor: pointer;
+            transition: border-color 0.15s ease, color 0.15s ease;
+        }
+        .sidebar-logout-btn svg { width: 18px; height: 18px; }
+        .sidebar-logout-btn:hover { border-color: var(--red); color: var(--red); }
 
         .brand-block { padding: 2px 8px 16px; border-bottom: 1px solid var(--card-border); margin-bottom: 10px; }
 
@@ -503,7 +533,7 @@
         .delete-thread-btn,
         .thread-op-avatar, .member-pill-avatar, .member-pill,
         .side-nav-item.active,
-        .sidebar-account-avatar, .sidebar-account-card, .sidebar-account-card *,
+        .sidebar-account-avatar, .sidebar-account-card, .sidebar-account-card *, .sidebar-logout-btn,
         .my-profile-avatar,
         input, textarea, button {
             text-shadow: none;
@@ -963,7 +993,9 @@
     
         /* ---- タブレット幅（iPad縦横含む：〜1024px） ---- */
         @media (max-width: 1024px) {
-            .sidebar { width: 210px; flex: 0 0 210px; padding: 16px 12px 20px; }
+            .sidebar { width: 210px; flex: 0 0 210px; }
+            .sidebar-scroll { padding: 16px 12px 10px; }
+            .sidebar-account { padding: 8px 12px 16px; }
             .main-wrap { padding: 18px 22px 40px; }
             .main-col { max-width: 100%; }
             .site-footer { max-width: 100%; }
@@ -990,17 +1022,17 @@
                 left: 0;
                 width: min(280px, 82vw);
                 flex: 0 0 auto;
-                min-height: 100vh;
-                max-height: 100vh;
+                height: 100vh;
                 background: var(--card-bg);
                 border-right: 1px solid var(--card-border);
                 border-bottom: none;
-                padding: 18px 14px 24px;
                 transform: translateX(-100%);
                 transition: transform 0.25s ease;
                 z-index: 1001;
                 box-shadow: 2px 0 16px rgba(0, 0, 0, 0.15);
             }
+            .sidebar-scroll { padding: 18px 14px 12px; }
+            .sidebar-account { padding: 10px 14px 20px; }
             .sidebar.open { transform: translateX(0); }
 
             .main-wrap { padding: 16px 14px 40px; }
@@ -1045,6 +1077,7 @@
 
         <!-- ============ 左サイドバー ============ -->
         <aside class="sidebar" id="app-sidebar">
+            <div class="sidebar-scroll">
             <div class="brand-block">
                 <p class="brand-name">
                     <img src="{{ url_for('static', path='favicon.webp') }}" alt="talk-ch">
@@ -1073,12 +1106,11 @@
                 </button>
                 {% if current_member %}
                 <a class="side-nav-item" href="/messages">
-                    <span class="nav-icon dm-link" id="dm-link">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></span>
+                    <span class="nav-icon dm-link" id="dm-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        <span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span>
+                    </span>
                     <span class="nav-label">メッセージ</span>
-                </a>
-                <a class="side-nav-item" href="{{ url_for('member_logout') }}">
-                    <span class="nav-icon">⏻</span>
-                    <span class="nav-label">ログアウト</span>
                 </a>
                 {% endif %}
             </nav>
@@ -1109,10 +1141,12 @@
                     <span class="nav-label">運営体制・役職</span>
                 </a>
             </nav>
-
+            </div>
             <!-- ============ サイドバー最下部：ユーザーカード ============
-                 ログイン中のみ表示。アイコン＋ユーザー名を白い角丸カードとして、
-                 サイドバーをスクロールしても常に画面下部に固定表示する（sticky）。
+                 ログイン中のみ表示。アイコン＋ユーザー名のカードは .sidebar-scroll の
+                 外側（サイドバーの2段目）に置くことで、メニュー領域をスクロールしても
+                 常に画面下部に固定表示される。カードの横にはログアウト用のアイコンのみを
+                 同じ高さで並べる（大きなボタン・文字は使わない）。
                  クリックしてもページ遷移はせず、右側メインコンテンツに自分のプロフィールタブを開く。
                  未ログイン時はこの要素自体を出さない（ログイン導線は右上トップバー）。 -->
             {% if current_member %}
@@ -1127,6 +1161,9 @@
                     </span>
                     <span class="sidebar-account-name">{{ current_member.username }}</span>
                 </button>
+                <a href="{{ url_for('member_logout') }}" class="sidebar-logout-btn" title="ログアウト" aria-label="ログアウト">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </a>
             </div>
             {% endif %}
         </aside>
