@@ -30,6 +30,7 @@ from PIL import Image, ImageOps
 import uvicorn
 import redis.asyncio as aioredis
 import aiosqlite
+from game_ws import router as flight_game_router
 
 load_dotenv()
 
@@ -306,6 +307,20 @@ templates.env.filters['linkify'] = linkify
 
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# =========================
+# 3Dフライトゲーム
+# =========================
+# 既存の /game はオセロ機能で使用中のため、
+# 3Dフライトゲームは /flight に分離する。
+app.include_router(flight_game_router)
+
+if os.path.isdir("static/game"):
+    app.mount(
+        "/flight",
+        StaticFiles(directory="static/game", html=True),
+        name="flight",
+    )
 
 FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345')
 
