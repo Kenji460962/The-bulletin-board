@@ -6,7 +6,6 @@ function setupGame() {
 
   const gameContainer = document.getElementById('game-container');
   
-  // renderer を作成
   const renderer = new THREE.WebGLRenderer({ 
     antialias: true, 
     alpha: false,
@@ -16,10 +15,8 @@ function setupGame() {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setClearColor(0x87b7e8);
   
-  // canvas を game-container に追加
   gameContainer.appendChild(renderer.domElement);
   
-  // サイズ更新関数
   function updateCanvasSize() {
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -30,9 +27,7 @@ function setupGame() {
     }
   }
   
-  // 初回サイズ設定
   updateCanvasSize();
-  
   window.addEventListener('resize', updateCanvasSize);
 
   const scene = new THREE.Scene();
@@ -44,10 +39,6 @@ function setupGame() {
   );
   
   const world = buildWorld(scene);
-  
-
-
-  window.addEventListener('resize', updateCanvasSize);
 
   const me = {
     pos: new THREE.Vector3(0, 80, 0),
@@ -58,7 +49,6 @@ function setupGame() {
   const myPlane = buildPlane(planeColor(Math.floor(Math.random() * 8)));
   scene.add(myPlane.group);
 
-  // キー入力管理
   const keys = {};
   
   window.addEventListener('keydown', (e) => {
@@ -72,14 +62,19 @@ function setupGame() {
   
   window.addEventListener('pointerdown', () => sound.ensure());
 
-  // モバイル用アナログスティック管理
+  // ===== モバイル用入力管理 =====
   const mobileInput = {
-    leftStick: { x: 0, y: 0 },    // x: 旋回(-1=左, 1=右), y: 上昇下降(-1=下降, 1=上昇)
-    rightGauge: 0,                // -1=減速, 0=中立, 1=加速
+    leftStick: { x: 0, y: 0 },
+    rightGauge: 0,
   };
 
+  const net = new NetClient(WS_URL);
+  const sound = new EngineSound();
+
+  // モバイル用コントロール初期化
   if (gameMode === 'mobile') {
-    setupMobileAnalogSticks(mobileInput);
+    console.log('Setting up mobile controls...');
+    setupMobileControls(mobileInput);
   }
 
   const remotes = new Map();
@@ -111,9 +106,9 @@ function setupGame() {
     let pitchIn, rollIn, thrIn;
 
     if (gameMode === 'mobile') {
-      pitchIn = mobileInput.leftStick.y;      // 上昇/下降
-      rollIn = mobileInput.leftStick.x;       // 左右旋回
-      thrIn = mobileInput.rightGauge;         // 加速減速
+      pitchIn = mobileInput.leftStick.y;
+      rollIn = mobileInput.leftStick.x;
+      thrIn = mobileInput.rightGauge;
     } else {
       pitchIn = (keys.ArrowUp ? 1 : 0) - (keys.ArrowDown ? 1 : 0);
       rollIn = (keys.KeyA ? 1 : 0) - (keys.KeyD ? 1 : 0);
@@ -190,8 +185,6 @@ function setupGame() {
     }
   }
 
-  const net = new NetClient(WS_URL);
-  const sound = new EngineSound();
   const toast = document.getElementById('toast');
 
   function showToast(msg) {
@@ -356,8 +349,8 @@ function setupGame() {
   requestAnimationFrame(loop);
 }
 
-// モバイル用アナログスティック
-function setupMobileAnalogSticks(mobileInput) {
+// ===== モバイル用コントロール初期化 =====
+function setupMobileControls(mobileInput) {
   const leftStickContainer = document.getElementById('mobile-left-stick');
   const rightGaugeContainer = document.getElementById('mobile-right-gauge');
 
@@ -366,13 +359,13 @@ function setupMobileAnalogSticks(mobileInput) {
     return;
   }
 
-  // 左スティック
+  console.log('Creating left stick...');
   setupAnalogStick(leftStickContainer, (x, y) => {
     mobileInput.leftStick.x = x;
     mobileInput.leftStick.y = y;
   });
 
-  // 右ゲージ
+  console.log('Creating right gauge...');
   setupGauge(rightGaugeContainer, (value) => {
     mobileInput.rightGauge = value;
   });
@@ -380,13 +373,17 @@ function setupMobileAnalogSticks(mobileInput) {
 
 function setupAnalogStick(container, onMove) {
   const canvas = document.createElement('canvas');
-  canvas.width = 120;
-  canvas.height = 120;
+  canvas.width = 140;
+  canvas.height = 140;
+  canvas.style.touchAction = 'none';
+  canvas.style.userSelect = 'none';
   container.appendChild(canvas);
 
   const ctx = canvas.getContext('2d');
-  const radius = 50;
-  const innerRadius = 15;
+  const centerX = 70;
+  const centerY = 70;
+  const radius = 60;
+  const stickRadius = 18;
 
   let touchActive = false;
   let stickX = 0,
@@ -396,18 +393,30 @@ function setupAnalogStick(container, onMove) {
     ctx.fillStyle = 'rgba(16,29,44,0.6)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = 'rgba(47,143,224,0.3)';
+    ctx.fillStyle = 'rgba(47,143,224,0.2)';
     ctx.beginPath();
-    ctx.arc(60, 60, radius, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = 'rgba(47,143,224,0.8)';
+    ctx.strokeStyle = 'rgba(47,143,224,0.4)';
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(60 + stickX * radius, 60 + stickY * radius, innerRadius, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(47,143,224,0.9)';
+    ctx.beginPath();
+    ctx.arc(centerX + stickX * radius, centerY + stickY * radius, stickRadius, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('上昇/左右', centerX, 12);
   }
 
   canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
     touchActive = true;
     updateStick(e.touches[0]);
   });
@@ -417,7 +426,8 @@ function setupAnalogStick(container, onMove) {
     if (touchActive) updateStick(e.touches[0]);
   });
 
-  canvas.addEventListener('touchend', () => {
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
     touchActive = false;
     stickX = 0;
     stickY = 0;
@@ -426,13 +436,13 @@ function setupAnalogStick(container, onMove) {
 
   function updateStick(touch) {
     const rect = canvas.getBoundingClientRect();
-    const x = touch.clientX - rect.left - 60;
-    const y = touch.clientY - rect.top - 60;
+    const x = touch.clientX - rect.left - centerX;
+    const y = touch.clientY - rect.top - centerY;
     const dist = Math.sqrt(x * x + y * y);
 
     if (dist > radius) {
-      stickX = (x / dist) * 1;
-      stickY = (y / dist) * 1;
+      stickX = (x / dist);
+      stickY = (y / dist);
     } else {
       stickX = x / radius;
       stickY = y / radius;
@@ -447,12 +457,16 @@ function setupAnalogStick(container, onMove) {
 
 function setupGauge(container, onChange) {
   const canvas = document.createElement('canvas');
-  canvas.width = 80;
-  canvas.height = 160;
+  canvas.width = 100;
+  canvas.height = 180;
+  canvas.style.touchAction = 'none';
+  canvas.style.userSelect = 'none';
   container.appendChild(canvas);
 
   const ctx = canvas.getContext('2d');
-  let gaugeValue = 0; // -1 = 減速, 0 = 中立, 1 = 加速
+  const centerX = 50;
+  const centerY = 90;
+  let gaugeValue = 0;
 
   function draw() {
     ctx.fillStyle = 'rgba(16,29,44,0.6)';
@@ -460,29 +474,30 @@ function setupGauge(container, onChange) {
 
     ctx.strokeStyle = 'rgba(47,143,224,0.5)';
     ctx.lineWidth = 2;
-    ctx.strokeRect(10, 20, 60, 120);
+    ctx.strokeRect(15, 30, 70, 120);
 
     if (gaugeValue > 0) {
-      ctx.fillStyle = 'rgba(65,176,107,0.8)';
-      const fillHeight = (gaugeValue * 60);
-      ctx.fillRect(10, 80 - fillHeight, 60, fillHeight);
+      ctx.fillStyle = 'rgba(65,176,107,0.9)';
+      const fillHeight = gaugeValue * 60;
+      ctx.fillRect(15, 90 - fillHeight, 70, fillHeight);
     } else if (gaugeValue < 0) {
-      ctx.fillStyle = 'rgba(201,59,43,0.8)';
-      const fillHeight = (-gaugeValue * 60);
-      ctx.fillRect(10, 80, 60, fillHeight);
+      ctx.fillStyle = 'rgba(201,59,43,0.9)';
+      const fillHeight = -gaugeValue * 60;
+      ctx.fillRect(15, 90, 70, fillHeight);
     }
 
     ctx.fillStyle = 'rgba(200,200,200,0.6)';
-    ctx.fillRect(10, 78, 60, 4);
+    ctx.fillRect(15, 88, 70, 4);
 
     ctx.fillStyle = '#dce9f5';
-    ctx.font = 'bold 11px sans-serif';
+    ctx.font = 'bold 10px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('加速', 40, 18);
-    ctx.fillText('減速', 40, 155);
+    ctx.fillText('加速', centerX, 20);
+    ctx.fillText('減速', centerX, 160);
   }
 
   canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
     updateGauge(e.touches[0]);
   });
 
@@ -491,7 +506,8 @@ function setupGauge(container, onChange) {
     updateGauge(e.touches[0]);
   });
 
-  canvas.addEventListener('touchend', () => {
+  canvas.addEventListener('touchend', (e) => {
+    e.preventDefault();
     gaugeValue = 0;
     draw();
     onChange(0);
@@ -501,10 +517,10 @@ function setupGauge(container, onChange) {
     const rect = canvas.getBoundingClientRect();
     const y = touch.clientY - rect.top;
 
-    if (y < 80) {
-      gaugeValue = Math.max(-1, Math.min(1, (80 - y) / 60));
+    if (y < 90) {
+      gaugeValue = Math.max(-1, Math.min(1, (90 - y) / 60));
     } else {
-      gaugeValue = Math.max(-1, Math.min(1, (y - 80) / 60 * -1));
+      gaugeValue = Math.max(-1, Math.min(1, (y - 90) / 60 * -1));
     }
 
     onChange(gaugeValue);
