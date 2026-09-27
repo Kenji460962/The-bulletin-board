@@ -102,6 +102,16 @@
   .game-row .win-rate { font-size: 12.5px; font-weight: 700; color: var(--text); }
   .no-games { font-size: 13px; color: var(--text-muted); }
   .back-link { display: inline-block; margin-top: 20px; font-size: 13px; color: var(--primary); text-decoration: none; }
+
+  /* ---- ポイント(本人のみ表示) ---- */
+  .points-box {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    background: var(--primary-soft); border: 1px solid var(--card-border); border-radius: var(--radius);
+    padding: 14px 16px; margin-bottom: 22px; text-decoration: none;
+  }
+  .points-box-balance { font-size: 24px; font-weight: 800; color: var(--primary); line-height: 1.2; }
+  .points-box-balance .unit { font-size: 13px; font-weight: 700; color: var(--text-muted); margin-left: 3px; }
+  .points-box-link { font-size: 12.5px; font-weight: 700; color: var(--primary); white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -155,6 +165,14 @@
         </button>
         <button type="button" class="btn danger" id="report-btn">通報</button>
       </div>
+      {% endif %}
+
+      {% if is_own_profile %}
+      <div class="section-title">ポイント</div>
+      <a class="points-box" href="{{ url_for('points_page') }}">
+        <div class="points-box-balance">{{ "{:,}".format(points_balance or 0) }}<span class="unit">pt</span></div>
+        <span class="points-box-link">ポイント履歴を見る ›</span>
+      </a>
       {% endif %}
 
       <div class="section-title">掲示板実績</div>
