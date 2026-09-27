@@ -1,4 +1,73 @@
+import * as THREE from 'three';
+import { buildWorld } from './world.js';
+import { buildPlane, makeNameTag, planeColor } from './plane.js';
+import { NetClient } from './net.js';
+import { EngineSound } from './sound.js';
+
+let gameMode = null;
+
+// ===== デバッグ用画面出力 =====
+const debugLog = [];
+
+function addDebugLog(msg) {
+  debugLog.push(msg);
+  console.log(msg);
+  
+  // 画面右上にデバッグ表示
+  let debugPanel = document.getElementById('debug-panel');
+  if (!debugPanel) {
+    debugPanel = document.createElement('div');
+    debugPanel.id = 'debug-panel';
+    debugPanel.style.cssText = `
+      position: fixed;
+      top: 50px;
+      right: 10px;
+      background: rgba(0,0,0,0.8);
+      color: #0f0;
+      font: 11px monospace;
+      padding: 10px;
+      max-width: 300px;
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 999;
+      border: 1px solid #0f0;
+    `;
+    document.body.appendChild(debugPanel);
+  }
+  
+  debugPanel.innerHTML = debugLog.slice(-20).join('<br>');
+}
+
+export function initGame(mode) {
+  addDebugLog('=== initGame called ===');
+  addDebugLog(`mode: ${mode}`);
+  gameMode = mode;
+  addDebugLog(`gameMode set to: ${gameMode}`);
+  
+  // DOM 要素の確認
+  const mobileControls = document.getElementById('mobile-controls');
+  const leftStick = document.getElementById('mobile-left-stick');
+  const rightGauge = document.getElementById('mobile-right-gauge');
+  
+  addDebugLog(`mobile-controls: ${mobileControls ? 'FOUND' : 'NOT FOUND'}`);
+  addDebugLog(`mobile-left-stick: ${leftStick ? 'FOUND' : 'NOT FOUND'}`);
+  addDebugLog(`mobile-right-gauge: ${rightGauge ? 'FOUND' : 'NOT FOUND'}`);
+  
+  if (gameMode === 'mobile') {
+    addDebugLog('Mobile mode setup...');
+    
+    if (mobileControls) {
+      addDebugLog(`mobile-controls classList: ${mobileControls.classList.toString()}`);
+      addDebugLog(`mobile-controls display: ${getComputedStyle(mobileControls).display}`);
+    }
+  }
+  
+  setupGame();
+}
+
 function setupGame() {
+  addDebugLog('setupGame started...');
+  
   const WS_URL = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/game';
   const SEND_INTERVAL = 0.1;
   const INTERP_DELAY = 0.15;
@@ -16,6 +85,7 @@ function setupGame() {
   renderer.setClearColor(0x87b7e8);
   
   gameContainer.appendChild(renderer.domElement);
+  addDebugLog('renderer created and added to container');
   
   function updateCanvasSize() {
     const w = window.innerWidth;
@@ -38,7 +108,10 @@ function setupGame() {
     9000
   );
   
+  addDebugLog('scene and camera created');
+  
   const world = buildWorld(scene);
+  addDebugLog('world built');
 
   const me = {
     pos: new THREE.Vector3(0, 80, 0),
@@ -48,6 +121,7 @@ function setupGame() {
   
   const myPlane = buildPlane(planeColor(Math.floor(Math.random() * 8)));
   scene.add(myPlane.group);
+  addDebugLog('my plane added to scene');
 
   const keys = {};
   
@@ -62,7 +136,6 @@ function setupGame() {
   
   window.addEventListener('pointerdown', () => sound.ensure());
 
-  // ===== モバイル用入力管理 =====
   const mobileInput = {
     leftStick: { x: 0, y: 0 },
     rightGauge: 0,
@@ -71,12 +144,14 @@ function setupGame() {
   const net = new NetClient(WS_URL);
   const sound = new EngineSound();
 
-  // モバイル用コントロール初期化
+  // ===== モバイル用コントロール初期化 =====
   if (gameMode === 'mobile') {
-    console.log('Setting up mobile controls...');
+    addDebugLog('Initializing mobile controls...');
     setupMobileControls(mobileInput);
+    addDebugLog('Mobile controls initialized');
   }
 
+  // ===== 以下、既存コードを続ける =====
   const remotes = new Map();
 
   function addRemote(id, name) {
@@ -349,23 +424,24 @@ function setupGame() {
   requestAnimationFrame(loop);
 }
 
-// ===== モバイル用コントロール初期化 =====
+// ===== モバイル用コントロール =====
 function setupMobileControls(mobileInput) {
   const leftStickContainer = document.getElementById('mobile-left-stick');
   const rightGaugeContainer = document.getElementById('mobile-right-gauge');
 
+  addDebugLog(`setupMobileControls: leftStickContainer=${leftStickContainer ? 'OK' : 'NULL'}`);
+  addDebugLog(`setupMobileControls: rightGaugeContainer=${rightGaugeContainer ? 'OK' : 'NULL'}`);
+
   if (!leftStickContainer || !rightGaugeContainer) {
-    console.error('Mobile control containers not found');
+    addDebugLog('ERROR: Mobile control containers not found!');
     return;
   }
 
-  console.log('Creating left stick...');
   setupAnalogStick(leftStickContainer, (x, y) => {
     mobileInput.leftStick.x = x;
     mobileInput.leftStick.y = y;
   });
 
-  console.log('Creating right gauge...');
   setupGauge(rightGaugeContainer, (value) => {
     mobileInput.rightGauge = value;
   });
