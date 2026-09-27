@@ -31,6 +31,7 @@ import uvicorn
 import redis.asyncio as aioredis
 import aiosqlite
 
+import points_service
 
 load_dotenv()
 
@@ -201,6 +202,7 @@ async def _startup_redis():
     # イベントループ稼働中に開く必要があるため、この起動フック内で生成する。
     await _get_db_conn()
     await _ensure_adgem_schema()
+    await points_service.ensure_schema()
 
     try:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
@@ -307,8 +309,6 @@ templates.env.filters['linkify'] = linkify
 
 if os.path.isdir("static"):
     app.mount("/static", StaticFiles(directory="static"), name="static")
-
-
 
 FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345')
 
@@ -584,6 +584,14 @@ async def _get_db_conn() -> aiosqlite.Connection:
         await _db_conn.execute("PRAGMA foreign_keys=ON")
         await _db_conn.commit()
     return _db_conn
+
+
+# ポイント処理(points_service)は広告機能から独立した汎用モジュール。
+# 起動時に一度だけ、このアプリのDB接続取得関数と排他ロックを登録しておく。
+# _get_db_conn の定義より後に置くこと(この行はモジュール読み込み時に
+# 即座に実行される通常の関数呼び出しなので、_get_db_conn という名前が
+# 既に定義済みである必要がある)。
+points_service.init(_get_db_conn, _db_lock)
 
 
 async def execute_query(sql, params=None):
@@ -1158,6 +1166,43 @@ async def offerwall_page(request: Request):
     })
 
 
+@app.get('/points')
+async def points_page(request: Request):
+    """ログイン会員向けの、ポイント残高・ポイント履歴確認ページ。
+
+    残高・履歴の取得はいずれも points_service 経由で行う(広告機能から
+    独立した汎用モジュール)。将来ポイントの付与経路が増えても、
+    このページ側の実装には一切手を入れる必要がない。
+    """
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login')
+    member_id = request.session.get('member_id')
+
+    try:
+        page = int(request.query_params.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+    if page < 1:
+        page = 1
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    balance, history = await asyncio.gather(
+        points_service.get_balance(member_id),
+        points_service.get_history(member_id, limit=per_page, offset=offset),
+    )
+    for h in history:
+        h['created_at'] = _to_jst_string(h.get('created_at'))
+    has_next = len(history) == per_page
+
+    return templates.TemplateResponse(request, 'points.html', {
+        'points_balance': balance,
+        'history': history,
+        'current_page': page,
+        'has_next': has_next,
+    })
+
+
 @app.get('/api/postbacks/adgem')
 async def adgem_postback(request: Request):
     """AdGemからのServer Postback受信エンドポイント。
@@ -1250,7 +1295,16 @@ async def adgem_postback(request: Request):
         return PlainTextResponse('OK (duplicate)', status_code=200)
 
     if points_awarded > 0:
-        await execute_query("UPDATE users SET points = points + ? WHERE id = ?", [points_awarded, user_id])
+        # ポイントの加算処理そのものは広告機能から独立した points_service に委譲する。
+        # idempotency_key を渡すことで、adgem_conversions側のrequest_id一意制約
+        # (既存の重複postback対策)に加えて、point_history側でも二重付与を防ぐ。
+        await points_service.add_points(
+            user_id, points_awarded,
+            reason='adgem_offer',
+            description=f"広告オファー達成（offer_id: {offer_id}）" if offer_id else "広告オファー達成",
+            source='ad',
+            idempotency_key=f"adgem:{request_id}",
+        )
 
     return PlainTextResponse('OK', status_code=200)
 
