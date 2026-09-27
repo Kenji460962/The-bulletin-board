@@ -1916,14 +1916,17 @@ async def profile_view(request: Request, public_id: str):
 
     member_key = f"member:{profile_user['id']}"
 
-    # ゲーム3種の成績・フォロー数・ログイン中会員情報・未読DM件数も互いに独立なので並列化
-    othello_res, chess_res, shogi_res, follow_counts, current_member, unread_dm_count = await asyncio.gather(
+    # ゲーム3種の成績・フォロー数・ログイン中会員情報・未読DM件数・ポイント残高も
+    # 互いに独立なので並列化する。ポイント残高は points_service 経由で取得し、
+    # users.points を直接SELECTしない(広告機能・ゲーム機能と同じ取得経路に揃える)。
+    othello_res, chess_res, shogi_res, follow_counts, current_member, unread_dm_count, points_balance = await asyncio.gather(
         execute_query("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'othello']),
         execute_query("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'chess']),
         execute_query("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'shogi']),
         get_follow_counts(profile_user['id']),
         get_current_member(request),
         get_unread_dm_count(request),
+        points_service.get_balance(profile_user['id']),
     )
     games = {}
     for g, gr in (('othello', othello_res), ('chess', chess_res), ('shogi', shogi_res)):
@@ -1964,6 +1967,8 @@ async def profile_view(request: Request, public_id: str):
         'follow_state': follow_state,
         'report_reasons': REPORT_REASONS,
         'unread_dm_count': unread_dm_count,
+        # ポイント残高は本人の個人ページにのみ表示する(他人の残高は非公開)。
+        'points_balance': points_balance if is_own_profile else None,
     })
 
 
