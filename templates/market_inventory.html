@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>インベントリ | ポイント取引所 | Talk-ch</title>
+<style>
+body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;background:#f4f5f7;margin:0;color:#222}
+.wrap{max-width:860px;margin:0 auto;padding:16px}
+h1{font-size:20px}
+.card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:12px;display:flex;gap:14px;align-items:flex-start}
+.thumb{width:90px;height:70px;object-fit:cover;border-radius:8px;background:#e5e7eb;flex-shrink:0}
+.badge{font-size:11px;border-radius:6px;padding:2px 6px}
+.badge-official{background:#fef3c7;color:#92400e;font-weight:bold}
+.badge-type{background:#e0e7ff;color:#3730a3}
+.meta{font-size:12px;color:#888}
+.title{font-weight:bold;font-size:15px}
+a{color:#2563eb;text-decoration:none}
+.secret{background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;padding:8px;margin-top:8px;word-break:break-all;font-size:13px}
+.flash{border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+.flash.ok{background:#d1fae5;color:#065f46}
+.flash.err{background:#fee2e2;color:#991b1b}
+.empty{background:#fff;border-radius:12px;padding:40px;text-align:center;color:#888}
+.btn{display:inline-block;border-radius:10px;padding:8px 16px;font-size:13px;text-decoration:none;background:#e5e7eb;color:#333}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎒 インベントリ（購入済み商品）</h1>
+  {% if ok %}<div class="flash ok">{{ ok }}</div>{% endif %}
+  {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+  <p><a class="btn" href="/market">← 取引所へ</a></p>
+  {% if purchases %}
+    {% for p in purchases %}
+    <div class="card">
+      {% if p.image_url %}<img class="thumb" src="{{ p.image_url }}" alt="">{% endif %}
+      <div style="flex:1">
+        <div>
+          {% if p.is_official %}<span class="badge badge-official">Talk-ch公式</span>{% endif %}
+          <span class="badge badge-type">{{ type_labels.get(p.item_type, p.item_type) }}</span>
+          {% if p.status != 'active' %}<span class="badge" style="background:#fee2e2;color:#991b1b">出品終了</span>{% endif %}
+        </div>
+        <div class="title"><a href="/market/item/{{ p.item_id }}">{{ p.title }}</a></div>
+        <div class="meta">{{ p.price_paid }} pt で購入 ・ {{ p.purchased_at }} ・ 出品者: {{ p.seller_name }}</div>
+        {% if p.item_type == 'proxy' and p.secret_url %}
+        <div class="secret">🔓 <a href="{{ p.secret_url }}" target="_blank" rel="noopener noreferrer">{{ p.secret_url }}</a></div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+  <div class="empty">まだ購入した商品はありません。<br><a href="/market">取引所で商品を探す →</a></div>
+  {% endif %}
+</div>
+</body>
+</html>

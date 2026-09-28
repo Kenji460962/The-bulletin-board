@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ item.title }} | ポイント取引所 | Talk-ch</title>
+<style>
+body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;background:#f4f5f7;margin:0;color:#222}
+.wrap{max-width:860px;margin:0 auto;padding:16px}
+.card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}
+.main-img{width:100%;max-height:420px;object-fit:contain;background:#f3f4f6;border-radius:10px}
+h1{font-size:20px;margin:8px 0}
+.badge{font-size:11px;border-radius:6px;padding:2px 6px}
+.badge-official{background:#fef3c7;color:#92400e;font-weight:bold}
+.badge-type{background:#e0e7ff;color:#3730a3}
+.price{font-size:24px;font-weight:bold;color:#059669}
+.desc{white-space:pre-wrap;line-height:1.7;font-size:14px;color:#333;margin:12px 0}
+.btn{display:inline-block;border:none;border-radius:10px;padding:10px 22px;font-size:15px;cursor:pointer;text-decoration:none}
+.btn-buy{background:#059669;color:#fff;font-weight:bold}
+.btn-sub{background:#e5e7eb;color:#333;font-size:13px;padding:8px 14px}
+.btn-danger{background:#dc2626;color:#fff;font-size:13px;padding:8px 14px}
+.flash{border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+.flash.ok{background:#d1fae5;color:#065f46}
+.flash.err{background:#fee2e2;color:#991b1b}
+.secret-box{background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;padding:14px;margin:12px 0;word-break:break-all}
+.secret-box a{color:#047857;font-weight:bold}
+.review{border-top:1px solid #eee;padding:10px 0;font-size:14px}
+.stars{color:#f59e0b;letter-spacing:2px}
+.meta{font-size:12px;color:#888}
+textarea{width:100%;box-sizing:border-box;border:1px solid #ddd;border-radius:8px;padding:8px;min-height:70px;font-size:14px}
+select{border:1px solid #ddd;border-radius:8px;padding:6px;font-size:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  {% if ok %}<div class="flash ok">{{ ok }}</div>{% endif %}
+  {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+  <div class="card">
+    <div>
+      {% if item.is_official %}<span class="badge badge-official">Talk-ch公式</span>{% endif %}
+      <span class="badge badge-type">{{ type_labels.get(item.item_type, item.item_type) }}</span>
+    </div>
+    <h1>{{ item.title }}</h1>
+    {% if item.image_url %}<img class="main-img" src="{{ item.image_url }}" alt="{{ item.title }}">{% endif %}
+    <div class="desc">{{ item.description }}</div>
+    <div class="meta">
+      出品者:
+      {% if item.is_official %}Talk-ch公式
+      {% elif item.seller_public_id %}<a href="/market/shop/{{ item.seller_public_id }}">{{ item.seller_name }}</a>
+      {% else %}{{ item.seller_name }}{% endif %}
+      ／ 出品日: {{ item.created_at }}
+      {% if summary.count %}／ 評価: <span class="stars">★</span>{{ summary.avg }}（{{ summary.count }}件）{% endif %}
+    </div>
+
+    {% if item.item_type == 'proxy' %}
+      {% if item.secret_url %}
+        <div class="secret-box">
+          🔓 購入済みのためURLを表示しています:<br>
+          <a href="{{ item.secret_url }}" target="_blank" rel="noopener noreferrer">{{ item.secret_url }}</a>
+        </div>
+      {% else %}
+        <div class="meta" style="margin:10px 0">🔒 WebプロキシのURLは購入後に公開されます。</div>
+      {% endif %}
+    {% endif %}
+
+    <div style="margin:16px 0"><span class="price">{{ item.price }} pt</span>
+      {% if balance is not none %}<span class="meta">（保有: {{ balance }} pt）</span>{% endif %}
+    </div>
+
+    <div class="row">
+      {% if item.viewer_has_purchased %}
+        <span class="btn btn-sub">✔ 購入済み（<a href="/market/inventory">インベントリで見る</a>）</span>
+      {% elif not current_member %}
+        <a class="btn btn-buy" href="/login">ログインして購入</a>
+      {% elif is_own %}
+        <span class="meta">これはあなたの出品です。</span>
+      {% else %}
+        <form method="post" action="/market/item/{{ item.id }}/buy" onsubmit="return confirm('{{ item.price }}pt で購入しますか？')">
+          <button class="btn btn-buy" type="submit">購入する（{{ item.price }} pt）</button>
+        </form>
+      {% endif %}
+      {% if can_manage %}
+        <a class="btn btn-sub" href="/market/item/{{ item.id }}/edit">編集</a>
+        <form method="post" action="/market/item/{{ item.id }}/delete" style="display:inline" onsubmit="return confirm('本当に削除しますか？購入者は引き続きインベントリから参照できます。')">
+          <button class="btn btn-danger" type="submit">削除</button>
+        </form>
+      {% endif %}
+      <a class="btn btn-sub" href="/market">← 取引所へ</a>
+    </div>
+  </div>
+
+  {% if can_review %}
+  <div class="card">
+    <h1 style="font-size:16px">この商品を評価する</h1>
+    <form method="post" action="/market/item/{{ item.id }}/review">
+      <select name="rating" required>
+        <option value="">評価を選択</option>
+        <option value="5">★★★★★（5）</option>
+        <option value="4">★★★★☆（4）</option>
+        <option value="3">★★★☆☆（3）</option>
+        <option value="2">★★☆☆☆（2）</option>
+        <option value="1">★☆☆☆☆（1）</option>
+      </select>
+      <br><br>
+      <textarea name="comment" maxlength="500" placeholder="コメント（任意・500文字まで）"></textarea>
+      <br>
+      <button class="btn btn-sub" type="submit">評価を投稿</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if not item.is_official %}
+  <div class="card">
+    <h1 style="font-size:16px">評価（{{ summary.count }}件{% if summary.avg %} ・ 平均 ★{{ summary.avg }}{% endif %}）</h1>
+    {% if reviews %}
+      {% for r in reviews %}
+      <div class="review">
+        <span class="stars">{% for i in range(r.rating) %}★{% endfor %}{% for i in range(5 - r.rating) %}☆{% endfor %}</span>
+        <span class="meta">{{ r.username or '退会ユーザー' }} ・ {{ r.created_at }}</span>
+        {% if r.comment %}<div>{{ r.comment }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="meta">まだ評価はありません。</div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+</body>
+</html>

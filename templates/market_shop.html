@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ seller.username }} のショップ | ポイント取引所 | Talk-ch</title>
+<style>
+body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;background:#f4f5f7;margin:0;color:#222}
+.wrap{max-width:860px;margin:0 auto;padding:16px}
+.card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin-bottom:16px}
+.shop-head{display:flex;align-items:center;gap:14px}
+.avatar{width:56px;height:56px;border-radius:50%;object-fit:cover;background:#e5e7eb}
+h1{font-size:18px;margin:0}
+.meta{font-size:12px;color:#888}
+.stars{color:#f59e0b}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.item{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.item img{width:100%;height:120px;object-fit:cover;background:#e5e7eb}
+.item-body{padding:8px 10px;font-size:13px}
+.item a{color:inherit;text-decoration:none}
+.price{font-weight:bold;color:#059669}
+.badge{font-size:10px;border-radius:5px;padding:1px 5px;background:#e0e7ff;color:#3730a3}
+.review{border-top:1px solid #eee;padding:10px 0;font-size:14px}
+.btn{display:inline-block;border-radius:10px;padding:8px 16px;font-size:13px;text-decoration:none;background:#e5e7eb;color:#333}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="shop-head">
+      {% if seller.icon_path %}<img class="avatar" src="{{ seller.icon_path }}" alt="">{% endif %}
+      <div>
+        <h1>🏪 {{ seller.username }} のショップ</h1>
+        <div class="meta">
+          {% if summary.count %}評価: <span class="stars">★</span>{{ summary.avg }}（{{ summary.count }}件）{% else %}まだ評価はありません{% endif %}
+          ・ <a href="/profile/{{ seller.public_id }}">プロフィールを見る</a>
+        </div>
+        {% if seller.bio %}<div class="meta" style="margin-top:4px">{{ seller.bio }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  <h1 style="font-size:16px">出品中の商品（{{ items|length }}件）</h1>
+  {% if items %}
+  <div class="grid">
+    {% for it in items %}
+    <div class="item">
+      <a href="/market/item/{{ it.id }}">
+        {% if it.image_url %}<img src="{{ it.image_url }}" alt="" loading="lazy">{% endif %}
+        <div class="item-body">
+          <span class="badge">{{ type_labels.get(it.item_type, it.item_type) }}</span>
+          <div style="font-weight:bold;margin:4px 0">{{ it.title }}</div>
+          <div class="price">{{ it.price }} pt</div>
+        </div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card meta">現在出品中の商品はありません。</div>
+  {% endif %}
+  <div class="card">
+    <h1 style="font-size:16px">受けた評価</h1>
+    {% if reviews %}
+      {% for r in reviews %}
+      <div class="review">
+        <span class="stars">{% for i in range(r.rating) %}★{% endfor %}{% for i in range(5 - r.rating) %}☆{% endfor %}</span>
+        <span class="meta">{{ r.username or '退会ユーザー' }} ・ 「<a href="/market/item/{{ r.item_id }}">{{ r.item_title }}</a>」 ・ {{ r.created_at }}</span>
+        {% if r.comment %}<div>{{ r.comment }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="meta">まだ評価はありません。</div>
+    {% endif %}
+  </div>
+  <p><a class="btn" href="/market">← 取引所へ</a></p>
+</div>
+</body>
+</html>
