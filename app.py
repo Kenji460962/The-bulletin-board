@@ -5172,6 +5172,454 @@ async def api_admin_report_status(request: Request, report_id: int):
 # trusted_hosts='127.0.0.1'としているのは、gunicornが127.0.0.1:8000にbindしており、
 # 手前のCloudflare/プロキシからの接続はローカルから来るため。
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+# =========================
+# ポイント取引所 (market_service)
+# =========================
+# 公式商品(フォント・壁紙: Talk-ch公式名義、adminのみ管理)と、
+# 一般ユーザー出品の商品(壁紙・Webプロキシ等)をポイントで売買する機能。
+# スキーマと購入トランザクションは market_service 側に集約し、
+# ここでは認証・入力検証・画面描画だけを行う。
+# ポイント増減は users.points / point_history(既存の台帳)に記録されるため、
+# /points の履歴ページにも自動的に反映される。
+import market_service
+market_service.init(_get_db_conn, _db_lock)
+
+
+@app.on_event("startup")
+async def _market_startup():
+    await market_service.ensure_schema()
+
+
+MARKET_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MARKET_ALLOWED_IMG_EXT = {'.jpg', '.jpeg', '.png', '.webp'}
+MARKET_TITLE_MAX = 60
+MARKET_DESC_MAX = 2000
+MARKET_PRICE_MAX = 1000000
+MARKET_USER_TYPES = ('wallpaper', 'proxy', 'other')    # 一般ユーザーが出品できる種別
+MARKET_OFFICIAL_TYPES = ('font', 'wallpaper')          # 公式商品の種別
+MARKET_IMG_ERR = {
+    'required': 'この種別の商品は画像が必須です。',
+    'type': '画像形式は jpg / png / webp のみ対応しています。',
+    'size': '画像は8MB以下にしてください。',
+    'upload': '画像のアップロードに失敗しました。時間をおいて再度お試しください。',
+}
+MARKET_BUY_ERR = {
+    'insufficient_balance': 'ポイントが不足しています。',
+    'already_purchased': 'この商品は購入済みです。',
+    'own_item': '自分が出品した商品は購入できません。',
+    'not_found': '商品が見つかりません(削除された可能性があります)。',
+    'server_error': 'サーバーエラーが発生しました。時間をおいて再度お試しください。',
+}
+
+
+def _is_market_admin(request: Request) -> bool:
+    """公式商品を出品・編集・削除できるのは admin ロールのみ(sub_admin は不可)。
+    なお admin アカウント自身が出品者になることはない(公式商品の seller は NULL)。"""
+    return request.session.get('staff_role') == 'admin'
+
+
+def _market_process_image(contents: bytes) -> bytes:
+    """出品画像を最大1600pxのWebPに変換する(Pillowで実際にデコードし、
+    拡張子偽装された非画像ファイルを弾く)。EXIFの向きも補正する。"""
+    img = Image.open(io.BytesIO(contents))
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail((1600, 1600))
+    if img.mode != 'RGB':
+        img = img.convert('RGB')
+    buf = io.BytesIO()
+    img.save(buf, format='WEBP', quality=85)
+    return buf.getvalue()
+
+
+async def _market_handle_image(form, required=False):
+    """フォームの 'image' を検証して R2 に保存し、(url, err) を返す。"""
+    upload = form.get('image')
+    if upload is None or not getattr(upload, 'filename', ''):
+        return (None, 'required') if required else (None, None)
+    ext = os.path.splitext(secure_filename(upload.filename))[1].lower()
+    if ext not in MARKET_ALLOWED_IMG_EXT:
+        return None, 'type'
+    contents = await upload.read()
+    if len(contents) > MARKET_MAX_IMAGE_BYTES:
+        return None, 'size'
+    try:
+        webp = await run_in_threadpool(_market_process_image, contents)
+    except Image.DecompressionBombError:
+        return None, 'size'
+    except Exception:
+        return None, 'type'
+    key = f"market/{uuid.uuid4().hex}.webp"
+    try:
+        await run_in_threadpool(
+            s3_client.put_object,
+            Bucket=R2_BUCKET_NAME,
+            Key=key,
+            Body=webp,
+            ContentType='image/webp',
+            CacheControl='public, max-age=31536000, immutable',
+        )
+    except Exception as e:
+        print(f"取引所画像アップロードエラー: {e}")
+        return None, 'upload'
+    return f"{R2_PUBLIC_URL.rstrip('/')}/{key}", None
+
+
+def _market_redirect(url, ok=None, err=None):
+    if ok:
+        url += ('&' if '?' in url else '?') + 'ok=' + quote(ok)
+    if err:
+        url += ('&' if '?' in url else '?') + 'err=' + quote(err)
+    return RedirectResponse(url=url, status_code=303)
+
+
+def _market_validate_form(form, allowed_types):
+    """出品/編集フォームの共通検証。(values, err_message)"""
+    item_type = form.get('item_type')
+    if item_type not in allowed_types:
+        return None, '種別が不正です。'
+    title = (form.get('title') or '').strip()
+    if not (1 <= len(title) <= MARKET_TITLE_MAX):
+        return None, f'タイトルは1〜{MARKET_TITLE_MAX}文字で入力してください。'
+    description = (form.get('description') or '').strip()[:MARKET_DESC_MAX]
+    try:
+        price = int(form.get('price', ''))
+    except (TypeError, ValueError):
+        price = 0
+    if not (1 <= price <= MARKET_PRICE_MAX):
+        return None, f'価格は1〜{MARKET_PRICE_MAX}ポイントで設定してください。'
+    secret_url = None
+    if item_type == 'proxy':
+        secret_url = (form.get('secret_url') or '').strip()
+        if not secret_url.startswith(('http://', 'https://')) or len(secret_url) > 500:
+            return None, 'WebプロキシのURLが不正です。http(s):// で始まる500文字以内のURLを入力してください。'
+    return {
+        'item_type': item_type, 'title': title, 'description': description,
+        'price': price, 'secret_url': secret_url,
+    }, None
+
+
+@app.get('/market')
+async def market_page(request: Request):
+    """ポイント取引所のトップ(商品一覧)。"""
+    item_type = request.query_params.get('type') or None
+    if item_type not in market_service.ITEM_TYPES:
+        item_type = None
+    current_member = await get_current_member(request)
+    balance = None
+    if current_member:
+        balance = await points_service.get_balance(current_member['id'])
+    items = await market_service.list_items(item_type=item_type)
+    for it in items:
+        it['created_at'] = _to_jst_string(it.get('created_at'))
+    return templates.TemplateResponse(request, 'market.html', {
+        'items': items,
+        'current_type': item_type,
+        'current_member': current_member,
+        'balance': balance,
+        'is_market_admin': _is_market_admin(request),
+        'type_labels': market_service.ITEM_TYPE_LABELS,
+        'ok': request.query_params.get('ok'),
+        'err': request.query_params.get('err'),
+    })
+
+
+@app.get('/market/sell')
+async def market_sell_form(request: Request):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    return templates.TemplateResponse(request, 'market_form.html', {
+        'mode': 'sell', 'action': '/market/sell', 'item': None,
+        'allowed_types': MARKET_USER_TYPES, 'type_labels': market_service.ITEM_TYPE_LABELS,
+        'page_title': '商品を出品する',
+        'err': request.query_params.get('err'),
+    })
+
+
+@app.post('/market/sell')
+async def market_sell_submit(request: Request):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    member_id = request.session.get('member_id')
+    public_id = await get_member_public_id(request)
+    if public_id and await is_banned_member_public_id(public_id):
+        return text_resp("利用できません。", 403)
+
+    form = await request.form()
+    values, err = _market_validate_form(form, MARKET_USER_TYPES)
+    if err:
+        return _market_redirect('/market/sell', err=err)
+    image_url, img_err = await _market_handle_image(form, required=(values['item_type'] == 'wallpaper'))
+    if img_err:
+        return _market_redirect('/market/sell', err=MARKET_IMG_ERR[img_err])
+
+    item_id = await market_service.create_item(
+        seller_user_id=member_id, is_official=False, image_url=image_url, **values
+    )
+    return _market_redirect(f'/market/item/{item_id}', ok='出品しました。')
+
+
+@app.get('/market/official/new')
+async def market_official_form(request: Request):
+    """公式商品の出品フォーム。admin のみ。"""
+    if not _is_market_admin(request):
+        return text_resp("権限がありません。", 403)
+    return templates.TemplateResponse(request, 'market_form.html', {
+        'mode': 'official', 'action': '/market/official/new', 'item': None,
+        'allowed_types': MARKET_OFFICIAL_TYPES, 'type_labels': market_service.ITEM_TYPE_LABELS,
+        'page_title': '公式商品を出品する(Talk-ch公式)',
+        'err': request.query_params.get('err'),
+    })
+
+
+@app.post('/market/official/new')
+async def market_official_submit(request: Request):
+    if not _is_market_admin(request):
+        return text_resp("権限がありません。", 403)
+    form = await request.form()
+    values, err = _market_validate_form(form, MARKET_OFFICIAL_TYPES)
+    if err:
+        return _market_redirect('/market/official/new', err=err)
+    # 公式商品(フォント/壁紙)は画像必須
+    image_url, img_err = await _market_handle_image(form, required=True)
+    if img_err:
+        return _market_redirect('/market/official/new', err=MARKET_IMG_ERR[img_err])
+    # seller_user_id=None: adminアカウント自身を出品者にはしない
+    item_id = await market_service.create_item(
+        seller_user_id=None, is_official=True, image_url=image_url, **values
+    )
+    return _market_redirect(f'/market/item/{item_id}', ok='公式商品を出品しました。')
+
+
+@app.get('/market/item/{item_id}')
+async def market_item_page(request: Request, item_id: int):
+    """商品詳細。WebプロキシのURLは購入者・出品者・管理者にだけ表示される。"""
+    current_member = await get_current_member(request)
+    viewer_id = current_member['id'] if current_member else None
+    is_admin = _is_market_admin(request)
+    item = await market_service.get_item_for_view(item_id, viewer_id, is_admin)
+    if not item or item['status'] != 'active':
+        return text_resp("商品が見つかりません。", 404)
+    item['created_at'] = _to_jst_string(item.get('created_at'))
+
+    is_own = bool(viewer_id) and item.get('seller_user_id') == viewer_id
+    can_manage = (is_own and not item['is_official']) or (bool(item['is_official']) and is_admin)
+    can_review = (
+        bool(viewer_id) and item['viewer_has_purchased']
+        and not item['is_official'] and not is_own
+    )
+
+    reviews, summary = [], {'avg': None, 'count': 0}
+    if not item['is_official']:
+        reviews, summary = await asyncio.gather(
+            market_service.get_reviews(item_id),
+            market_service.get_item_rating_summary(item_id),
+        )
+        for r in reviews:
+            r['created_at'] = _to_jst_string(r.get('created_at'))
+
+    balance = None
+    if current_member:
+        balance = await points_service.get_balance(current_member['id'])
+
+    return templates.TemplateResponse(request, 'market_item.html', {
+        'item': item,
+        'current_member': current_member,
+        'balance': balance,
+        'is_own': is_own,
+        'can_manage': can_manage,
+        'can_review': can_review,
+        'reviews': reviews,
+        'summary': summary,
+        'type_labels': market_service.ITEM_TYPE_LABELS,
+        'ok': request.query_params.get('ok'),
+        'err': request.query_params.get('err'),
+    })
+
+
+@app.post('/market/item/{item_id}/buy')
+async def market_buy(request: Request, item_id: int):
+    """購入処理。二重購入・二重消費の防止は market_service.purchase_item の
+    トランザクション + UNIQUE制約 + 冪等キーで保証される。"""
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    member_id = request.session.get('member_id')
+    public_id = await get_member_public_id(request)
+    if public_id and await is_banned_member_public_id(public_id):
+        return text_resp("利用できません。", 403)
+    result = await market_service.purchase_item(item_id, member_id)
+    if result['success']:
+        return _market_redirect(
+            f'/market/item/{item_id}',
+            ok=f"購入しました({result['price']}pt)。インベントリに追加されました。",
+        )
+    return _market_redirect(
+        f'/market/item/{item_id}',
+        err=MARKET_BUY_ERR.get(result['error'], '購入に失敗しました。'),
+    )
+
+
+@app.get('/market/item/{item_id}/edit')
+async def market_edit_form(request: Request, item_id: int):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    member_id = request.session.get('member_id')
+    is_admin = _is_market_admin(request)
+    item = await market_service.get_item(item_id)
+    if not item or item['status'] != 'active':
+        return text_resp("商品が見つかりません。", 404)
+    is_own = item.get('seller_user_id') == member_id
+    # 公式商品は admin のみ、一般商品は出品者本人のみ編集可能
+    if not ((is_own and not item['is_official']) or (item['is_official'] and is_admin)):
+        return text_resp("権限がありません。", 403)
+    # 編集画面には現在のURLを表示するため権限確認後に secret 込みで取得
+    full = await market_service.get_item_full(item_id)
+    return templates.TemplateResponse(request, 'market_form.html', {
+        'mode': 'edit', 'action': f'/market/item/{item_id}/edit', 'item': full,
+        'allowed_types': MARKET_OFFICIAL_TYPES if item['is_official'] else MARKET_USER_TYPES,
+        'type_labels': market_service.ITEM_TYPE_LABELS,
+        'page_title': '商品を編集する',
+        'err': request.query_params.get('err'),
+    })
+
+
+@app.post('/market/item/{item_id}/edit')
+async def market_edit_submit(request: Request, item_id: int):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    member_id = request.session.get('member_id')
+    is_admin = _is_market_admin(request)
+    item = await market_service.get_item(item_id)
+    if not item or item['status'] != 'active':
+        return text_resp("商品が見つかりません。", 404)
+    is_own = item.get('seller_user_id') == member_id
+    if not ((is_own and not item['is_official']) or (item['is_official'] and is_admin)):
+        return text_resp("権限がありません。", 403)
+
+    form = await request.form()
+    allowed = MARKET_OFFICIAL_TYPES if item['is_official'] else MARKET_USER_TYPES
+    values, err = _market_validate_form(form, allowed)
+    if err:
+        return _market_redirect(f'/market/item/{item_id}/edit', err=err)
+    # 種別は変更不可とする(購入者の保護のため)。元の種別を維持する。
+    values['item_type'] = item['item_type']
+    image_url, img_err = await _market_handle_image(form, required=False)
+    if img_err:
+        return _market_redirect(f'/market/item/{item_id}/edit', err=MARKET_IMG_ERR[img_err])
+
+    if item['item_type'] == 'proxy':
+        # プロキシ商品はURLも更新可能(空欄なら既存のまま)
+        new_url = (form.get('secret_url') or '').strip()
+        if new_url:
+            if not new_url.startswith(('http://', 'https://')) or len(new_url) > 500:
+                return _market_redirect(f'/market/item/{item_id}/edit', err='URLが不正です。')
+            values['secret_url'] = new_url
+        else:
+            values['secret_url'] = None
+    else:
+        values['secret_url'] = None
+
+    await market_service.update_item(
+        item_id,
+        title=values['title'], description=values['description'], price=values['price'],
+        image_url=image_url, secret_url=values['secret_url'],
+    )
+    return _market_redirect(f'/market/item/{item_id}', ok='商品を更新しました。')
+
+
+@app.post('/market/item/{item_id}/delete')
+async def market_delete(request: Request, item_id: int):
+    """商品の削除(論理削除)。一般商品は出品者本人、公式商品は admin のみ。
+    購入済みユーザーのインベントリからは消えない。"""
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    member_id = request.session.get('member_id')
+    is_admin = _is_market_admin(request)
+    item = await market_service.get_item(item_id)
+    if not item or item['status'] != 'active':
+        return text_resp("商品が見つかりません。", 404)
+    is_own = item.get('seller_user_id') == member_id
+    if not ((is_own and not item['is_official']) or (item['is_official'] and is_admin)):
+        return text_resp("権限がありません。", 403)
+    await market_service.set_status(item_id, 'removed')
+    return _market_redirect('/market', ok='商品を削除しました。')
+
+
+@app.post('/market/item/{item_id}/review')
+async def market_review(request: Request, item_id: int):
+    """購入者による評価(★1〜5 + コメント)。公式商品・未購入・自分の出品は不可。"""
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    member_id = request.session.get('member_id')
+    item = await market_service.get_item(item_id)
+    if not item:
+        return text_resp("商品が見つかりません。", 404)
+    if item['is_official']:
+        return _market_redirect(f'/market/item/{item_id}', err='公式商品は評価できません。')
+    if item.get('seller_user_id') == member_id:
+        return _market_redirect(f'/market/item/{item_id}', err='自分の出品は評価できません。')
+    if not await market_service.has_purchased(item_id, member_id):
+        return _market_redirect(f'/market/item/{item_id}', err='購入した商品のみ評価できます。')
+
+    form = await request.form()
+    try:
+        rating = int(form.get('rating', ''))
+    except (TypeError, ValueError):
+        rating = 0
+    if not (1 <= rating <= 5):
+        return _market_redirect(f'/market/item/{item_id}', err='評価は★1〜5で選択してください。')
+    comment = (form.get('comment') or '').strip()[:500]
+    await market_service.upsert_review(item_id, member_id, rating, comment)
+    return _market_redirect(f'/market/item/{item_id}', ok='評価を投稿しました。')
+
+
+@app.get('/market/inventory')
+async def market_inventory(request: Request):
+    """購入済み商品の一覧(インベントリ)。プロキシのURLもここから参照できる。"""
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    member_id = request.session.get('member_id')
+    purchases = await market_service.get_inventory(member_id)
+    for p in purchases:
+        p['purchased_at'] = _to_jst_string(p.get('purchased_at'))
+    return templates.TemplateResponse(request, 'market_inventory.html', {
+        'purchases': purchases,
+        'type_labels': market_service.ITEM_TYPE_LABELS,
+        'current_member': await get_current_member(request),
+        'ok': request.query_params.get('ok'),
+        'err': request.query_params.get('err'),
+    })
+
+
+@app.get('/market/shop/{public_id}')
+async def market_shop(request: Request, public_id: str):
+    """ユーザーごとのショップページ。出品中の商品・受けた評価を表示する。"""
+    res = await execute_query(
+        "SELECT id, username, public_id, icon_path, bio FROM users WHERE public_id = ?",
+        [public_id],
+    )
+    if not res:
+        return text_resp("そのユーザーは見つかりませんでした。", 404)
+    seller = res[0]
+    items, summary, reviews = await asyncio.gather(
+        market_service.shop_items(seller['id']),
+        market_service.seller_rating_summary(seller['id']),
+        market_service.reviews_for_seller(seller['id'], limit=20),
+    )
+    for it in items:
+        it['created_at'] = _to_jst_string(it.get('created_at'))
+    for r in reviews:
+        r['created_at'] = _to_jst_string(r.get('created_at'))
+    return templates.TemplateResponse(request, 'market_shop.html', {
+        'seller': seller,
+        'items': items,
+        'summary': summary,
+        'reviews': reviews,
+        'type_labels': market_service.ITEM_TYPE_LABELS,
+        'current_member': await get_current_member(request),
+    })
+
+
 app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
 
 
