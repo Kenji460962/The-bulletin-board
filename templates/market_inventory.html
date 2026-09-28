@@ -1,0 +1,64 @@
+{% extends 'market_base.html' %}
+{% block title %}インベントリ | ポイント取引所{% endblock %}
+{% block head_extra %}
+<style>
+  .inv-row { display:flex; gap:12px; border-top:1px solid var(--card-border); padding:14px 0; }
+  .inv-row:first-child { border-top:none; padding-top:0; }
+  .inv-thumb { width:96px; height:60px; flex:none; border-radius:var(--radius); overflow:hidden; background:var(--primary-soft); border:1px solid var(--card-border); display:flex; align-items:center; justify-content:center; font-size:11px; color:var(--primary); font-weight:700; }
+  .inv-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .inv-main { min-width:0; flex:1; }
+  .inv-title { font-size:14.5px; font-weight:700; overflow-wrap:anywhere; }
+  .inv-meta { font-size:12px; color:var(--text-muted); margin:2px 0 8px; }
+  .asset-box { background:var(--primary-soft); border:1px solid var(--card-border); border-radius:var(--radius); padding:8px 10px; font-size:13px; overflow-wrap:anywhere; margin-bottom:8px; }
+  .btn.small { padding:6px 12px; font-size:12.5px; }
+  .equipped-tag { font-size:11px; font-weight:800; color:#fff; background:var(--positive); border-radius:4px; padding:1px 6px; margin-left:6px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1 class="page-title">インベントリ</h1>
+  {% if inventory %}
+    {% for it in inventory %}
+    <div class="inv-row">
+      <div class="inv-thumb">{% if it.preview_url %}<img src="{{ it.preview_url }}" alt="" loading="lazy">{% else %}{{ it.kind_label }}{% endif %}</div>
+      <div class="inv-main">
+        <div class="inv-title">{{ it.title }}{% if it.equipped %}<span class="equipped-tag">適用中</span>{% endif %}{% if it.status != 'active' %}<span class="mk-badge" style="background:var(--negative);">販売終了</span>{% endif %}</div>
+        <div class="inv-meta">{{ it.kind_label }} ・ 出品者: {% if it.is_official %}{{ it.seller_name }}{% elif it.seller_public_id %}<a href="/market/shop/{{ it.seller_public_id }}">{{ it.seller_name }}</a>{% else %}{{ it.seller_name }}{% endif %} ・ {{ "{:,}".format(it.paid_price) }}pt ・ {{ it.purchased_at }}</div>
+
+        {% if it.kind == 'proxy' %}
+        <div class="asset-box"><a href="{{ it.asset_url }}" target="_blank" rel="noopener noreferrer nofollow">{{ it.asset_url }}</a></div>
+        {% elif it.kind in ('wallpaper', 'font') %}
+        <div class="asset-box"><a href="{{ it.asset_url }}" target="_blank" rel="noopener noreferrer" download>ダウンロード / 開く</a></div>
+        {% else %}
+        <div class="asset-box">{{ it.asset_url }}</div>
+        {% endif %}
+
+        <div class="btn-row">
+          {% if it.kind in ('wallpaper', 'font') %}
+            {% if it.equipped %}<button type="button" class="btn small muted" onclick="unequip('{{ it.kind }}')">適用を解除</button>
+            {% else %}<button type="button" class="btn small" onclick="equip({{ it.id }})">サイトに適用</button>{% endif %}
+          {% endif %}
+          <a class="btn small secondary" href="/market/item/{{ it.id }}">商品ページ</a>
+          {% if not it.is_official and it.my_rating is none %}<a class="btn small secondary" href="/market/item/{{ it.id }}#review-card">出品者を評価</a>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="mk-empty">購入した商品はまだありません。<br><a href="/market">取引所を見る</a></p>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  async function call(body) {
+    try {
+      const res = await fetch('/api/market/equip', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (data.success) { location.reload(); } else { alert(data.message || '処理に失敗しました。'); }
+    } catch (e) { alert('通信に失敗しました。'); }
+  }
+  function equip(id) { call({ item_id: id }); }
+  function unequip(kind) { call({ unequip_kind: kind }); }
+</script>
+{% endblock %}
