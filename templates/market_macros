@@ -1,0 +1,22 @@
+{% macro stars(avg) -%}
+  {%- if avg is none -%}<span class="mk-muted">未評価</span>
+  {%- else -%}<span class="mk-stars">★</span> {{ avg }}{%- endif -%}
+{%- endmacro %}
+
+{% macro item_card(item) -%}
+<a class="mk-card" href="/market/item/{{ item.id }}">
+  <div class="mk-thumb">
+    {% if item.preview_url %}<img src="{{ item.preview_url }}" alt="" loading="lazy">{% else %}<span class="mk-thumb-ph">{{ item.kind_label }}</span>{% endif %}
+  </div>
+  <div class="mk-card-body">
+    <span class="mk-kind">{{ item.kind_label }}</span>
+    <div class="mk-card-title">{{ item.title }}</div>
+    <div class="mk-card-seller">
+      {{ item.seller_name }}
+      {% if item.is_official %}<span class="mk-badge">公式</span>
+      {% elif item.seller_review_count %}<span class="mk-muted">★{{ item.seller_avg }} ({{ item.seller_review_count }})</span>{% endif %}
+    </div>
+    <div class="mk-price">{{ "{:,}".format(item.price) }}<span>pt</span></div>
+  </div>
+</a>
+{%- endmacro %}
