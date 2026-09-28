@@ -1,0 +1,159 @@
+{% extends 'market_base.html' %}
+{% from 'market_macros.html' import stars %}
+{% block title %}{{ item.title }} | ポイント取引所{% endblock %}
+{% block head_extra %}
+<style>
+  .item-layout { display:grid; grid-template-columns: minmax(0,1fr) 320px; gap:16px; align-items:start; }
+  @media (max-width:760px) { .item-layout { grid-template-columns: 1fr; } }
+  .item-preview { width:100%; border-radius:var(--radius); border:1px solid var(--card-border); display:block; background:var(--primary-soft); }
+  .item-preview-ph { aspect-ratio:16/10; display:flex; align-items:center; justify-content:center; color:var(--primary); font-weight:700; background:var(--primary-soft); border-radius:var(--radius); border:1px solid var(--card-border); }
+  .item-title { font-size:20px; font-weight:800; margin:8px 0 6px; overflow-wrap:anywhere; }
+  .item-desc { font-size:14px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .buy-price { font-size:30px; font-weight:800; color:var(--primary); }
+  .buy-price span { font-size:14px; color:var(--text-muted); margin-left:3px; }
+  .seller-row { display:flex; align-items:center; gap:8px; font-size:13.5px; margin:10px 0 14px; }
+  .asset-box { background:var(--primary-soft); border:1px solid var(--card-border); border-radius:var(--radius); padding:12px; font-size:13.5px; overflow-wrap:anywhere; }
+  .review-row { border-top:1px solid var(--card-border); padding:10px 0; font-size:13.5px; }
+  .review-row:first-child { border-top:none; }
+  .review-meta { font-size:12px; color:var(--text-muted); }
+  .star-input { display:flex; flex-direction:row-reverse; justify-content:flex-end; gap:2px; }
+  .star-input input { display:none; }
+  .star-input label { font-size:28px; color:var(--card-border); cursor:pointer; line-height:1; margin:0; }
+  .star-input input:checked ~ label, .star-input label:hover, .star-input label:hover ~ label { color:var(--amber); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="item-layout">
+  <div>
+    <div class="card">
+      {% if item.preview_url %}<img class="item-preview" src="{{ item.preview_url }}" alt="">{% else %}<div class="item-preview-ph">{{ item.kind_label }}</div>{% endif %}
+      <span class="mk-kind" style="display:inline-block;margin-top:12px;">{{ item.kind_label }}</span>
+      {% if not is_active %}<span class="mk-badge" style="background:var(--negative);">販売終了</span>{% endif %}
+      <h1 class="item-title">{{ item.title }}</h1>
+      <div class="item-desc">{{ item.description or '説明はありません。' }}</div>
+    </div>
+
+    {% if purchased or scope == 'owner' %}
+    <div class="card">
+      <div class="section-title">{% if scope == 'owner' %}あなたの出品内容（購入者にのみ公開されます）{% else %}購入した商品データ{% endif %}</div>
+      <div class="asset-box">
+        {% if item.kind == 'proxy' %}
+          {% if asset_url %}<a href="{{ asset_url }}" target="_blank" rel="noopener noreferrer nofollow">{{ asset_url }}</a>{% endif %}
+        {% elif item.kind in ('wallpaper', 'font') %}
+          {% if asset_url %}<a href="{{ asset_url }}" target="_blank" rel="noopener noreferrer" download>ダウンロード / 開く</a>{% endif %}
+          {% if purchased %}<div class="mk-muted" style="margin-top:6px;">インベントリから「適用」すると、サイトの{{ '壁紙' if item.kind == 'wallpaper' else 'フォント' }}に反映されます。</div>{% endif %}
+        {% else %}
+          {{ asset_url }}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if not item.is_official %}
+    <div class="card">
+      <div class="section-title">この出品者へのレビュー</div>
+      {% if reviews %}
+        {% for r in reviews %}
+        <div class="review-row">
+          <span class="mk-stars">{{ '★' * r.rating }}{{ '☆' * (5 - r.rating) }}</span>
+          <span class="review-meta">{{ r.buyer_username or '退会済みユーザー' }} ・ {{ r.created_at }}</span>
+          {% if r.comment %}<div style="margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere;">{{ r.comment }}</div>{% endif %}
+        </div>
+        {% endfor %}
+      {% else %}<p class="mk-muted">まだレビューはありません。</p>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if can_review %}
+    <div class="card" id="review-card">
+      <div class="section-title">{{ '評価を編集' if my_review else '出品者を評価する' }}</div>
+      <div class="star-input" id="star-input">
+        {% for n in [5,4,3,2,1] %}
+        <input type="radio" name="rating" id="star{{ n }}" value="{{ n }}" {% if my_review and my_review.rating == n %}checked{% endif %}><label for="star{{ n }}" title="★{{ n }}">★</label>
+        {% endfor %}
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <textarea id="review-comment" maxlength="500" placeholder="コメント（任意・500文字まで）">{{ my_review.comment if my_review else '' }}</textarea>
+      </div>
+      <button type="button" class="btn" id="review-submit">{{ '更新する' if my_review else '投稿する' }}</button>
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="buy-price">{{ "{:,}".format(item.price) }}<span>pt</span></div>
+      <div class="seller-row">
+        <span class="mk-muted">出品者</span>
+        {% if item.is_official %}<strong>{{ item.seller_name }}</strong><span class="mk-badge">公式</span>
+        {% elif item.seller_public_id %}<a href="/market/shop/{{ item.seller_public_id }}"><strong>{{ item.seller_name }}</strong></a>
+          <span class="mk-muted">{% if item.seller_review_count %}★{{ item.seller_avg }} ({{ item.seller_review_count }}件){% else %}未評価{% endif %}</span>
+        {% else %}<strong>{{ item.seller_name }}</strong>{% endif %}
+      </div>
+      <div class="mk-muted" style="margin-bottom:12px;">販売数 {{ item.sales_count }}</div>
+
+      {% if purchased %}
+        <div class="notice info">購入済みです。{% if item.kind in ('wallpaper','font') %}<a href="/market/inventory">インベントリ</a>から適用できます。{% endif %}</div>
+      {% elif scope == 'owner' %}
+        <div class="notice info">あなたの出品です。</div>
+      {% elif not is_active %}
+        <div class="notice error">この商品は販売を終了しました。</div>
+      {% elif not current_member %}
+        <a class="btn" href="/login">ログインして購入</a>
+      {% else %}
+        <button type="button" class="btn" id="buy-btn" style="width:100%;">ポイントで購入する</button>
+        <div class="mk-muted" style="margin-top:8px;">保有ポイント: {{ "{:,}".format(points_balance or 0) }} pt</div>
+      {% endif %}
+
+      {% if scope %}
+      <div class="btn-row" style="margin-top:14px;">
+        <a class="btn secondary" href="/market/item/{{ item.id }}/edit">編集</a>
+        <button type="button" class="btn danger" id="delete-btn">削除</button>
+      </div>
+      {% endif %}
+      {% if item.is_official %}<div class="mk-muted" style="margin-top:12px;">公式商品は評価の対象外です。</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const ITEM_ID = {{ item.id | tojson }};
+  async function postJson(url, body) {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+    let data = {}; try { data = await res.json(); } catch (e) {}
+    return { status: res.status, data };
+  }
+  const buyBtn = document.getElementById('buy-btn');
+  if (buyBtn) buyBtn.addEventListener('click', async () => {
+    if (!confirm({{ ('「' ~ item.title ~ '」を ' ~ ('{:,}'.format(item.price)) ~ 'pt で購入します。よろしいですか？') | tojson }})) return;
+    buyBtn.disabled = true;                       // 連打防止（サーバー側でも二重消費は防止済み）
+    try {
+      const { data } = await postJson(`/api/market/item/${ITEM_ID}/buy`);
+      if (data.success) { location.reload(); return; }
+      alert(data.message || '購入に失敗しました。');
+      if (data.error === 'already_purchased') location.reload();
+    } catch (e) { alert('通信に失敗しました。'); }
+    buyBtn.disabled = false;
+  });
+  const reviewBtn = document.getElementById('review-submit');
+  if (reviewBtn) reviewBtn.addEventListener('click', async () => {
+    const checked = document.querySelector('#star-input input:checked');
+    if (!checked) { alert('★の評価を選択してください。'); return; }
+    reviewBtn.disabled = true;
+    try {
+      const { data } = await postJson(`/api/market/item/${ITEM_ID}/review`, {
+        rating: parseInt(checked.value, 10), comment: document.getElementById('review-comment').value });
+      if (data.success) { location.reload(); return; }
+      alert(data.message || '投稿に失敗しました。');
+    } catch (e) { alert('通信に失敗しました。'); }
+    reviewBtn.disabled = false;
+  });
+  const delBtn = document.getElementById('delete-btn');
+  if (delBtn) delBtn.addEventListener('click', async () => {
+    if (!confirm('この商品を削除（販売終了）しますか？\n購入済みの方のインベントリには残ります。')) return;
+    const { data } = await postJson(`/api/market/item/${ITEM_ID}/delete`);
+    if (data.success) { location.href = '/market'; } else { alert(data.message || '削除に失敗しました。'); }
+  });
+</script>
+{% endblock %}
