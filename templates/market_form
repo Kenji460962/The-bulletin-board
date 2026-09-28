@@ -1,0 +1,72 @@
+{% extends 'market_base.html' %}
+{% block title %}{{ '商品を編集' if mode == 'edit' else ('公式商品を出品' if official else '商品を出品') }} | ポイント取引所{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px;">
+  <h1 class="page-title">{% if mode == 'edit' %}商品を編集{% elif official %}公式商品を出品（出品者: Talk-ch公式）{% else %}商品を出品{% endif %}</h1>
+  {% if error %}<div class="notice error">{{ error }}</div>{% endif %}
+  <form method="post" action="{{ action }}" enctype="multipart/form-data" autocomplete="off">
+    <div class="field">
+      <label for="kind">種類</label>
+      {% if mode == 'edit' %}
+        <input type="text" value="{{ kind_labels[form_values.kind] }}" disabled>
+        <input type="hidden" name="kind" value="{{ form_values.kind }}">
+      {% else %}
+      <select name="kind" id="kind">
+        {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if form_values.kind == k }}>{{ kind_labels[k] }}</option>{% endfor %}
+      </select>
+      {% endif %}
+    </div>
+    <div class="field"><label for="title">タイトル（60文字まで）</label>
+      <input type="text" name="title" id="title" maxlength="60" required value="{{ form_values.title or '' }}"></div>
+    <div class="field"><label for="description">説明（1000文字まで）</label>
+      <textarea name="description" id="description" maxlength="1000">{{ form_values.description or '' }}</textarea></div>
+    <div class="field"><label for="price">価格（pt）</label>
+      <input type="number" name="price" id="price" min="1" max="1000000" step="1" required value="{{ form_values.price or '' }}">
+      {% if mode == 'edit' %}<div class="hint">価格を変更しても、購入済みの方の支払額・権利には影響しません。</div>{% endif %}</div>
+
+    <div class="field kind-block" data-kinds="wallpaper font">
+      <label for="asset_file"><span class="only-wallpaper">壁紙画像（PNG/JPEG/WebP・8MBまで）</span><span class="only-font">フォントファイル（woff2/woff/ttf/otf・3MBまで）</span>{% if mode == 'edit' %}（変更する場合のみ）{% endif %}</label>
+      <input type="file" name="asset_file" id="asset_file">
+      <div class="hint only-wallpaper">一覧には縮小したプレビューだけが表示され、元画像は購入者にのみ公開されます。</div>
+    </div>
+    <div class="field kind-block" data-kinds="font proxy other">
+      <label for="preview_file"><span class="only-font">プレビュー画像（必須・フォントの見本）</span><span class="only-proxy only-other">プレビュー画像（任意）</span>{% if mode == 'edit' %}（変更する場合のみ）{% endif %}</label>
+      <input type="file" name="preview_file" id="preview_file" accept="image/png,image/jpeg,image/webp">
+    </div>
+    <div class="field kind-block" data-kinds="proxy">
+      <label for="proxy_url">WebプロキシのURL</label>
+      <input type="url" name="proxy_url" id="proxy_url" maxlength="500" placeholder="https://" value="{{ form_values.proxy_url or '' }}">
+      <div class="hint">購入前は非公開です。購入者と出品者本人にのみ表示されます。</div>
+    </div>
+    <div class="field kind-block" data-kinds="other">
+      <label for="other_content">購入者に見せる内容（500文字まで）</label>
+      <textarea name="other_content" id="other_content" maxlength="500">{{ form_values.other_content or '' }}</textarea>
+      <div class="hint">購入前は非公開です。</div>
+    </div>
+
+    <div class="btn-row">
+      <button type="submit" class="btn">{{ '更新する' if mode == 'edit' else '出品する' }}</button>
+      <a class="btn muted" href="{{ '/market/item/' ~ item.id if item else '/market' }}">キャンセル</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    const kindEl = document.getElementById('kind') || document.querySelector('input[name=kind]');
+    function apply() {
+      const k = kindEl.value;
+      document.querySelectorAll('.kind-block').forEach(el => {
+        const on = el.dataset.kinds.split(' ').includes(k);
+        el.style.display = on ? '' : 'none';
+        el.querySelectorAll('input, textarea').forEach(i => { i.disabled = !on; });
+      });
+      ['wallpaper','font','proxy','other'].forEach(x => {
+        document.querySelectorAll('.only-' + x).forEach(e => { e.style.display = (x === k) ? '' : 'none'; });
+      });
+    }
+    kindEl.addEventListener('change', apply); apply();
+  })();
+</script>
+{% endblock %}
