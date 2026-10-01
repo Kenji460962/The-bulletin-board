@@ -3683,6 +3683,14 @@ async def index(request: Request):
 
     is_admin_user = can_manage_board(request)
 
+    # 取引所で購入・適用した壁紙/フォントを自分の画面に反映する
+    market_equipped = None
+    if current_member:
+        try:
+            market_equipped = await market_service.get_equipped(current_member['id'])
+        except Exception as ee:
+            print(f"適用アイテム取得エラー(index): {ee}")
+
     response = templates.TemplateResponse(request, 'index.html', {
         'own_bio': own_bio,
         'own_points_balance': own_points_balance,
@@ -3710,6 +3718,7 @@ async def index(request: Request):
             ensure_ascii=False
         ),
         'current_member_json': json.dumps(current_member, ensure_ascii=False) if current_member else 'null',
+        'market_equipped': market_equipped,
     })
 
     if is_new_user:
@@ -4151,6 +4160,14 @@ async def thread_view(request: Request, thread_id: int):
         get_unread_dm_count(request),
     )
 
+    # 取引所で購入・適用した壁紙/フォントを自分の画面に反映する
+    market_equipped = None
+    if current_member:
+        try:
+            market_equipped = await market_service.get_equipped(current_member['id'])
+        except Exception as ee:
+            print(f"適用アイテム取得エラー(thread): {ee}")
+
     response = templates.TemplateResponse(request, 'thread.html', {
         'thread': thread,
         'is_admin_user': is_admin_user,
@@ -4161,6 +4178,7 @@ async def thread_view(request: Request, thread_id: int):
         'report_reasons': REPORT_REASONS,
         'unread_dm_count': unread_dm_count,
         'current_member_json': json.dumps(current_member, ensure_ascii=False) if current_member else 'null',
+        'market_equipped': market_equipped,
     })
 
     if is_new_user:
@@ -5193,6 +5211,13 @@ async def _market_startup():
 
 MARKET_MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MARKET_ALLOWED_IMG_EXT = {'.jpg', '.jpeg', '.png', '.webp'}
+# フォント商品用: フォントファイル本体の制限
+MARKET_MAX_FONT_BYTES = 15 * 1024 * 1024
+MARKET_ALLOWED_FONT_EXT = {'.woff2', '.woff', '.ttf', '.otf'}
+MARKET_FONT_MIME = {
+    '.woff2': 'font/woff2', '.woff': 'font/woff',
+    '.ttf': 'font/ttf', '.otf': 'font/otf',
+}
 MARKET_TITLE_MAX = 60
 MARKET_DESC_MAX = 2000
 MARKET_PRICE_MAX = 1000000
@@ -5203,6 +5228,8 @@ MARKET_IMG_ERR = {
     'type': '画像形式は jpg / png / webp のみ対応しています。',
     'size': '画像は8MB以下にしてください。',
     'upload': '画像のアップロードに失敗しました。時間をおいて再度お試しください。',
+    'font_type': 'フォント形式は woff2 / woff / ttf / otf のみ対応しています。',
+    'font_size': 'フォントファイルは15MB以下にしてください。',
 }
 MARKET_BUY_ERR = {
     'insufficient_balance': 'ポイントが不足しています。',
@@ -5230,6 +5257,34 @@ def _market_process_image(contents: bytes) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format='WEBP', quality=85)
     return buf.getvalue()
+
+
+async def _market_handle_font_file(form, required=False):
+    """フォームの 'font_file' を検証して R2 に保存し、(url, err) を返す。
+    購入者本人の画面にだけ読み込まれるフォントファイル用。"""
+    upload = form.get('font_file')
+    if upload is None or not getattr(upload, 'filename', ''):
+        return (None, 'required') if required else (None, None)
+    ext = os.path.splitext(secure_filename(upload.filename))[1].lower()
+    if ext not in MARKET_ALLOWED_FONT_EXT:
+        return None, 'font_type'
+    contents = await upload.read()
+    if len(contents) > MARKET_MAX_FONT_BYTES:
+        return None, 'font_size'
+    key = f"market/fonts/{uuid.uuid4().hex}{ext}"
+    try:
+        await run_in_threadpool(
+            s3_client.put_object,
+            Bucket=R2_BUCKET_NAME,
+            Key=key,
+            Body=contents,
+            ContentType=MARKET_FONT_MIME[ext],
+            CacheControl='public, max-age=31536000, immutable',
+        )
+    except Exception as e:
+        print(f"取引所フォントアップロードエラー: {e}")
+        return None, 'upload'
+    return f"{R2_PUBLIC_URL.rstrip('/')}/{key}", None
 
 
 async def _market_handle_image(form, required=False):
@@ -5384,9 +5439,15 @@ async def market_official_submit(request: Request):
     image_url, img_err = await _market_handle_image(form, required=True)
     if img_err:
         return _market_redirect('/market/official/new', err=MARKET_IMG_ERR[img_err])
+    # フォント商品はフォントファイル(woff2等)も必須。これが購入後に適用される本体。
+    asset_url = None
+    if values['item_type'] == 'font':
+        asset_url, font_err = await _market_handle_font_file(form, required=True)
+        if font_err:
+            return _market_redirect('/market/official/new', err=MARKET_IMG_ERR[font_err])
     # seller_user_id=None: adminアカウント自身を出品者にはしない
     item_id = await market_service.create_item(
-        seller_user_id=None, is_official=True, image_url=image_url, **values
+        seller_user_id=None, is_official=True, image_url=image_url, asset_url=asset_url, **values
     )
     return _market_redirect(f'/market/item/{item_id}', ok='公式商品を出品しました。')
 
@@ -5519,10 +5580,17 @@ async def market_edit_submit(request: Request, item_id: int):
     else:
         values['secret_url'] = None
 
+    # フォント商品はフォントファイルも差し替え可能(未選択なら既存のまま)
+    asset_url = None
+    if item['item_type'] == 'font':
+        asset_url, font_err = await _market_handle_font_file(form, required=False)
+        if font_err:
+            return _market_redirect(f'/market/item/{item_id}/edit', err=MARKET_IMG_ERR[font_err])
+
     await market_service.update_item(
         item_id,
         title=values['title'], description=values['description'], price=values['price'],
-        image_url=image_url, secret_url=values['secret_url'],
+        image_url=image_url, secret_url=values['secret_url'], asset_url=asset_url,
     )
     return _market_redirect(f'/market/item/{item_id}', ok='商品を更新しました。')
 
@@ -5575,20 +5643,56 @@ async def market_review(request: Request, item_id: int):
 
 @app.get('/market/inventory')
 async def market_inventory(request: Request):
-    """購入済み商品の一覧(インベントリ)。プロキシのURLもここから参照できる。"""
+    """購入済み商品の一覧(インベントリ)。プロキシのURLもここから参照できる。
+    壁紙/フォントはここから「適用」「解除」ができる。"""
     if not is_member_logged_in(request):
         return RedirectResponse(url='/login', status_code=303)
     member_id = request.session.get('member_id')
-    purchases = await market_service.get_inventory(member_id)
+    purchases, equipped = await asyncio.gather(
+        market_service.get_inventory(member_id),
+        market_service.get_equipped(member_id),
+    )
     for p in purchases:
         p['purchased_at'] = _to_jst_string(p.get('purchased_at'))
     return templates.TemplateResponse(request, 'market_inventory.html', {
         'purchases': purchases,
+        'equipped': equipped,
         'type_labels': market_service.ITEM_TYPE_LABELS,
         'current_member': await get_current_member(request),
         'ok': request.query_params.get('ok'),
         'err': request.query_params.get('err'),
     })
+
+
+@app.post('/market/item/{item_id}/apply')
+async def market_apply(request: Request, item_id: int):
+    """購入済みの壁紙/フォントを自分の画面表示に適用する。"""
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    member_id = request.session.get('member_id')
+    result = await market_service.apply_item(item_id, member_id)
+    if result['success']:
+        return _market_redirect('/market/inventory', ok='適用しました。ページを開き直すと反映されます。')
+    err_map = {
+        'not_purchased': '購入済みの商品のみ適用できます。',
+        'not_applicable': 'この種別の商品は適用できません(壁紙/フォントのみ)。',
+    }
+    return _market_redirect(
+        '/market/inventory',
+        err=err_map.get(result['error'], '適用に失敗しました。時間をおいて再度お試しください。'),
+    )
+
+
+@app.post('/market/unequip/{item_type}')
+async def market_unequip(request: Request, item_type: str):
+    """適用中の壁紙/フォントを解除する。"""
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    if item_type not in ('wallpaper', 'font'):
+        return text_resp("不正な種別です。", 400)
+    await market_service.unequip_item(item_type, request.session.get('member_id'))
+    label = '壁紙' if item_type == 'wallpaper' else 'フォント'
+    return _market_redirect('/market/inventory', ok=f'{label}の適用を解除しました。')
 
 
 @app.get('/market/shop/{public_id}')
