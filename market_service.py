@@ -120,6 +120,21 @@ async def ensure_schema() -> None:
         "ON market_purchases(buyer_id, id DESC)"
     )
 
+    # 壁紙・フォントの「適用」状態を保存する users のカラム。
+    # 適用中の商品(= market_items.id)への参照を保持する。ALTER TABLE は
+    # 既にカラムがある場合に失敗するが、それは「追加済み」を意味するので無視する。
+    for ddl in (
+        "ALTER TABLE users ADD COLUMN equipped_wallpaper_item_id INTEGER",
+        "ALTER TABLE users ADD COLUMN equipped_font_item_id INTEGER",
+        # フォント商品のフォントファイル(woff2等)のURL。image_url はプレビュー画像、
+        # asset_url がフォントファイル本体。購入者のみが利用できる。
+        "ALTER TABLE market_items ADD COLUMN asset_url TEXT",
+    ):
+        try:
+            await conn.execute(ddl)
+        except Exception:
+            pass
+
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS market_reviews (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,8 +177,10 @@ async def create_item(
     price: int,
     image_url: Optional[str] = None,
     secret_url: Optional[str] = None,
+    asset_url: Optional[str] = None,
 ) -> int:
-    """商品を登録してitem_idを返す。公式商品は seller_user_id=None を渡すこと。"""
+    """商品を登録してitem_idを返す。公式商品は seller_user_id=None を渡すこと。
+    asset_url はフォント商品のフォントファイルURLを想定。"""
     _check_initialized()
     if item_type not in ITEM_TYPES:
         raise ValueError("invalid item_type")
@@ -171,10 +188,10 @@ async def create_item(
     async with _lock:
         cur = await conn.execute(
             "INSERT INTO market_items "
-            "(seller_user_id, is_official, item_type, title, description, price, image_url, secret_url) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "(seller_user_id, is_official, item_type, title, description, price, image_url, secret_url, asset_url) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [seller_user_id, 1 if is_official else 0, item_type,
-             title, description, price, image_url, secret_url],
+             title, description, price, image_url, secret_url, asset_url],
         )
         item_id = cur.lastrowid
         await cur.close()
@@ -190,8 +207,9 @@ async def update_item(
     image_url: Optional[str] = None,
     secret_url: Optional[str] = None,
     clear_secret: bool = False,
+    asset_url: Optional[str] = None,
 ) -> None:
-    """商品情報を更新する(image_url/secret_url は None なら変更しない)。"""
+    """商品情報を更新する(image_url/secret_url/asset_url は None なら変更しない)。"""
     _check_initialized()
     conn = await _get_conn()
     sets = ["title = ?", "description = ?", "price = ?", "updated_at = datetime('now')"]
@@ -204,6 +222,9 @@ async def update_item(
     elif secret_url is not None:
         sets.append("secret_url = ?")
         params.append(secret_url)
+    if asset_url is not None:
+        sets.append("asset_url = ?")
+        params.append(asset_url)
     params.append(item_id)
     async with _lock:
         await conn.execute(f"UPDATE market_items SET {', '.join(sets)} WHERE id = ?", params)
@@ -461,7 +482,7 @@ async def get_inventory(buyer_id: int) -> list[dict]:
         cur = await conn.execute(
             "SELECT p.id AS purchase_id, p.price_paid, p.created_at AS purchased_at, "
             "       i.id AS item_id, i.title, i.item_type, i.image_url, i.secret_url, "
-            "       i.is_official, i.status, "
+            "       i.asset_url, i.is_official, i.status, "
             "       u.username AS seller_username, u.public_id AS seller_public_id "
             "FROM market_purchases p "
             "JOIN market_items i ON i.id = p.item_id "
@@ -539,6 +560,128 @@ async def seller_rating_summary(seller_user_id: int) -> dict:
         await cur.close()
     avg = round(float(row["avg_rating"]), 1) if row and row["avg_rating"] is not None else None
     return {"avg": avg, "count": int(row["cnt"]) if row else 0}
+
+
+# =========================
+# 壁紙・フォントの「適用」(装備)
+# =========================
+#
+# 設計メモ
+# --------
+# - 購入済みの壁紙/フォント商品を、自分のアカウント表示(index/thread)に
+#   反映させるための機能。
+# - users.equipped_wallpaper_item_id / equipped_font_item_id に
+#   適用中の market_items.id を保存する(0/NULL = 未適用)。
+# - フォント商品のフォント自体は外部フォントURL(フォント商品の image_url を
+#   そのままフォントファイルURLとして使う運用。woff2/woff/ttf/otf)を
+#   @font-face で読み込む。購入者本人の画面にだけ配信される。
+# - 適用/解除は「購入済みか」の確認とUPDATEを同一ロック内で行い、
+#   購入記録の無い商品や他人の未購入商品は適用できない。
+
+_EQUIP_COLUMNS = {
+    "wallpaper": "equipped_wallpaper_item_id",
+    "font": "equipped_font_item_id",
+}
+
+
+def _equip_column(item_type: str) -> str:
+    col = _EQUIP_COLUMNS.get(item_type)
+    if not col:
+        raise ValueError("wallpaper / font 以外は適用できません")
+    return col
+
+
+async def apply_item(item_id: int, buyer_id: int) -> dict:
+    """購入済みの壁紙/フォントを自分のアカウントに適用する。
+
+    戻り値: {'success': bool, 'error': str|None}
+    error: 'not_purchased' / 'not_applicable' / 'server_error'
+    """
+    _check_initialized()
+    conn = await _get_conn()
+    async with _lock:
+        cur = await conn.execute(
+            "SELECT i.item_type, i.status FROM market_purchases p "
+            "JOIN market_items i ON i.id = p.item_id "
+            "WHERE p.item_id = ? AND p.buyer_id = ?",
+            [item_id, buyer_id],
+        )
+        row = await cur.fetchone()
+        await cur.close()
+        if not row:
+            return {"success": False, "error": "not_purchased"}
+        if row["item_type"] not in _EQUIP_COLUMNS:
+            return {"success": False, "error": "not_applicable"}
+        col = _EQUIP_COLUMNS[row["item_type"]]
+        await conn.execute(
+            f"UPDATE users SET {col} = ? WHERE id = ?",
+            [item_id, buyer_id],
+        )
+        await conn.commit()
+    return {"success": True, "error": None}
+
+
+async def unequip_item(item_type: str, user_id: int) -> None:
+    """適用を解除する(未適用なら何もしない)。"""
+    _check_initialized()
+    col = _equip_column(item_type)
+    conn = await _get_conn()
+    async with _lock:
+        await conn.execute(
+            f"UPDATE users SET {col} = NULL WHERE id = ?",
+            [user_id],
+        )
+        await conn.commit()
+
+
+async def get_equipped(user_id: int) -> dict:
+    """適用中の壁紙/フォントを取得する。
+
+    戻り値:
+      {
+        'wallpaper': {'item_id': int, 'image_url': str|None} | None,
+        'font':      {'item_id': int, 'font_url': str|None, 'title': str} | None,
+      }
+    """
+    _check_initialized()
+    conn = await _get_conn()
+    async with _lock:
+        cur = await conn.execute(
+            "SELECT equipped_wallpaper_item_id AS wp, equipped_font_item_id AS ft "
+            "FROM users WHERE id = ?",
+            [user_id],
+        )
+        row = await cur.fetchone()
+        await cur.close()
+        result = {"wallpaper": None, "font": None}
+        if not row:
+            return result
+        if row["wp"]:
+            cur = await conn.execute(
+                "SELECT id, title, image_url FROM market_items WHERE id = ?",
+                [row["wp"]],
+            )
+            item = await cur.fetchone()
+            await cur.close()
+            if item:
+                result["wallpaper"] = {
+                    "item_id": item["id"], "title": item["title"],
+                    "image_url": item["image_url"],
+                }
+        if row["ft"]:
+            cur = await conn.execute(
+                "SELECT id, title, asset_url FROM market_items WHERE id = ?",
+                [row["ft"]],
+            )
+            item = await cur.fetchone()
+            await cur.close()
+            if item:
+                # asset_url にフォントファイル(woff2等)のURLが入る
+                result["font"] = {
+                    "item_id": item["id"], "title": item["title"],
+                    "font_url": item["asset_url"],
+                }
+    return result
 
 
 async def reviews_for_seller(seller_user_id: int, limit: int = 20) -> list[dict]:
