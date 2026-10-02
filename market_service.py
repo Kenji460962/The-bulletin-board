@@ -425,13 +425,30 @@ async def purchase_item(item_id: int, buyer_id: int) -> dict:
             await conn.commit()
             return {"success": True, "error": None, "price": price, "balance": buyer_balance}
 
-        except aiosqlite.IntegrityError:
-            # point_history.idempotency_key 重複 = 同一購入の多重実行。全体をロールバック。
+        except aiosqlite.IntegrityError as e:
+            # IntegrityError は UNIQUE だけでなく NOT NULL 等でも発生するため、
+            # 原因を必ずログに残し、本当に購入済みの場合だけ already_purchased を返す。
+            # (購入レコードが無いのに「購入済み」と出る誤表示を防ぐ)
+            print(f"market purchase IntegrityError (item={item_id}, buyer={buyer_id}): {e}")
             try:
                 await conn.rollback()
             except Exception:
                 pass
-            return {"success": False, "error": "already_purchased", "price": 0, "balance": 0}
+            actually_purchased = False
+            try:
+                cur = await conn.execute(
+                    "SELECT 1 FROM market_purchases WHERE item_id = ? AND buyer_id = ? LIMIT 1",
+                    [item_id, buyer_id],
+                )
+                actually_purchased = (await cur.fetchone()) is not None
+                await cur.close()
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "error": "already_purchased" if actually_purchased else "server_error",
+                "price": 0, "balance": 0,
+            }
         except Exception as e:
             try:
                 await conn.rollback()
