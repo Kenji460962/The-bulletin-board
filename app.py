@@ -5822,7 +5822,15 @@ async def market_review(request: Request, item_id: int):
     if not (1 <= rating <= 5):
         return _market_redirect(f'/market/item/{item_id}', err='評価は★1〜5で選択してください。')
     comment = (form.get('comment') or '').strip()[:500]
-    await market_service.upsert_review(item_id, member_id, rating, comment)
+    try:
+        await market_service.upsert_review(item_id, member_id, rating, comment)
+    except Exception as e:
+        print(f"market review error (item={item_id}, user={member_id}): {type(e).__name__}: {e}")
+        msg = '評価の投稿に失敗しました。'
+        # ログを見られない環境向けに、管理者にだけ原因を画面表示する。
+        if _is_market_admin(request):
+            msg += f" [詳細: {type(e).__name__}: {str(e)[:300]}]"
+        return _market_redirect(f'/market/item/{item_id}', err=msg)
     return _market_redirect(f'/market/item/{item_id}', ok='評価を投稿しました。')
 
 
