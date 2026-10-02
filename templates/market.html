@@ -31,6 +31,26 @@ body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;background
 .flash.ok{background:#d1fae5;color:#065f46}
 .flash.err{background:#fee2e2;color:#991b1b}
 .empty{background:#fff;border-radius:12px;padding:40px;text-align:center;color:#888}
+.card-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:2px}
+.btn-mini{font-size:11px;border-radius:6px;padding:3px 9px;border:none;cursor:pointer;text-decoration:none;display:inline-block}
+.btn-mini-report{background:#e5e7eb;color:#555}
+.btn-mini-report:hover{color:#b91c1c}
+.btn-mini-delete{background:#fee2e2;color:#991b1b;font-weight:bold}
+.report-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;align-items:center;justify-content:center;padding:16px}
+.report-modal-overlay.open{display:flex}
+.report-modal{background:#fff;border-radius:12px;padding:20px;width:100%;max-width:380px;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+.report-modal h3{margin:0 0 6px;font-size:16px}
+.report-modal .target{font-size:13px;color:#555;margin-bottom:10px;word-break:break-all}
+.report-modal label{display:block;font-size:12.5px;color:#666;margin:12px 0 4px}
+.report-modal select,.report-modal textarea{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:13px;font-family:inherit;color:#222}
+.report-modal textarea{resize:vertical;min-height:70px}
+.report-modal-actions{display:flex;gap:8px;margin-top:16px}
+.report-modal-actions button{flex:1;padding:9px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+.report-modal-cancel{background:#e5e7eb;color:#333}
+.report-modal-submit{background:#dc2626;color:#fff}
+.report-modal-msg{font-size:12px;margin-top:10px;min-height:1.2em}
+.report-modal-msg.error{color:#dc2626}
+.report-modal-msg.success{color:#059669}
 </style>
 </head>
 <body>
@@ -70,6 +90,21 @@ body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;background
           {% else %}{{ it.seller_name }}{% endif %}
         </div>
         <div class="price">{{ it.price }} pt</div>
+        {% if can_moderate_market or (current_member and not it.is_official and it.seller_user_id == current_member.id) %}
+        <div class="card-actions">
+          {% if can_moderate_market %}
+          <form method="post" action="/market/item/{{ it.id }}/delete" style="margin:0"
+                onsubmit="return confirm('「{{ it.title }}」を削除しますか？\n購入済みのユーザーのインベントリからは消えません。');">
+            <button class="btn-mini btn-mini-delete" type="submit">🗑 削除</button>
+          </form>
+          {% endif %}
+          {% if current_member and not it.is_official and it.seller_user_id != current_member.id %}
+          <button type="button" class="btn-mini btn-mini-report report-btn"
+                  data-report-type="market_item" data-report-id="{{ it.id }}"
+                  data-report-title="{{ it.title }}">🚩 通報</button>
+          {% endif %}
+        </div>
+        {% endif %}
       </div>
     </div>
     {% endfor %}
@@ -78,5 +113,99 @@ body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;background
   <div class="empty">まだ商品がありません。最初の出品者になりましょう！</div>
   {% endif %}
 </div>
+
+<div class="report-modal-overlay" id="report-modal-overlay">
+  <div class="report-modal">
+    <h3>商品を通報する</h3>
+    <div class="target" id="report-target-label"></div>
+    <form id="report-modal-form">
+      <label for="report-reason-select">理由</label>
+      <select id="report-reason-select" required>
+        <option value="">選択してください</option>
+        {% for key, label in report_reasons.items() %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+      <label for="report-detail-textarea">詳細（任意・500文字まで）</label>
+      <textarea id="report-detail-textarea" maxlength="500" placeholder="具体的な状況があれば入力してください"></textarea>
+      <div class="report-modal-msg" id="report-modal-msg"></div>
+      <div class="report-modal-actions">
+        <button type="button" class="report-modal-cancel" id="report-modal-cancel-btn">キャンセル</button>
+        <button type="submit" class="report-modal-submit" id="report-modal-submit-btn">通報する</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+    var reportTarget = { id: null };
+    var overlay = document.getElementById('report-modal-overlay');
+    var form = document.getElementById('report-modal-form');
+    var msg = document.getElementById('report-modal-msg');
+    var label = document.getElementById('report-target-label');
+    if (!overlay || !form) return;
+
+    function openModal(id, title) {
+        reportTarget.id = id;
+        label.textContent = title ? ('対象: ' + title) : ('対象の商品ID: ' + id);
+        form.reset();
+        msg.textContent = '';
+        msg.className = 'report-modal-msg';
+        overlay.classList.add('open');
+    }
+    function closeModal() { overlay.classList.remove('open'); }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.report-btn');
+        if (!btn) return;
+        var id = btn.getAttribute('data-report-id');
+        if (!id) return;
+        openModal(id, btn.getAttribute('data-report-title') || '');
+    });
+
+    document.getElementById('report-modal-cancel-btn').addEventListener('click', closeModal);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var reason = document.getElementById('report-reason-select').value;
+        var detail = document.getElementById('report-detail-textarea').value;
+        if (!reason) {
+            msg.textContent = '理由を選択してください。';
+            msg.className = 'report-modal-msg error';
+            return;
+        }
+        var submitBtn = document.getElementById('report-modal-submit-btn');
+        submitBtn.disabled = true;
+        try {
+            var res = await fetch('/api/report', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    target_type: 'market_item',
+                    target_id: reportTarget.id,
+                    reason: reason,
+                    detail: detail
+                })
+            });
+            var data = await res.json();
+            if (data.success) {
+                msg.textContent = data.already ? 'この商品は既に通報済みです。' : '通報を受け付けました。ご協力ありがとうございます。';
+                msg.className = 'report-modal-msg success';
+                setTimeout(closeModal, 1500);
+            } else {
+                msg.textContent = data.error || '送信に失敗しました。';
+                msg.className = 'report-modal-msg error';
+            }
+        } catch (err) {
+            msg.textContent = '通信エラーが発生しました。';
+            msg.className = 'report-modal-msg error';
+        } finally {
+            submitBtn.disabled = false;
+        }
+    });
+})();
+</script>
 </body>
 </html>
