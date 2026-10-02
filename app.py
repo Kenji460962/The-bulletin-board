@@ -3835,6 +3835,7 @@ async def get_older_replies(request: Request, thread_id: int):
         )
         count_before = count_res[0]['cnt'] if count_res else 0
         older_replies = list(reversed(older_res)) if older_res else []
+        await _attach_reply_fonts(older_replies)
         start_num = count_before - len(older_replies) + 1
         op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
 
@@ -3889,6 +3890,7 @@ async def get_new_replies(request: Request, thread_id: int):
         )
         if not replies:
             replies = []
+        await _attach_reply_fonts(replies)
 
         thread_res = await execute_query("SELECT ip_address, user_id FROM threads WHERE id = ?", [thread_id])
         op_user_id = resolve_op_user_id(thread_res[0]) if thread_res else None
@@ -4084,6 +4086,9 @@ async def thread_view(request: Request, thread_id: int):
                     if poster_public_id and len(gather_results) > 2 and not isinstance(gather_results[2], Exception):
                         new_reply['icon_path'] = gather_results[2]
 
+                    # 投稿者が適用中のフォントも、この1件のレスに反映する。
+                    await _attach_reply_fonts([new_reply])
+
                     await manager.broadcast(thread_id, new_reply)
                     return {"success": True, "reply": new_reply}
             except Exception as e:
@@ -4126,6 +4131,10 @@ async def thread_view(request: Request, thread_id: int):
         thread['replies'] = loaded_replies
         thread['total_reply_count'] = total_reply_count
         thread['has_older'] = total_reply_count > len(loaded_replies)
+
+        # 投稿者が適用中のフォント(取引所で購入したもの)をレスに紐づける。
+        # 誰から見ても同じ見た目になるよう、閲覧者のログイン状態に関係なく解決する。
+        await _attach_reply_fonts(thread['replies'])
 
         for r in thread['replies']:
             if r.get('date'):
@@ -4179,6 +4188,8 @@ async def thread_view(request: Request, thread_id: int):
         'unread_dm_count': unread_dm_count,
         'current_member_json': json.dumps(current_member, ensure_ascii=False) if current_member else 'null',
         'market_equipped': market_equipped,
+        # レスで実際に使われているフォント(@font-face定義用)
+        'thread_fonts': _collect_thread_fonts(thread['replies']),
     })
 
     if is_new_user:
@@ -4969,12 +4980,24 @@ async def api_report(request: Request):
     reason = (body.get('reason') or '').strip()
     detail = (body.get('detail') or '').strip()[:500]
 
-    if target_type not in ('user', 'thread', 'reply', 'dm'):
+    if target_type not in ('user', 'thread', 'reply', 'dm', 'market_item'):
         return json_resp({"success": False, "error": "通報対象が不正です。"}, 400)
     if not target_id:
         return json_resp({"success": False, "error": "通報対象が指定されていません。"}, 400)
     if reason not in REPORT_REASONS:
         return json_resp({"success": False, "error": "通報理由が不正です。"}, 400)
+
+    # 取引所の商品を通報する場合は、対象が実在するか(削除済みでないか)を確認する。
+    # 存在しないIDへの通報が並ぶと管理画面の対応が空振りになるため。
+    if target_type == 'market_item':
+        try:
+            market_item_id = int(target_id)
+        except (TypeError, ValueError):
+            return json_resp({"success": False, "error": "通報対象が不正です。"}, 400)
+        reported_item = await market_service.get_item(market_item_id)
+        if not reported_item or reported_item['status'] != 'active':
+            return json_resp({"success": False, "error": "その商品は見つかりませんでした。"}, 404)
+        target_id = str(market_item_id)
 
     try:
         # 同一対象への重複通報を防ぐ（未対応のものが既にあれば受け付けたことにする）
@@ -5046,6 +5069,40 @@ async def admin_dashboard(request: Request):
                     r['reply_content'] = reply_row.get('content')
                     r['reply_author'] = reply_row.get('author')
                     r['reply_poster_public_id'] = reply_row.get('poster_public_id')
+
+        # 取引所の商品通報は target_id が market_items.id なので、管理画面から
+        # 何の商品が通報されたのか(商品名・価格・出品者・状態)を即座に確認し、
+        # 商品ページへ飛べるように解決しておく。
+        if r.get('target_type') == 'market_item':
+            r['market_item_id'] = None
+            r['market_item_title'] = None
+            r['market_item_price'] = None
+            r['market_item_status'] = None
+            r['market_item_type'] = None
+            r['market_item_official'] = False
+            r['market_item_seller'] = None
+            r['market_item_image'] = None
+            try:
+                reported_item_id = int(r.get('target_id'))
+            except (TypeError, ValueError):
+                reported_item_id = None
+            if reported_item_id:
+                try:
+                    reported_item = await market_service.get_item(reported_item_id)
+                except Exception as me:
+                    print(f"通報商品の取得エラー(item={reported_item_id}): {me}")
+                    reported_item = None
+                if reported_item:
+                    r['market_item_id'] = reported_item['id']
+                    r['market_item_title'] = reported_item['title']
+                    r['market_item_price'] = reported_item['price']
+                    r['market_item_status'] = reported_item['status']
+                    r['market_item_type'] = market_service.ITEM_TYPE_LABELS.get(
+                        reported_item['item_type'], reported_item['item_type']
+                    )
+                    r['market_item_official'] = bool(reported_item['is_official'])
+                    r['market_item_seller'] = reported_item['seller_name']
+                    r['market_item_image'] = reported_item.get('image_url')
 
     open_count_res = await execute_query("SELECT COUNT(*) AS cnt FROM reports WHERE status = 'open'")
 
@@ -5221,15 +5278,17 @@ MARKET_FONT_MIME = {
 MARKET_TITLE_MAX = 60
 MARKET_DESC_MAX = 2000
 MARKET_PRICE_MAX = 1000000
-MARKET_USER_TYPES = ('wallpaper', 'proxy', 'other')    # 一般ユーザーが出品できる種別
+MARKET_USER_TYPES = ('wallpaper', 'font', 'proxy', 'other')    # 一般ユーザーが出品できる種別
 MARKET_OFFICIAL_TYPES = ('font', 'wallpaper')          # 公式商品の種別
 MARKET_IMG_ERR = {
     'required': 'この種別の商品は画像が必須です。',
     'type': '画像形式は jpg / png / webp のみ対応しています。',
     'size': '画像は8MB以下にしてください。',
     'upload': '画像のアップロードに失敗しました。時間をおいて再度お試しください。',
+    'font_required': 'フォント商品にはフォントファイルのアップロードが必要です。',
     'font_type': 'フォント形式は woff2 / woff / ttf / otf のみ対応しています。',
     'font_size': 'フォントファイルは15MB以下にしてください。',
+    'font_upload': 'フォントファイルのアップロードに失敗しました。時間をおいて再度お試しください。',
 }
 MARKET_BUY_ERR = {
     'insufficient_balance': 'ポイントが不足しています。',
@@ -5244,6 +5303,17 @@ def _is_market_admin(request: Request) -> bool:
     """公式商品を出品・編集・削除できるのは admin ロールのみ(sub_admin は不可)。
     なお admin アカウント自身が出品者になることはない(公式商品の seller は NULL)。"""
     return request.session.get('staff_role') == 'admin'
+
+
+def _can_moderate_market(request: Request) -> bool:
+    """取引所の商品を「誰の出品であっても」削除できる権限。
+
+    公式商品・一般ユーザーの商品のどちらも、通報への対応など運営判断で
+    取り下げる必要があるため、板の管理者(admin / sub_admin)に許す。
+    admin だけに絞りたい場合はこの戻り値を
+    `request.session.get('staff_role') == 'admin'` に変えること。
+    """
+    return can_manage_board(request)
 
 
 def _market_process_image(contents: bytes) -> bytes:
@@ -5271,6 +5341,15 @@ async def _market_handle_font_file(form, required=False):
     contents = await upload.read()
     if len(contents) > MARKET_MAX_FONT_BYTES:
         return None, 'font_size'
+    # 拡張子だけを偽装した任意ファイルを保存・配信しないよう、主要形式のmagic bytesも検査する。
+    signatures = {
+        '.woff2': (b'wOF2',),
+        '.woff': (b'wOFF',),
+        '.ttf': (b'\x00\x01\x00\x00', b'true'),
+        '.otf': (b'OTTO',),
+    }
+    if not any(contents.startswith(sig) for sig in signatures[ext]):
+        return None, 'font_type'
     key = f"market/fonts/{uuid.uuid4().hex}{ext}"
     try:
         await run_in_threadpool(
@@ -5354,6 +5433,72 @@ def _market_validate_form(form, allowed_types):
     }, None
 
 
+# =========================
+# 取引所で購入した「壁紙」「フォント」のスレッド画面への反映
+# =========================
+# 壁紙: 購入して「適用」した人から見たスレッドの背景が変わる(見る人ごとに違う)。
+# フォント: 購入して「適用」した人のレスが、そのフォントで表示される
+#           (誰から見ても、その人のレスだけフォントが変わる)。
+# フォントは「投稿者ごと」に異なるため、レス一覧を返すすべての経路で
+# 「投稿者が適用中のフォント」をまとめて解決し、各レスに付与する。
+
+_FONT_FORMATS = {
+    '.woff2': 'woff2',
+    '.woff': 'woff',
+    '.ttf': 'truetype',
+    '.otf': 'opentype',
+}
+
+
+def _font_format_from_url(url: str) -> str:
+    """フォントファイルのURLから @font-face の format() 用の文字列を求める。
+    未知の拡張子は最も一般的な woff2 として扱う(ブラウザ側で判別できるため実害はない)。"""
+    ext = os.path.splitext(urlparse(url or '').path)[1].lower()
+    return _FONT_FORMATS.get(ext, 'woff2')
+
+
+def _collect_thread_fonts(replies) -> list:
+    """レス一覧で実際に使われているフォントを重複なく集め、
+    テンプレート側の @font-face 定義用のリストにする。
+
+    戻り値: [{'item_id': int, 'url': str, 'format': str}, ...]
+    """
+    fonts = {}
+    for r in replies or []:
+        item_id = r.get('font_item_id')
+        url = r.get('font_url')
+        if item_id and url and item_id not in fonts:
+            fonts[item_id] = url
+    return [
+        {'item_id': item_id, 'url': url, 'format': _font_format_from_url(url)}
+        for item_id, url in fonts.items()
+    ]
+
+
+async def _attach_reply_fonts(replies):
+    """レス一覧の各レスに、投稿者が適用中のフォント情報を付与する。
+
+    未ログインの閲覧者にも同じ見た目にしたいので、ビューアの状態に関係なく
+    常に解決する。対象の投稿者全員分を market_service 側で1本のSELECTに
+    まとめて引く(レス1件ごとに問い合わせるN+1を避ける)。
+    """
+    if not replies:
+        return replies
+    try:
+        fonts = await market_service.get_equipped_fonts_by_public_ids(
+            {r.get('poster_public_id') for r in replies if r.get('poster_public_id')}
+        )
+    except Exception as e:
+        print(f"適用フォント取得エラー: {e}")
+        fonts = {}
+    for r in replies:
+        font = fonts.get(r.get('poster_public_id'))
+        r['font_item_id'] = font['item_id'] if font else None
+        r['font_url'] = font['font_url'] if font else None
+        r['font_title'] = font['title'] if font else None
+    return replies
+
+
 @app.get('/market')
 async def market_page(request: Request):
     """ポイント取引所のトップ(商品一覧)。"""
@@ -5373,7 +5518,9 @@ async def market_page(request: Request):
         'current_member': current_member,
         'balance': balance,
         'is_market_admin': _is_market_admin(request),
+        'can_moderate_market': _can_moderate_market(request),
         'type_labels': market_service.ITEM_TYPE_LABELS,
+        'report_reasons': REPORT_REASONS,
         'ok': request.query_params.get('ok'),
         'err': request.query_params.get('err'),
     })
@@ -5408,8 +5555,15 @@ async def market_sell_submit(request: Request):
     if img_err:
         return _market_redirect('/market/sell', err=MARKET_IMG_ERR[img_err])
 
+    asset_url = None
+    if values['item_type'] == 'font':
+        asset_url, font_err = await _market_handle_font_file(form, required=True)
+        if font_err:
+            return _market_redirect('/market/sell', err=MARKET_IMG_ERR[font_err])
+
     item_id = await market_service.create_item(
-        seller_user_id=member_id, is_official=False, image_url=image_url, **values
+        seller_user_id=member_id, is_official=False,
+        image_url=image_url, asset_url=asset_url, **values
     )
     return _market_redirect(f'/market/item/{item_id}', ok='出品しました。')
 
@@ -5444,7 +5598,7 @@ async def market_official_submit(request: Request):
     if values['item_type'] == 'font':
         asset_url, font_err = await _market_handle_font_file(form, required=True)
         if font_err:
-            return _market_redirect('/market/official/new', err=MARKET_IMG_ERR[font_err])
+            return _market_redirect('/market/official/new', err=MARKET_IMG_ERR.get(font_err, 'フォントファイルが不正です。'))
     # seller_user_id=None: adminアカウント自身を出品者にはしない
     item_id = await market_service.create_item(
         seller_user_id=None, is_official=True, image_url=image_url, asset_url=asset_url, **values
@@ -5465,6 +5619,10 @@ async def market_item_page(request: Request, item_id: int):
 
     is_own = bool(viewer_id) and item.get('seller_user_id') == viewer_id
     can_manage = (is_own and not item['is_official']) or (bool(item['is_official']) and is_admin)
+    # 削除は編集権限より広い: 管理者は公式商品を含め、誰の出品でも取り下げられる。
+    can_delete = (is_own and not item['is_official']) or _can_moderate_market(request)
+    # 通報は一般ユーザーができる。自分の出品と公式商品は対象外。
+    can_report = bool(viewer_id) and not is_own and not item['is_official']
     can_review = (
         bool(viewer_id) and item['viewer_has_purchased']
         and not item['is_official'] and not is_own
@@ -5480,19 +5638,32 @@ async def market_item_page(request: Request, item_id: int):
             r['created_at'] = _to_jst_string(r.get('created_at'))
 
     balance = None
+    equipped = {'wallpaper': None, 'font': None}
     if current_member:
         balance = await points_service.get_balance(current_member['id'])
+        # 適用中の壁紙/フォントを取得し、この商品が適用済みかを画面で示せるようにする
+        equipped = await market_service.get_equipped(current_member['id'])
+
+    is_equipped = (
+        bool(equipped.get(item['item_type']))
+        and equipped[item['item_type']]['item_id'] == item_id
+    )
 
     return templates.TemplateResponse(request, 'market_item.html', {
         'item': item,
         'current_member': current_member,
         'balance': balance,
+        'is_equipped': is_equipped,
+        'can_apply': item['item_type'] in ('wallpaper', 'font'),
         'is_own': is_own,
         'can_manage': can_manage,
+        'can_delete': can_delete,
+        'can_report': can_report,
         'can_review': can_review,
         'reviews': reviews,
         'summary': summary,
         'type_labels': market_service.ITEM_TYPE_LABELS,
+        'report_reasons': REPORT_REASONS,
         'ok': request.query_params.get('ok'),
         'err': request.query_params.get('err'),
     })
@@ -5585,7 +5756,7 @@ async def market_edit_submit(request: Request, item_id: int):
     if item['item_type'] == 'font':
         asset_url, font_err = await _market_handle_font_file(form, required=False)
         if font_err:
-            return _market_redirect(f'/market/item/{item_id}/edit', err=MARKET_IMG_ERR[font_err])
+            return _market_redirect(f'/market/item/{item_id}/edit', err=MARKET_IMG_ERR.get(font_err, 'フォントファイルが不正です。'))
 
     await market_service.update_item(
         item_id,
@@ -5597,19 +5768,29 @@ async def market_edit_submit(request: Request, item_id: int):
 
 @app.post('/market/item/{item_id}/delete')
 async def market_delete(request: Request, item_id: int):
-    """商品の削除(論理削除)。一般商品は出品者本人、公式商品は admin のみ。
-    購入済みユーザーのインベントリからは消えない。"""
+    """商品の削除(論理削除)。
+
+    削除できるのは次のいずれか:
+      - 一般商品の出品者本人
+      - 板の管理者(admin / sub_admin) … 公式商品・他人の商品を問わず削除できる
+        (通報への対応などを運営判断で行えるようにするため)
+    削除は status='removed' の論理削除で、購入済みユーザーのインベントリ・
+    ポイント履歴からは消えない。適用中の壁紙/フォントも購入記録が残る限り
+    そのまま使い続けられる。
+    """
     if not is_member_logged_in(request):
         return RedirectResponse(url='/login', status_code=303)
     member_id = request.session.get('member_id')
-    is_admin = _is_market_admin(request)
     item = await market_service.get_item(item_id)
     if not item or item['status'] != 'active':
         return text_resp("商品が見つかりません。", 404)
     is_own = item.get('seller_user_id') == member_id
-    if not ((is_own and not item['is_official']) or (item['is_official'] and is_admin)):
+    is_moderator = _can_moderate_market(request)
+    if not ((is_own and not item['is_official']) or is_moderator):
         return text_resp("権限がありません。", 403)
     await market_service.set_status(item_id, 'removed')
+    if is_moderator and not is_own:
+        return _market_redirect('/market', ok=f'「{item["title"]}」を管理者として削除しました。')
     return _market_redirect('/market', ok='商品を削除しました。')
 
 
