@@ -30,7 +30,7 @@ h1{font-size:18px;margin:0}
     <div class="shop-head">
       {% if seller.icon_path %}<img class="avatar" src="{{ seller.icon_path }}" alt="">{% endif %}
       <div>
-        <h1>🏪 {{ seller.username }} のショップ</h1>
+        <h1> {{ seller.username }} のショップ</h1>
         <div class="meta">
           {% if summary.count %}評価: <span class="stars">★</span>{{ summary.avg }}（{{ summary.count }}件）{% else %}まだ評価はありません{% endif %}
           ・ <a href="/profile/{{ seller.public_id }}">プロフィールを見る</a>
