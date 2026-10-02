@@ -53,22 +53,33 @@ textarea{min-height:100px}
         <input type="url" name="secret_url" maxlength="500" placeholder="https://example.com/proxy/" value="">
         <div class="help">⚠ このURLは購入者にだけ公開されます。購入前のユーザーには一切表示されません。</div>
       </div>
+      <div id="font-field" style="display:none">
+        <label>フォントファイル {% if mode=='edit' %}（差し替える場合のみ選択）{% else %}（必須）{% endif %}</label>
+        <input type="file" name="font_file" accept=".woff2,.woff,.ttf,.otf">
+        <div class="help">woff2 / woff / ttf / otf、15MBまで。購入して「適用」した人のレスが、この書体で表示されるようになります。</div>
+      </div>
       <button class="btn" type="submit">{% if mode=='edit' %}更新する{% else %}出品する{% endif %}</button>
       <a class="btn btn-sub" href="{% if mode=='edit' %}/market/item/{{ item.id }}{% else %}/market{% endif %}">キャンセル</a>
     </form>
   </div>
 </div>
 <script>
-function toggleProxy(){
+function toggleTypeFields(){
   var t = document.getElementById('item_type');
-  var f = document.getElementById('proxy-field');
-  if(t && f){ f.style.display = (t.value === 'proxy') ? 'block' : 'none'; }
+  if(!t) return;
+  var pf = document.getElementById('proxy-field');
+  var ff = document.getElementById('font-field');
+  if(pf){ pf.style.display = (t.value === 'proxy') ? 'block' : 'none'; }
+  if(ff){ ff.style.display = (t.value === 'font') ? 'block' : 'none'; }
 }
 var sel = document.getElementById('item_type');
-if(sel){ sel.addEventListener('change', toggleProxy); }
-toggleProxy();
+if(sel){ sel.addEventListener('change', toggleTypeFields); }
+toggleTypeFields();
 {% if mode=='edit' and item and item.item_type=='proxy' %}
 document.getElementById('proxy-field').style.display = 'block';
+{% endif %}
+{% if mode=='edit' and item and item.item_type=='font' %}
+document.getElementById('font-field').style.display = 'block';
 {% endif %}
 </script>
 </body>
