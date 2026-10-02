@@ -36,6 +36,7 @@ talk-ch「ポイント取引所」の商品・購入・評価を一元管理す�
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any, Awaitable, Callable, Optional
 
 import aiosqlite
@@ -382,6 +383,29 @@ async def shop_items(seller_user_id: int, limit: int = 100) -> list[dict]:
 # 購入(最重要: 原子性・冪等性)
 # =========================
 
+async def _official_proceeds_user_id(conn) -> Optional[int]:
+    """公式商品の売上を受け取るアカウントの users.id を返す(見つからなければ None)。
+
+    1. 環境変数 MARKET_OFFICIAL_PROCEEDS_USER_ID があればそのユーザー(推奨・確実)
+    2. 無ければ role='admin' のユーザーのうち id が最小のもの
+    購入処理の途中(トランザクション内)で呼ぶこと。失敗しても購入自体は止めない。
+    """
+    try:
+        env = (os.environ.get("MARKET_OFFICIAL_PROCEEDS_USER_ID") or "").strip()
+        if env.isdigit():
+            cur = await conn.execute("SELECT id FROM users WHERE id = ?", [int(env)])
+        else:
+            cur = await conn.execute(
+                "SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1"
+            )
+        row = await cur.fetchone()
+        await cur.close()
+        return int(row[0]) if row else None
+    except Exception as e:
+        print(f"official proceeds user lookup failed: {e}")
+        return None
+
+
 async def purchase_item(item_id: int, buyer_id: int) -> dict:
     """商品を購入する。以下を1トランザクションで原子的に行う:
 
@@ -431,11 +455,14 @@ async def purchase_item(item_id: int, buyer_id: int) -> dict:
                 return {"success": False, "error": "insufficient_balance", "price": price, "balance": 0}
             await cur.close()
 
-            # 出品者へ売上を加算(公式商品は出品者がいないのでスキップ)。
-            if seller_id is not None:
+            # 売上の受取人: 一般商品は出品者、公式商品は運営(管理者)アカウント。
+            payee_id = seller_id
+            if payee_id is None:
+                payee_id = await _official_proceeds_user_id(conn)
+            if payee_id is not None:
                 cur = await conn.execute(
                     "UPDATE users SET points = points + ? WHERE id = ?",
-                    [price, seller_id],
+                    [price, payee_id],
                 )
                 await cur.close()
 
@@ -464,19 +491,24 @@ async def purchase_item(item_id: int, buyer_id: int) -> dict:
                  f"取引所で購入: {item['title']}", "market",
                  f"market:buy:{item_id}:{buyer_id}"],
             )
-            if seller_id is not None:
-                cur = await conn.execute("SELECT points FROM users WHERE id = ?", [seller_id])
+            if payee_id is not None:
+                cur = await conn.execute("SELECT points FROM users WHERE id = ?", [payee_id])
                 row = await cur.fetchone()
                 await cur.close()
-                seller_balance = int(row[0]) if row else 0
+                payee_balance = int(row[0]) if row else 0
+                desc = (f"取引所で売却: {item['title']}" if seller_id is not None
+                        else f"公式商品の売上: {item['title']}")
                 await conn.execute(
                     "INSERT INTO point_history "
                     "(user_id, delta, balance_after, reason, description, source, idempotency_key) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    [seller_id, price, seller_balance, "market_sale",
-                     f"取引所で売却: {item['title']}", "market",
+                    [payee_id, price, payee_balance, "market_sale",
+                     desc, "market",
                      f"market:sell:{item_id}:{buyer_id}"],
                 )
+                if int(payee_id) == int(buyer_id):
+                    # 管理者が自分で公式商品を買った場合は、売上込みの最終残高を返す。
+                    buyer_balance = payee_balance
 
             await conn.commit()
             return {"success": True, "error": None, "price": price, "balance": buyer_balance}
