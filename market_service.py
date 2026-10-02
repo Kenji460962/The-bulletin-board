@@ -101,6 +101,17 @@ async def ensure_schema() -> None:
         "ON market_items(seller_user_id, status)"
     )
 
+    # --- 旧スキーマの移行 ---
+    # 以前のテーブルに「price INTEGER NOT NULL」が残っていると、price_paid だけを
+    # INSERT する現行コードが NOT NULL 違反で必ず失敗する。旧テーブルを退避して作り直す。
+    _purchases_migrated = False
+    cur = await conn.execute("PRAGMA table_info(market_purchases)")
+    _pcols = [r[1] for r in await cur.fetchall()]
+    await cur.close()
+    if "price" in _pcols:
+        await conn.execute("ALTER TABLE market_purchases RENAME TO market_purchases_old")
+        _purchases_migrated = True
+
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS market_purchases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,6 +121,14 @@ async def ensure_schema() -> None:
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
     """)
+    if _purchases_migrated:
+        _paid = "COALESCE(price_paid, price, 0)" if "price_paid" in _pcols else "COALESCE(price, 0)"
+        await conn.execute(
+            "INSERT OR IGNORE INTO market_purchases (id, item_id, buyer_id, price_paid, created_at) "
+            f"SELECT id, item_id, buyer_id, {_paid}, COALESCE(created_at, datetime('now')) "
+            "FROM market_purchases_old"
+        )
+        await conn.execute("DROP TABLE market_purchases_old")
     # (item_id, buyer_id) の一意制約 = 同一ユーザーの二重購入を構造的に防止
     await conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_market_purchases_unique "
