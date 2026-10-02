@@ -154,7 +154,7 @@ async def ensure_schema() -> None:
         except Exception:
             pass
 
-    await conn.execute("""
+    _reviews_sql = """
         CREATE TABLE IF NOT EXISTS market_reviews (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             item_id INTEGER NOT NULL,
@@ -163,7 +163,43 @@ async def ensure_schema() -> None:
             comment TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
-    """)
+    """
+    # 旧スキーマ(余計な NOT NULL 列がある / 必要な列が無い)なら退避して作り直す。
+    cur = await conn.execute("PRAGMA table_info(market_reviews)")
+    _rinfo = await cur.fetchall()
+    await cur.close()
+    if _rinfo:
+        _rnames = [r[1] for r in _rinfo]
+        _rkeep = ["id", "item_id", "buyer_id", "rating", "comment", "created_at"]
+        _stale = any(c not in _rnames for c in _rkeep) or any(
+            r[3] == 1 and r[4] is None and r[5] == 0 and r[1] not in _rkeep for r in _rinfo
+        )
+        if _stale:
+            await conn.execute("ALTER TABLE market_reviews RENAME TO market_reviews_old")
+            await conn.execute(_reviews_sql)
+            _req = ("item_id", "buyer_id", "rating")
+            if all(c in _rnames for c in _req):
+                _common = ",".join(c for c in _rkeep if c in _rnames)
+                # NULL が入っていた列は新テーブルの NOT NULL に合わせて補完する。
+                _sel = ",".join(
+                    "COALESCE(comment, '')" if c == "comment"
+                    else "COALESCE(created_at, datetime('now'))" if c == "created_at"
+                    else c
+                    for c in _rkeep if c in _rnames
+                )
+                await conn.execute(
+                    f"INSERT OR IGNORE INTO market_reviews ({_common}) "
+                    f"SELECT {_sel} FROM market_reviews_old"
+                )
+            await conn.execute("DROP TABLE market_reviews_old")
+    await conn.execute(_reviews_sql)
+    # 同一(item_id, buyer_id)の重複は最新1件だけ残す(一意インデックス作成の前提)。
+    await conn.execute(
+        "DELETE FROM market_reviews WHERE id NOT IN "
+        "(SELECT MAX(id) FROM market_reviews GROUP BY item_id, buyer_id)"
+    )
+    # 別の列構成で作られた同名インデックスが残っていると UPSERT(ON CONFLICT)が失敗するため作り直す。
+    await conn.execute("DROP INDEX IF EXISTS idx_market_reviews_unique")
     # 1購入者につき1商品1レビュー(更新はUPSERTで行う)
     await conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_market_reviews_unique "
