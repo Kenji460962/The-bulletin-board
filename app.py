@@ -5685,9 +5685,13 @@ async def market_buy(request: Request, item_id: int):
             f'/market/item/{item_id}',
             ok=f"購入しました({result['price']}pt)。インベントリに追加されました。",
         )
+    err_msg = MARKET_BUY_ERR.get(result['error'], '購入に失敗しました。')
+    # 原因の詳細は管理者にだけ画面表示する(一般ユーザーにDBエラー内容は見せない)。
+    if result.get('detail') and _is_market_admin(request):
+        err_msg += f" [詳細: {result['detail'][:300]}]"
     return _market_redirect(
         f'/market/item/{item_id}',
-        err=MARKET_BUY_ERR.get(result['error'], '購入に失敗しました。'),
+        err=err_msg,
     )
 
 
