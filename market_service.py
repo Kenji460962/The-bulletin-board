@@ -448,6 +448,8 @@ async def purchase_item(item_id: int, buyer_id: int) -> dict:
                 "success": False,
                 "error": "already_purchased" if actually_purchased else "server_error",
                 "price": 0, "balance": 0,
+                # 画面表示用(管理者にだけ見せる)。ログを見られない環境でも原因が分かる。
+                "detail": f"IntegrityError: {e} / 購入レコード={'あり' if actually_purchased else 'なし'}",
             }
         except Exception as e:
             try:
@@ -455,7 +457,8 @@ async def purchase_item(item_id: int, buyer_id: int) -> dict:
             except Exception:
                 pass
             print(f"market purchase error: {e}")
-            return {"success": False, "error": "server_error", "price": 0, "balance": 0}
+            return {"success": False, "error": "server_error", "price": 0, "balance": 0,
+                    "detail": f"{type(e).__name__}: {e}"}
 
 
 async def has_purchased(item_id: int, buyer_id: int) -> bool:
