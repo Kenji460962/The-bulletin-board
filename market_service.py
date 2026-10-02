@@ -684,6 +684,47 @@ async def get_equipped(user_id: int) -> dict:
     return result
 
 
+async def get_equipped_fonts_by_public_ids(public_ids) -> dict:
+    """レス投稿者(users.public_id)ごとに「適用中のフォント」をまとめて解決する。
+
+    スレッド画面のレス一覧で「購入した人のレスだけそのフォントで表示する」ために使う。
+    レス1件ごとに問い合わせるとN+1になるため、対象の投稿者全員分を1本の
+    SELECTでまとめて引く。
+
+    戻り値: {public_id: {'item_id': int, 'title': str, 'font_url': str}}
+      - 適用フォントが無い投稿者は含まれない(呼び出し側は未適用として扱う)。
+      - フォントファイル(asset_url)を持たない商品、既に消えた商品も含まれない。
+      - 出品者が商品を削除(論理削除)しても、購入済みの適用は維持したいので
+        status は判定しない(購入記録が残っている限り適用を続けられる)。
+    """
+    _check_initialized()
+    ids = [str(p) for p in (public_ids or []) if p]
+    if not ids:
+        return {}
+    conn = await _get_conn()
+    placeholders = ",".join("?" for _ in ids)
+    sql = (
+        "SELECT u.public_id AS public_id, i.id AS item_id, i.title AS title, "
+        "       i.asset_url AS asset_url "
+        "FROM users u JOIN market_items i ON i.id = u.equipped_font_item_id "
+        f"WHERE u.public_id IN ({placeholders}) "
+        "  AND u.equipped_font_item_id IS NOT NULL "
+        "  AND i.asset_url IS NOT NULL AND i.asset_url != ''"
+    )
+    async with _lock:
+        cur = await conn.execute(sql, ids)
+        rows = await cur.fetchall()
+        await cur.close()
+    return {
+        r["public_id"]: {
+            "item_id": int(r["item_id"]),
+            "title": r["title"],
+            "font_url": r["asset_url"],
+        }
+        for r in rows
+    }
+
+
 async def reviews_for_seller(seller_user_id: int, limit: int = 20) -> list[dict]:
     """ショップページ用: 出品者が受けたレビュー一覧(商品名つき)。"""
     _check_initialized()
