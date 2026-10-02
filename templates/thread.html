@@ -398,6 +398,46 @@
             font-size: 13px; color: var(--text-main, #f8fafc); max-width: 280px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.18); cursor: pointer;
         }
+
+        /* ============================================================
+           ポイント取引所で購入した「壁紙」の反映
+           購入して適用した人から見たときだけ、スレッドの背景が変わる。
+           （他の人には通常の背景のまま。ページの閲覧者ごとに切り替わる）
+           ============================================================ */
+        {% if market_equipped and market_equipped.wallpaper and market_equipped.wallpaper.image_url %}
+        .posts-container {
+            background-image:
+                linear-gradient(rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.55)),
+                url('{{ market_equipped.wallpaper.image_url }}');
+            background-size: cover, cover;
+            background-position: center center, center center;
+            background-repeat: no-repeat, no-repeat;
+            background-attachment: local, local;
+        }
+        html[data-theme="light"] .posts-container {
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.72)),
+                url('{{ market_equipped.wallpaper.image_url }}');
+        }
+        /* 壁紙の上でもレスが読みやすいように、各レスを少し透過させる */
+        .posts-container .post-item { background: var(--panel-bg); }
+        {% endif %}
+
+        /* ============================================================
+           ポイント取引所で購入した「フォント」の反映
+           フォントを購入して適用した人のレスだけが、その書体で表示される。
+           @font-faceはページ内で実際に使われているフォントだけを宣言する。
+           ============================================================ */
+        {% for f in thread_fonts|default([]) %}
+        @font-face {
+            font-family: 'talkch-market-font-{{ f.item_id }}';
+            src: url('{{ f.url }}') format('{{ f.format }}');
+            font-display: swap;
+        }
+        .post-item.post-font-{{ f.item_id }} {
+            font-family: 'talkch-market-font-{{ f.item_id }}', 'Inter', sans-serif;
+        }
+        {% endfor %}
     </style>
 </head>
 <body>
@@ -451,7 +491,7 @@
         </div>
         {% endif %}
         {% for r in thread.replies %}
-        <div class="post-item" id="post-{{ r.post_num }}" data-reply-id="{{ r.id }}">
+        <div class="post-item{% if r.font_item_id %} post-font-{{ r.font_item_id }}{% endif %}" id="post-{{ r.post_num }}" data-reply-id="{{ r.id }}"{% if r.font_item_id %} data-font-item="{{ r.font_item_id }}"{% endif %}>
             <div class="post-meta">
                 <span class="post-num" onclick="quoteReply({{ r.post_num }})">#{{ r.post_num }}</span>
 
@@ -927,9 +967,29 @@
             const replyCount = Number(reply.post_num) || (container.querySelectorAll('.post-item').length + 1);
 
             const replyDiv = document.createElement('div');
-            replyDiv.className = 'post-item';
+            // 投稿者が取引所で購入したフォントを適用していれば、そのレスだけ書体を変える。
+            replyDiv.className = 'post-item' + (reply.font_item_id ? ` post-font-${reply.font_item_id}` : '');
             replyDiv.id = `post-${replyCount}`;
             replyDiv.setAttribute('data-reply-id', reply.id);
+            if (reply.font_item_id) replyDiv.setAttribute('data-font-item', String(reply.font_item_id));
+
+            // まだ @font-face が無いフォント(接続後に初めて現れた投稿者など)は、
+            // その場で宣言を追加してから描画する。一度追加したものは再追加しない。
+            if (reply.font_item_id && reply.font_url) {
+                const ffId = `talkch-market-font-${reply.font_item_id}`;
+                if (!document.getElementById(`fontface-${reply.font_item_id}`)) {
+                    const st = document.createElement('style');
+                    st.id = `fontface-${reply.font_item_id}`;
+                    const fmt = (function(u){
+                        const m = String(u).split('?')[0].match(/\.([a-z0-9]+)$/i);
+                        const ext = m ? m[1].toLowerCase() : 'woff2';
+                        return ({woff2:'woff2', woff:'woff', ttf:'truetype', otf:'opentype'})[ext] || 'woff2';
+                    })(reply.font_url);
+                    st.textContent = `@font-face{font-family:'${ffId}';src:url('${reply.font_url}') format('${fmt}');font-display:swap;}`
+                        + `.post-item.post-font-${reply.font_item_id}{font-family:'${ffId}','Inter',sans-serif;}`;
+                    document.head.appendChild(st);
+                }
+            }
 
             let roleCls = 'post-name';
             if (reply.role === 'admin' || reply.is_admin) {
