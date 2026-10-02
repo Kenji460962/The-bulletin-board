@@ -95,7 +95,7 @@ body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;background
           {% if can_moderate_market %}
           <form method="post" action="/market/item/{{ it.id }}/delete" style="margin:0"
                 onsubmit="return confirm('「{{ it.title }}」を削除しますか？\n購入済みのユーザーのインベントリからは消えません。');">
-            <button class="btn-mini btn-mini-delete" type="submit">🗑 削除</button>
+            <button class="btn-mini btn-mini-delete" type="submit">削除</button>
           </form>
           {% endif %}
           {% if current_member and not it.is_official and it.seller_user_id != current_member.id %}
