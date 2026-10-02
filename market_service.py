@@ -391,9 +391,10 @@ async def purchase_item(item_id: int, buyer_id: int) -> dict:
                     [item_id, buyer_id, price],
                 )
                 await cur.close()
-            except aiosqlite.IntegrityError:
+            except aiosqlite.IntegrityError as e:
                 await conn.rollback()
-                return {"success": False, "error": "already_purchased", "price": price, "balance": 0}
+                return {"success": False, "error": "already_purchased", "price": price, "balance": 0,
+                        "detail": f"market_purchases INSERT で IntegrityError: {e}"}
 
             # ポイント履歴(既存 point_history テーブルに冪等キー付きで記録)。
             cur = await conn.execute("SELECT points FROM users WHERE id = ?", [buyer_id])
