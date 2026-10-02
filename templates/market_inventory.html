@@ -21,7 +21,12 @@ a{color:#2563eb;text-decoration:none}
 .flash.ok{background:#d1fae5;color:#065f46}
 .flash.err{background:#fee2e2;color:#991b1b}
 .empty{background:#fff;border-radius:12px;padding:40px;text-align:center;color:#888}
-.btn{display:inline-block;border-radius:10px;padding:8px 16px;font-size:13px;text-decoration:none;background:#e5e7eb;color:#333}
+.btn{display:inline-block;border:none;border-radius:10px;padding:8px 16px;font-size:13px;text-decoration:none;background:#e5e7eb;color:#333;cursor:pointer}
+.btn-apply{background:#059669;color:#fff;font-weight:bold}
+.btn-unapply{background:#e5e7eb;color:#333}
+.equipped-badge{font-size:11px;border-radius:6px;padding:2px 6px;background:#d1fae5;color:#065f46;font-weight:bold}
+.equipped-note{font-size:12px;color:#065f46;margin-top:6px}
+.apply-row{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -44,6 +49,42 @@ a{color:#2563eb;text-decoration:none}
         <div class="meta">{{ p.price_paid }} pt で購入 ・ {{ p.purchased_at }} ・ 出品者: {{ p.seller_name }}</div>
         {% if p.item_type == 'proxy' and p.secret_url %}
         <div class="secret">🔓 <a href="{{ p.secret_url }}" target="_blank" rel="noopener noreferrer">{{ p.secret_url }}</a></div>
+        {% endif %}
+
+        {% if p.item_type == 'wallpaper' %}
+        <div class="apply-row">
+          {% if equipped.wallpaper and equipped.wallpaper.item_id == p.item_id %}
+            <span class="equipped-badge">✔ 適用中</span>
+            <form method="post" action="/market/unequip/wallpaper" style="display:inline">
+              <button class="btn btn-unapply" type="submit">適用を解除</button>
+            </form>
+          {% else %}
+            <form method="post" action="/market/item/{{ p.item_id }}/apply" style="display:inline">
+              <button class="btn btn-apply" type="submit">この壁紙を適用する</button>
+            </form>
+          {% endif %}
+        </div>
+        {% if equipped.wallpaper and equipped.wallpaper.item_id == p.item_id %}
+        <div class="equipped-note">スレッド画面を開くと、背景がこの壁紙に変わります。</div>
+        {% endif %}
+        {% endif %}
+
+        {% if p.item_type == 'font' %}
+        <div class="apply-row">
+          {% if equipped.font and equipped.font.item_id == p.item_id %}
+            <span class="equipped-badge">✔ 適用中</span>
+            <form method="post" action="/market/unequip/font" style="display:inline">
+              <button class="btn btn-unapply" type="submit">適用を解除</button>
+            </form>
+          {% else %}
+            <form method="post" action="/market/item/{{ p.item_id }}/apply" style="display:inline">
+              <button class="btn btn-apply" type="submit">このフォントを適用する</button>
+            </form>
+          {% endif %}
+        </div>
+        {% if equipped.font and equipped.font.item_id == p.item_id %}
+        <div class="equipped-note">あなたのレスが、この書体で表示されるようになります。</div>
+        {% endif %}
         {% endif %}
       </div>
     </div>
