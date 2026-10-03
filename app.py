@@ -5278,7 +5278,7 @@ MARKET_FONT_MIME = {
 MARKET_TITLE_MAX = 60
 MARKET_DESC_MAX = 2000
 MARKET_PRICE_MAX = 1000000
-MARKET_USER_TYPES = ('wallpaper', 'font', 'proxy', 'other')    # 一般ユーザーが出品できる種別
+MARKET_USER_TYPES = ('wallpaper', 'proxy', 'other')    # 一般ユーザーが新規出品できる種別(フォントは公式のみ)
 MARKET_OFFICIAL_TYPES = ('font', 'wallpaper')          # 公式商品の種別
 MARKET_IMG_ERR = {
     'required': 'この種別の商品は画像が必須です。',
@@ -5712,7 +5712,7 @@ async def market_edit_form(request: Request, item_id: int):
     full = await market_service.get_item_full(item_id)
     return templates.TemplateResponse(request, 'market_form.html', {
         'mode': 'edit', 'action': f'/market/item/{item_id}/edit', 'item': full,
-        'allowed_types': MARKET_OFFICIAL_TYPES if item['is_official'] else MARKET_USER_TYPES,
+        'allowed_types': MARKET_OFFICIAL_TYPES if item['is_official'] else tuple(dict.fromkeys((*MARKET_USER_TYPES, item['item_type']))),
         'type_labels': market_service.ITEM_TYPE_LABELS,
         'page_title': '商品を編集する',
         'err': request.query_params.get('err'),
@@ -5733,7 +5733,9 @@ async def market_edit_submit(request: Request, item_id: int):
         return text_resp("権限がありません。", 403)
 
     form = await request.form()
-    allowed = MARKET_OFFICIAL_TYPES if item['is_official'] else MARKET_USER_TYPES
+    # 一般ユーザーの既存フォント商品(フォント出品禁止になる前に出品されたもの)も、
+    # 編集・削除はできるよう、その商品自身の種別は許可する(種別の変更は下で禁止している)。
+    allowed = MARKET_OFFICIAL_TYPES if item['is_official'] else tuple(dict.fromkeys((*MARKET_USER_TYPES, item['item_type'])))
     values, err = _market_validate_form(form, allowed)
     if err:
         return _market_redirect(f'/market/item/{item_id}/edit', err=err)
