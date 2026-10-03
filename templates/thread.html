@@ -405,22 +405,54 @@
            （他の人には通常の背景のまま。ページの閲覧者ごとに切り替わる）
            ============================================================ */
         {% if market_equipped and market_equipped.wallpaper and market_equipped.wallpaper.image_url %}
-        .posts-container {
+        /* 壁紙は画面全体(html)に敷き、ヘッダー・レス一覧・入力欄・広告枠を半透明にして透けさせる。
+           html/body は overflow:hidden で画面固定なので、スクロールしても壁紙は動かない。 */
+        html {
             background-image:
                 linear-gradient(rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.55)),
                 url('{{ market_equipped.wallpaper.image_url }}');
             background-size: cover, cover;
             background-position: center center, center center;
             background-repeat: no-repeat, no-repeat;
-            background-attachment: local, local;
         }
-        html[data-theme="light"] .posts-container {
+        html[data-theme="light"] {
             background-image:
                 linear-gradient(rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.72)),
                 url('{{ market_equipped.wallpaper.image_url }}');
         }
-        /* 壁紙の上でもレスが読みやすいように、各レスを少し透過させる */
-        .posts-container .post-item { background: var(--panel-bg); }
+        /* 壁紙が見えるよう、全面の塗りつぶしは外す */
+        body,
+        .posts-container { background-color: transparent; }
+
+        /* 固定パーツ(ヘッダー/入力欄/PC広告枠): 85%の不透明度 + 軽いぼかし
+           ※ 透け具合は 85% を調整(小さいほど透ける、目安は75〜92%) */
+        .header-area,
+        .footer-area,
+        .ad-space-pc {
+            background-color: rgba(30, 41, 59, 0.85); /* color-mix 非対応ブラウザ用の保険 */
+            background-color: color-mix(in srgb, var(--panel-bg) 85%, transparent);
+            -webkit-backdrop-filter: blur(6px);
+            backdrop-filter: blur(6px);
+        }
+        html[data-theme="light"] .header-area,
+        html[data-theme="light"] .footer-area,
+        html[data-theme="light"] .ad-space-pc {
+            background-color: rgba(255, 255, 255, 0.85);
+            background-color: color-mix(in srgb, var(--panel-bg) 85%, transparent);
+        }
+
+        /* 各レス: 78%の不透明度。壁紙は見えるが、文字は読みやすい濃さ。
+           薄くぼかして、壁紙の細かい模様が文字に干渉しないようにしている。 */
+        .posts-container .post-item {
+            background: rgba(30, 41, 59, 0.78);
+            background: color-mix(in srgb, var(--panel-bg) 78%, transparent);
+            -webkit-backdrop-filter: blur(3px);
+            backdrop-filter: blur(3px);
+        }
+        html[data-theme="light"] .posts-container .post-item {
+            background: rgba(255, 255, 255, 0.8);
+            background: color-mix(in srgb, var(--panel-bg) 80%, transparent);
+        }
         {% endif %}
 
         /* ============================================================
