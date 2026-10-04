@@ -1728,7 +1728,21 @@
         </div>
     </div>
 
-        <script>
+        <div class="cf-confirm-overlay" id="cf-confirm-overlay">
+  <div class="cf-confirm" role="dialog" aria-modal="true" aria-labelledby="cf-confirm-title">
+    <h3 id="cf-confirm-title">この内容でスレッドを立てますか？</h3>
+    <div class="cf-confirm-row"><div class="cf-confirm-label">タイトル</div><div class="cf-confirm-value" id="cf-confirm-thread-title"></div></div>
+    <div class="cf-confirm-row"><div class="cf-confirm-label">カテゴリ</div><div class="cf-confirm-value" id="cf-confirm-thread-category"></div></div>
+    <div class="cf-confirm-row"><div class="cf-confirm-label">タグ</div><div class="cf-confirm-value" id="cf-confirm-thread-tags"></div></div>
+    <div class="cf-confirm-note" id="cf-confirm-note" style="display:none">人間であることを確認してください。</div>
+    <div id="cf-ts-box"></div>
+    <div class="cf-confirm-actions">
+      <button type="button" class="cf-confirm-cancel" id="cf-confirm-cancel">戻る</button>
+      <button type="button" class="cf-confirm-ok" id="cf-confirm-ok">スレッドを作成する</button>
+    </div>
+  </div>
+</div>
+<script>
 
     // カテゴリの表示ラベル・バッジ配色（サーバー側のTHREAD_CATEGORIESと同期）
     const CATEGORY_META = {{ category_meta_json | safe }};
@@ -2307,19 +2321,5 @@
     </script>
 
     <div class="toast-stack" id="toast-stack"></div>
-<div class="cf-confirm-overlay" id="cf-confirm-overlay">
-  <div class="cf-confirm" role="dialog" aria-modal="true" aria-labelledby="cf-confirm-title">
-    <h3 id="cf-confirm-title">この内容でスレッドを立てますか？</h3>
-    <div class="cf-confirm-row"><div class="cf-confirm-label">タイトル</div><div class="cf-confirm-value" id="cf-confirm-thread-title"></div></div>
-    <div class="cf-confirm-row"><div class="cf-confirm-label">カテゴリ</div><div class="cf-confirm-value" id="cf-confirm-thread-category"></div></div>
-    <div class="cf-confirm-row"><div class="cf-confirm-label">タグ</div><div class="cf-confirm-value" id="cf-confirm-thread-tags"></div></div>
-    <div class="cf-confirm-note" id="cf-confirm-note" style="display:none">人間であることを確認してください。</div>
-    <div id="cf-ts-box"></div>
-    <div class="cf-confirm-actions">
-      <button type="button" class="cf-confirm-cancel" id="cf-confirm-cancel">戻る</button>
-      <button type="button" class="cf-confirm-ok" id="cf-confirm-ok">スレッドを作成する</button>
-    </div>
-  </div>
-</div>
 </body>
 </html>
