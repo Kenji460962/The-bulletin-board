@@ -1319,7 +1319,7 @@ async def adgem_postback(request: Request):
 GAME_POINTS_WIN = 20
 GAME_POINTS_LOSS = 5
 GAME_LABELS = {'othello': 'オセロ', 'chess': 'チェス', 'shogi': '将棋'}
-THREAD_REPLY_POINTS = 2
+THREAD_REPLY_POINTS = 1  # スレ主以外のレス1件につき、スレ主へ1ポイント
 
 
 async def _award_game_result_points(game: str, room_code: str,
@@ -4073,7 +4073,15 @@ async def thread_view(request: Request, thread_id: int):
                     if not isinstance(thread_res, Exception) and thread_res:
                         op_user_id = resolve_op_user_id(thread_res[0])
                         new_reply['is_op'] = bool(op_user_id) and new_reply.get('user_id') == op_user_id
-                        if op_user_id and not new_reply['is_op']:
+                        # スレ主本人の投稿かどうか(ポイント付与の判定用)。
+                        # スタッフ(管理者など)としてレスすると replies.user_id が "STAFF" になり、
+                        # スレ主のID(会員のpublic_id)と一致しないため、上の is_op だけだと
+                        # 「スレ主が自分のスレにレスしてもポイントが付く」不具合になる。
+                        # そこで、投稿者の会員public_idがスレ主のIDと同じかも合わせて確認する。
+                        is_owner_post = new_reply['is_op'] or bool(
+                            poster_public_id and op_user_id and poster_public_id == op_user_id
+                        )
+                        if op_user_id and not is_owner_post:
                             # 自分が立てたスレに自分以外がレスした場合のみスレ主にポイント付与。
                             await _award_thread_reply_points(thread_id, op_user_id, new_reply['id'])
 
