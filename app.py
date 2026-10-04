@@ -69,6 +69,13 @@ _cache_cleanup_task = None
 #                          未設定の場合はIP制限を行わず、verifier検証のみで防御する。
 # ADGEM_POINTS_MULTIPLIER : postbackの{amount}(AdGem側の仮想通貨量)を
 #                          talk-chポイントへ変換する倍率。既定は等倍(1pt=1amount)。
+# --- 人間チェック(Cloudflare Turnstile) ---
+# 両方の環境変数が設定されているときだけ有効になる(未設定ならチェックなしで従来どおり動作)。
+TURNSTILE_SITE_KEY = os.environ.get('TURNSTILE_SITE_KEY', '')
+TURNSTILE_SECRET_KEY = os.environ.get('TURNSTILE_SECRET_KEY', '')
+TURNSTILE_ENABLED = bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+
 ADGEM_APP_ID = os.environ.get('ADGEM_APP_ID', '')
 ADGEM_POSTBACK_SECRET_KEY = os.environ.get('ADGEM_POSTBACK_SECRET_KEY', '')
 ADGEM_WHITELIST_IPS = {ip.strip() for ip in os.environ.get('ADGEM_WHITELIST_IPS', '').split(',') if ip.strip()}
@@ -1355,6 +1362,28 @@ async def _award_game_result_points(game: str, room_code: str,
             )
         except Exception as e:
             print(f"ゲームポイント付与エラー({game}, room={room_code}, user={user_id}): {e}")
+
+
+async def verify_turnstile(token, client_ip) -> bool:
+    """Cloudflare Turnstile のトークンをサーバー側で検証する。
+
+    - 無効(キー未設定)のときは常に True。
+    - トークン無し・検証失敗・Cloudflareへの通信エラーは False(安全側に倒す)。
+    """
+    if not TURNSTILE_ENABLED:
+        return True
+    if not token:
+        return False
+    try:
+        data = {'secret': TURNSTILE_SECRET_KEY, 'response': str(token)}
+        if client_ip:
+            data['remoteip'] = client_ip
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.post(TURNSTILE_VERIFY_URL, data=data)
+        return bool(res.json().get('success'))
+    except Exception as e:
+        print(f"Turnstile検証エラー: {e}")
+        return False
 
 
 async def _award_thread_reply_points(thread_id: int, op_public_id: str, reply_id):
@@ -3692,6 +3721,7 @@ async def index(request: Request):
             print(f"適用アイテム取得エラー(index): {ee}")
 
     response = templates.TemplateResponse(request, 'index.html', {
+        'turnstile_site_key': TURNSTILE_SITE_KEY if TURNSTILE_ENABLED else '',
         'own_bio': own_bio,
         'own_points_balance': own_points_balance,
         'own_thread_count': own_thread_count,
@@ -3767,6 +3797,12 @@ async def create_thread(request: Request):
 
     tags = _sanitize_tags(form.get('tags', ''))
     tags_json = json.dumps(tags, ensure_ascii=False)
+
+    # 人間チェック(管理者は免除)。クールダウンの記録より前に行い、
+    # チェック失敗で次回の投稿可能時刻が進んでしまわないようにする。
+    if TURNSTILE_ENABLED and not can_manage_board(request):
+        if not await verify_turnstile(form.get('cf-turnstile-response'), client_ip):
+            return json_resp({"error": "人間チェックに失敗しました。もう一度お試しください。"}, 400)
 
     is_admin = can_manage_board(request)
     now = time.time()
