@@ -490,6 +490,10 @@
             font-family: 'talkch-market-font-{{ f.item_id }}', 'Inter', sans-serif;
         }
         {% endfor %}
+    #reply-image-preview { height: 28px; width: 28px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color); flex: none; }
+    .reply-image-clear { font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+        background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
+    .reply-image-clear:hover { color: var(--danger-color, #ef4444); border-color: var(--danger-color, #ef4444); }
     </style>
 </head>
 <body>
@@ -668,7 +672,11 @@
             <div style="display: flex; align-items: stretch; gap: 8px; margin-bottom: 4px;">
                 <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; justify-content: center;">
                     <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">名前: <input type="text" name="author" style="width: 120px; font-size: 11px; padding: 2px 6px;" value="名無しさん"></label>
-                    <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted); max-width: 160px;"></label>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">画像: <input type="file" name="image" accept="image/*" style="font-size: 10px; color: var(--text-muted); max-width: 160px;"></label>
+                        <img id="reply-image-preview" alt="選択した画像" hidden>
+                        <button type="button" id="reply-image-clear" class="reply-image-clear" hidden>✕ 取り消し</button>
+                    </div>
                 </div>
                 <button type="submit" id="submit-btn" title="Ctrl + Enterで送信" style="flex: 0 0 auto; align-self: stretch; font-size: 13px; font-weight: 700; padding: 6px 18px; background: var(--accent-color); color: #0f172a; border: none; border-radius: 6px; cursor: pointer; white-space: nowrap;">書き込む</button>
             </div>
@@ -1253,7 +1261,8 @@
                         if (contentInput) contentInput.value = '';
 
                         const fileInput = bbsForm.querySelector('input[type="file"]');
-                        if (fileInput) fileInput.value = '';
+                        if (window.resetReplyImage) { window.resetReplyImage(); }
+                        else if (fileInput) fileInput.value = '';
 
                         scrollToBottom();
                     } else {
@@ -1417,5 +1426,34 @@
 
     
 
+<script>
+(function () {
+    var input = document.querySelector('#bbsForm input[type="file"][name="image"]');
+    var clearBtn = document.getElementById('reply-image-clear');
+    var preview = document.getElementById('reply-image-preview');
+    if (!input || !clearBtn || !preview) return;
+    var objectUrl = null;
+
+    function reset() {
+        input.value = '';
+        if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
+        preview.removeAttribute('src');
+        preview.hidden = true;
+        clearBtn.hidden = true;
+    }
+    function refresh() {
+        var f = input.files && input.files[0];
+        if (!f) { reset(); return; }
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        objectUrl = URL.createObjectURL(f);
+        preview.src = objectUrl;
+        preview.hidden = false;
+        clearBtn.hidden = false;
+    }
+    input.addEventListener('change', refresh);
+    clearBtn.addEventListener('click', reset);
+    window.resetReplyImage = reset;   // 投稿成功後の初期化からも使う
+})();
+</script>
 </body>
 </html>
