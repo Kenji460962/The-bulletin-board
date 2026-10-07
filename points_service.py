@@ -279,6 +279,102 @@ async def spend_points(
     )
 
 
+async def transfer_points(
+    from_user_id: int,
+    to_user_id: int,
+    amount: int,
+    description_out: str = "",
+    description_in: str = "",
+    source: str = "transfer",
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    """ユーザー間でポイントを送金する。「引き落とし」「入金」「履歴2件」を1トランザクションで行う。
+
+    add_points/spend_points を2回呼ぶ方式だと、1回目(引き落とし)の成功後に2回目(入金)が
+    失敗した場合にポイントが消えてしまう。ここでは全てを同じロック区間・同じ
+    トランザクション内で行い、どこかで失敗したら丸ごとロールバックする。
+
+    idempotency_key を指定すると、同じキーでの再実行(二重クリック・再送)は1回しか反映されない。
+    履歴には f"{key}:out" / f"{key}:in" を使う。
+
+    戻り値: {'success', 'duplicate', 'balance'(送金者の処理後残高), 'error'}
+        error: 'invalid_amount' / 'same_user' / 'insufficient_balance' / 'recipient_not_found'
+    """
+    _check_initialized()
+
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+        return {'success': False, 'duplicate': False,
+                'balance': await get_balance(from_user_id), 'error': 'invalid_amount'}
+    if from_user_id == to_user_id:
+        return {'success': False, 'duplicate': False,
+                'balance': await get_balance(from_user_id), 'error': 'same_user'}
+
+    conn = await _get_conn()
+    async with _lock:
+        try:
+            await conn.execute("BEGIN IMMEDIATE")
+
+            # 送金者の残高チェックと引き落としを1本のSQLで行う(add_pointsと同じ方式)。
+            cursor = await conn.execute(
+                "UPDATE users SET points = points - ? WHERE id = ? AND points - ? >= 0",
+                [amount, from_user_id, amount]
+            )
+            debited = cursor.rowcount
+            await cursor.close()
+            if debited == 0:
+                await conn.rollback()
+                return {'success': False, 'duplicate': False,
+                        'balance': await _read_balance_nolock(conn, from_user_id),
+                        'error': 'insufficient_balance'}
+
+            cursor = await conn.execute(
+                "UPDATE users SET points = points + ? WHERE id = ?",
+                [amount, to_user_id]
+            )
+            credited = cursor.rowcount
+            await cursor.close()
+            if credited == 0:
+                # 受取人が存在しない → 引き落としも含めて取り消す
+                await conn.rollback()
+                return {'success': False, 'duplicate': False,
+                        'balance': await _read_balance_nolock(conn, from_user_id),
+                        'error': 'recipient_not_found'}
+
+            from_balance = await _read_balance_nolock(conn, from_user_id)
+            to_balance = await _read_balance_nolock(conn, to_user_id)
+
+            try:
+                await conn.execute(
+                    "INSERT INTO point_history "
+                    "(user_id, delta, balance_after, reason, description, source, idempotency_key) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [from_user_id, -amount, from_balance, "transfer_out", description_out, source,
+                     f"{idempotency_key}:out" if idempotency_key else None]
+                )
+                await conn.execute(
+                    "INSERT INTO point_history "
+                    "(user_id, delta, balance_after, reason, description, source, idempotency_key) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [to_user_id, amount, to_balance, "transfer_in", description_in, source,
+                     f"{idempotency_key}:in" if idempotency_key else None]
+                )
+            except aiosqlite.IntegrityError:
+                # 同じ idempotency_key の再実行 = 二重送金。全てなかったことにする。
+                await conn.rollback()
+                return {'success': False, 'duplicate': True,
+                        'balance': await _read_balance_nolock(conn, from_user_id), 'error': None}
+
+            await conn.commit()
+            return {'success': True, 'duplicate': False, 'balance': from_balance, 'error': None}
+
+        except Exception:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            raise
+
+
 async def _read_balance_nolock(conn, user_id: int) -> int:
     """既にロックを保持している呼び出し元専用の内部ヘルパー（再ロックしない）。"""
     cursor = await conn.execute("SELECT points FROM users WHERE id = ?", [user_id])
