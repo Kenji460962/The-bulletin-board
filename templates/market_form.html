@@ -17,6 +17,10 @@ textarea{min-height:100px}
 .btn-sub{background:#e5e7eb;color:#333}
 .flash{border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:14px;background:#fee2e2;color:#991b1b}
 .current-img{max-width:200px;border-radius:8px;margin-top:6px}
+.adult-box{margin-top:16px;padding:12px 14px;border:1px solid #fecaca;background:#fef2f2;border-radius:10px}
+.adult-box label.check{display:flex;align-items:center;gap:8px;margin:0;font-size:14px}
+.adult-box input[type=checkbox]{width:18px;height:18px;flex:none}
+.adult-box .help{color:#7f1d1d}
 </style>
 </head>
 <body>
@@ -42,6 +46,23 @@ textarea{min-height:100px}
       <input type="text" name="title" maxlength="60" required value="{{ item.title if item else '' }}">
       <label>説明</label>
       <textarea name="description" maxlength="2000">{{ item.description if item else '' }}</textarea>
+      {# 18歳以上のコンテンツ。adult_field は「この項目を含むフォーム」の目印(サーバー側で参照) #}
+      <div class="adult-box">
+        <input type="hidden" name="adult_field" value="1">
+        <label class="check">
+          <input type="checkbox" name="is_adult" value="1"
+                 {% if item and item.is_adult %}checked{% endif %}
+                 {% if mode == 'edit' and item and item.adult_by_admin and not item.is_official %}disabled{% endif %}>
+          🔞 18歳以上のコンテンツ（性的・暴力的な表現を含む）
+        </label>
+        <div class="help">
+          チェックすると、一覧では画像と説明が伏せられ、商品ページで確認してから表示されます。
+          該当する商品は必ずチェックしてください。運営が18歳以上と判断した場合は、運営が設定することがあります。
+        </div>
+        {% if mode == 'edit' and item and item.adult_by_admin and not item.is_official %}
+        <div class="help"><strong>運営により18歳以上に設定されているため、変更できません。</strong></div>
+        {% endif %}
+      </div>
       <label>価格（ポイント）</label>
       <input type="number" name="price" min="1" max="1000000" required value="{{ item.price if item else '' }}">
       <label>画像 {% if mode=='official' or (not item) %}（必須）{% else %}（変更する場合のみ選択）{% endif %}</label>
