@@ -49,6 +49,13 @@ select{border:1px solid #ddd;border-radius:8px;padding:6px;font-size:14px}
 .report-modal-msg.error{color:#dc2626}
 .report-modal-msg.success{color:#059669}
 .btn-report{background:#e5e7eb;color:#555}
+.badge-adult{background:#fee2e2;color:#991b1b;font-weight:bold}
+.adult-gate{background:#1f2937;color:#f9fafb;border-radius:10px;padding:28px 16px;margin:12px 0;text-align:center}
+.adult-gate .mark{display:inline-block;border:3px solid #f87171;color:#f87171;border-radius:50%;width:54px;height:54px;line-height:54px;font-weight:bold;font-size:18px;margin-bottom:8px}
+.adult-gate .gate-title{font-weight:bold;font-size:15px;margin-bottom:4px}
+.adult-gate .gate-text{font-size:12.5px;color:#d1d5db;margin-bottom:14px;line-height:1.6}
+.adult-gate .btn{background:#f87171;color:#fff;font-weight:bold}
+.adult-admin{font-size:12px;color:#92400e;background:#fef3c7;border-radius:8px;padding:8px 12px;margin:10px 0}
 </style>
 </head>
 <body>
@@ -59,10 +66,19 @@ select{border:1px solid #ddd;border-radius:8px;padding:6px;font-size:14px}
     <div>
       {% if item.is_official %}<span class="badge badge-official">Talk-ch公式</span>{% endif %}
       <span class="badge badge-type">{{ type_labels.get(item.item_type, item.item_type) }}</span>
+      {% if item.is_adult %}<span class="badge badge-adult">🔞 18歳以上</span>{% endif %}
     </div>
     <h1>{{ item.title }}</h1>
-    {% if item.image_url %}<img class="main-img" src="{{ item.image_url }}" alt="{{ item.title }}">{% endif %}
-    <div class="desc">{{ item.description }}</div>
+    {% if item.is_adult %}
+    <div class="adult-gate" id="adult-gate">
+      <div class="mark">18+</div>
+      <div class="gate-title">18歳以上のコンテンツ</div>
+      <div class="gate-text">この商品には18歳以上向けの内容が含まれます。<br>画像・説明は、確認後に表示されます。</div>
+      <button type="button" class="btn" id="adult-show-btn">表示する</button>
+    </div>
+    {% endif %}
+    {% if item.image_url %}<img class="main-img" {% if item.is_adult %}data-src="{{ item.image_url }}" hidden data-adult-hide{% else %}src="{{ item.image_url }}"{% endif %} alt="{{ item.title }}">{% endif %}
+    <div class="desc" {% if item.is_adult %}hidden data-adult-hide{% endif %}>{{ item.description }}</div>
     <div class="meta">
       出品者:
       {% if item.is_official %}Talk-ch公式
@@ -74,7 +90,7 @@ select{border:1px solid #ddd;border-radius:8px;padding:6px;font-size:14px}
 
     {% if item.item_type == 'proxy' %}
       {% if item.secret_url %}
-        <div class="secret-box">
+        <div class="secret-box" {% if item.is_adult %}hidden data-adult-hide{% endif %}>
           🔓 購入済みのためURLを表示しています:<br>
           <a href="{{ item.secret_url }}" target="_blank" rel="noopener noreferrer">{{ item.secret_url }}</a>
         </div>
@@ -125,6 +141,13 @@ select{border:1px solid #ddd;border-radius:8px;padding:6px;font-size:14px}
       {% endif %}
       {% if can_manage %}
         <a class="btn btn-sub" href="/market/item/{{ item.id }}/edit">編集</a>
+      {% endif %}
+      {% if can_set_adult %}
+        <form method="post" action="/market/item/{{ item.id }}/adult" style="display:inline"
+              onsubmit="return confirm('{% if item.is_adult %}18歳以上の設定を解除しますか？{% else %}この商品を18歳以上のコンテンツとして設定しますか？\n(出品者は解除できなくなります){% endif %}');">
+          <input type="hidden" name="value" value="{{ '0' if item.is_adult else '1' }}">
+          <button class="btn btn-sub" type="submit">{% if item.is_adult %}🔞 18歳以上を解除{% else %}🔞 18歳以上に設定{% endif %}</button>
+        </form>
       {% endif %}
       {% if can_delete %}
         <form method="post" action="/market/item/{{ item.id }}/delete" style="display:inline"
@@ -268,6 +291,25 @@ select{border:1px solid #ddd;border-radius:8px;padding:6px;font-size:14px}
         } finally {
             submitBtn.disabled = false;
         }
+    });
+})();
+</script>
+{% endif %}
+{% if item.is_adult %}
+<script>
+(function () {
+    var btn = document.getElementById('adult-show-btn');
+    var gate = document.getElementById('adult-gate');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+        if (!confirm('この商品には18歳以上向けのコンテンツが含まれます。\nあなたは18歳以上ですか？\n\n(18歳未満の方は表示しないでください)')) return;
+        document.querySelectorAll('[data-adult-hide]').forEach(function (el) {
+            if (el.tagName === 'IMG' && el.getAttribute('data-src')) {
+                el.src = el.getAttribute('data-src');
+            }
+            el.hidden = false;
+        });
+        if (gate) gate.hidden = true;
     });
 })();
 </script>
