@@ -185,6 +185,23 @@ async def _redis_listener():
             backoff = min(backoff * 2, 30.0)
 
 
+async def _ensure_dm_image_schema():
+    """DMの画像添付用に dm_messages.image_key 列を起動時に用意する(冪等)。
+    image_key には R2 上のオブジェクトキー(例: dm/xxxx.webp)を入れる。
+    画像は公開URLではなく、会話の当事者だけが見られる /dm/image/{message_id} 経由で配信する。
+    """
+    conn = await _get_db_conn()
+    try:
+        cur = await conn.execute("PRAGMA table_info(dm_messages)")
+        cols = [r[1] for r in await cur.fetchall()]
+        await cur.close()
+        if cols and 'image_key' not in cols:
+            await conn.execute("ALTER TABLE dm_messages ADD COLUMN image_key TEXT")
+            await conn.commit()
+    except Exception as e:
+        print(f"dm_messages.image_key 追加エラー: {e}")
+
+
 @app.on_event("startup")
 async def _startup_redis():
     global redis_client, _redis_listener_task, _cache_cleanup_task
@@ -202,6 +219,7 @@ async def _startup_redis():
     # イベントループ稼働中に開く必要があるため、この起動フック内で生成する。
     await _get_db_conn()
     await _ensure_adgem_schema()
+    await _ensure_dm_image_schema()
     await points_service.ensure_schema()
 
     try:
@@ -4341,6 +4359,44 @@ DM_MAX_LENGTH = 1000
 DM_HISTORY_LIMIT = 200
 DM_COOLDOWN_SECONDS = 1
 LAST_DM_TIMES: dict[int, float] = {}
+DM_MAX_IMAGE_BYTES = 8 * 1024 * 1024   # 送信できる画像の元サイズ上限(サーバー側で1600px・WebPに軽量化して保存)
+DM_ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.webp', '.gif'}
+DM_IMAGE_TYPE_TO_EXT = {'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif'}
+
+
+async def _dm_store_image(upload):
+    """DM添付画像を検証・軽量化して R2 に保存し、(object_key, エラー文) を返す。"""
+    ext = os.path.splitext(upload.filename or '')[1].lower()
+    if ext not in DM_ALLOWED_IMAGE_EXT:
+        ext = DM_IMAGE_TYPE_TO_EXT.get((getattr(upload, 'content_type', '') or '').lower(), '')
+    if not ext:
+        return None, "画像は jpg / png / webp / gif のみ送れます。"
+    raw = await upload.read()
+    if not raw:
+        return None, "画像が空です。"
+    if len(raw) > DM_MAX_IMAGE_BYTES:
+        return None, "画像は8MB以下にしてください。"
+    try:
+        processed, new_ext = await run_in_threadpool(process_reply_image, raw, ext)
+    except ValueError:
+        return None, "画像を読み込めませんでした。別の画像でお試しください。"
+    key = f"dm/{uuid.uuid4().hex}{new_ext}"
+    ctype = {'.webp': 'image/webp', '.png': 'image/png', '.gif': 'image/gif'}.get(new_ext, 'image/jpeg')
+    try:
+        await run_in_threadpool(
+            lambda: s3_client.put_object(Bucket=R2_BUCKET_NAME, Key=key, Body=processed, ContentType=ctype)
+        )
+    except Exception as e:
+        print(f"DM画像のR2保存エラー: {e}")
+        return None, "画像の保存に失敗しました。"
+    return key, None
+
+
+def _dm_attach_image(m: dict) -> dict:
+    """DB行の image_key を、表示用の image_url(認可付き配信URL)に置き換える。"""
+    key = m.pop('image_key', None)
+    m['image_url'] = f"/dm/image/{m['id']}" if key else None
+    return m
 
 
 _CACHE_CLEANUP_INTERVAL_SECONDS = 120  # 2分おきに掃除する(512MBでは1時間分の蓄積でも危険なため)
@@ -4722,7 +4778,8 @@ async def dm_list(request: Request):
             "SELECT c.id AS conversation_id, "
             "       u.username, u.public_id, u.icon_path, "
             "       c.last_message_at, "
-            "       (SELECT m.content FROM dm_messages m WHERE m.conversation_id = c.id "
+            "       (SELECT COALESCE(NULLIF(m.content, ''), CASE WHEN m.image_key IS NOT NULL THEN '📷 画像' END) "
+            "          FROM dm_messages m WHERE m.conversation_id = c.id "
             "          ORDER BY m.id DESC LIMIT 1) AS last_content, "
             "       (SELECT COUNT(*) FROM dm_messages m2 WHERE m2.conversation_id = c.id "
             "          AND m2.sender_id != ? AND m2.read_at IS NULL) AS unread_count "
@@ -4777,7 +4834,7 @@ async def dm_conversation(request: Request, public_id: str):
 
     if conversation_id:
         raw = await execute_query(
-            "SELECT id, sender_id, content, created_at, read_at FROM dm_messages "
+            "SELECT id, sender_id, content, created_at, read_at, image_key FROM dm_messages "
             "WHERE conversation_id = ? ORDER BY id DESC LIMIT ?",
             [conversation_id, DM_HISTORY_LIMIT]
         ) or []
@@ -4785,6 +4842,7 @@ async def dm_conversation(request: Request, public_id: str):
         for m in messages:
             m['is_mine'] = (m['sender_id'] == member_id)
             m['created_at'] = _to_jst_string(m.get('created_at'))
+            _dm_attach_image(m)
             # contentは送信時点で既にhtml.escape済みのため、URLだけをリンク化する
             # (WebSocket/ポーリング経由の表示と同じ挙動に揃える)
             if m.get('content'):
@@ -4830,9 +4888,18 @@ async def api_dm_send(request: Request, public_id: str):
     if err:
         return err
 
-    body = await get_json_silent(request)
-    content = (body.get('content') or '').strip() if body else ''
-    if not content:
+    # 画像付き送信は multipart/form-data、テキストのみ(従来)は JSON の両方を受け付ける。
+    upload = None
+    if 'multipart/form-data' in (request.headers.get('content-type') or '').lower():
+        form = await request.form()
+        content = (form.get('content') or '').strip()
+        up = form.get('image')
+        if up is not None and getattr(up, 'filename', ''):
+            upload = up
+    else:
+        body = await get_json_silent(request)
+        content = (body.get('content') or '').strip() if body else ''
+    if not content and upload is None:
         return json_resp({"success": False, "error": "本文が空です。"}, 400)
     if len(content) > DM_MAX_LENGTH:
         return json_resp({"success": False, "error": f"本文は{DM_MAX_LENGTH}文字以内にしてください。"}, 400)
@@ -4855,25 +4922,31 @@ async def api_dm_send(request: Request, public_id: str):
     # リンク化だけ行う（掲示板本体のレスと同じ方針）。
     safe_content = html.escape(content)
 
+    image_key = None
+    if upload is not None:
+        image_key, img_err = await _dm_store_image(upload)
+        if img_err:
+            return json_resp({"success": False, "error": img_err}, 400)
+
     try:
         conversation_id = await _get_or_create_conversation(member_id, target_id)
         if not conversation_id:
             return json_resp({"success": False, "error": "会話の作成に失敗しました。"}, 500)
 
         await execute_query(
-            "INSERT INTO dm_messages (conversation_id, sender_id, content) VALUES (?, ?, ?)",
-            [conversation_id, member_id, safe_content]
+            "INSERT INTO dm_messages (conversation_id, sender_id, content, image_key) VALUES (?, ?, ?, ?)",
+            [conversation_id, member_id, safe_content, image_key]
         )
         await execute_query(
             "UPDATE dm_conversations SET last_message_at = datetime('now') WHERE id = ?",
             [conversation_id]
         )
         res = await execute_query(
-            "SELECT id, sender_id, content, created_at FROM dm_messages "
+            "SELECT id, sender_id, content, created_at, image_key FROM dm_messages "
             "WHERE conversation_id = ? ORDER BY id DESC LIMIT 1",
             [conversation_id]
         )
-        new_message = res[0] if res else None
+        new_message = _dm_attach_image(res[0]) if res else None
     except Exception as e:
         print(f"DM送信エラー: {e}")
         return json_resp({"success": False, "error": "送信に失敗しました。"}, 500)
@@ -4935,7 +5008,7 @@ async def api_dm_poll(request: Request, public_id: str):
 
     try:
         rows = await execute_query(
-            "SELECT id, sender_id, content, created_at FROM dm_messages "
+            "SELECT id, sender_id, content, created_at, image_key FROM dm_messages "
             "WHERE conversation_id = ? AND id > ? ORDER BY id ASC LIMIT 50",
             [conversation_id, after_id]
         ) or []
@@ -4959,6 +5032,7 @@ async def api_dm_poll(request: Request, public_id: str):
             messages.append({
                 "id": r['id'],
                 "content": content,
+                "image_url": f"/dm/image/{r['id']}" if r.get('image_key') else None,
                 "created_at": _to_jst_string(r.get('created_at')),
                 "is_mine": r['sender_id'] == member_id,
             })
@@ -4966,6 +5040,115 @@ async def api_dm_poll(request: Request, public_id: str):
     except Exception as e:
         print(f"DMポーリングエラー: {e}")
         return json_resp({"success": False, "error": "取得に失敗しました。"}, 500)
+
+
+# ---------------------------------------------------------------------
+# ポイント送金
+# ---------------------------------------------------------------------
+POINT_TRANSFER_MIN = 1
+POINT_TRANSFER_MAX = 100000               # 1回あたりの上限(必要に応じて調整)
+POINT_TRANSFER_COOLDOWN_SECONDS = 3
+LAST_POINT_TRANSFER_TIMES: dict[int, float] = {}
+
+POINT_TRANSFER_ERRORS = {
+    'insufficient_balance': 'ポイントが足りません。',
+    'recipient_not_found': '送金先のユーザーが見つかりません。',
+    'same_user': '自分自身には送金できません。',
+    'invalid_amount': '金額が正しくありません。',
+}
+
+
+@app.post('/api/points/transfer/{public_id}')
+async def api_points_transfer(request: Request, public_id: str):
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+
+    body = await get_json_silent(request) or {}
+    try:
+        amount = int(body.get('amount'))
+    except (TypeError, ValueError):
+        return json_resp({"success": False, "error": "金額は整数で入力してください。"}, 400)
+    if amount < POINT_TRANSFER_MIN or amount > POINT_TRANSFER_MAX:
+        return json_resp({
+            "success": False,
+            "error": f"送金できるのは1回につき{POINT_TRANSFER_MIN:,}〜{POINT_TRANSFER_MAX:,}ポイントです。",
+        }, 400)
+
+    target_id = await _user_id_by_public_id(public_id)
+    if not target_id:
+        return json_resp({"success": False, "error": "ユーザーが見つかりません。"}, 404)
+    if target_id == member_id:
+        return json_resp({"success": False, "error": "自分自身には送金できません。"}, 400)
+    if await is_blocked_between(member_id, target_id):
+        return json_resp({"success": False, "error": "この相手には送金できません。"}, 403)
+
+    now = time.time()
+    last = LAST_POINT_TRANSFER_TIMES.get(member_id)
+    if last is not None and now - last < POINT_TRANSFER_COOLDOWN_SECONDS:
+        return json_resp({"success": False, "error": "操作が速すぎます。少し待ってください。"}, 429)
+    LAST_POINT_TRANSFER_TIMES[member_id] = now
+
+    names = await execute_query(
+        "SELECT id, username FROM users WHERE id IN (?, ?)", [member_id, target_id]
+    ) or []
+    name_by_id = {r['id']: r['username'] for r in names}
+    from_name = name_by_id.get(member_id) or '不明'
+    to_name = name_by_id.get(target_id) or '不明'
+
+    # 画面を開くたびに作られる request_id を冪等キーにして、二重クリック・再送で二重送金しない。
+    request_id = str(body.get('request_id') or '')[:64]
+    idem_key = f"transfer:{member_id}:{request_id}" if request_id else None
+
+    try:
+        result = await points_service.transfer_points(
+            member_id, target_id, amount,
+            description_out=f"{to_name} さんへ送金",
+            description_in=f"{from_name} さんから受け取り",
+            source='transfer',
+            idempotency_key=idem_key,
+        )
+    except Exception as e:
+        print(f"ポイント送金エラー: {e}")
+        return json_resp({"success": False, "error": "送金に失敗しました。"}, 500)
+
+    if result['success']:
+        return json_resp({"success": True, "balance": result['balance'], "amount": amount, "to": to_name})
+    if result['duplicate']:
+        return json_resp({"success": False, "error": "この送金はすでに処理されています。"}, 409)
+    return json_resp({
+        "success": False,
+        "error": POINT_TRANSFER_ERRORS.get(result['error'], '送金に失敗しました。'),
+    }, 400)
+
+
+@app.get('/dm/image/{message_id}')
+async def dm_image(request: Request, message_id: int):
+    """DMの添付画像を配信する。その会話の当事者(送信者・受信者)だけが見られる。"""
+    if not is_member_logged_in(request):
+        return text_resp("ログインが必要です。", 401)
+    member_id = request.session.get('member_id')
+    rows = await execute_query(
+        "SELECT m.image_key FROM dm_messages m "
+        "JOIN dm_conversations c ON c.id = m.conversation_id "
+        "WHERE m.id = ? AND m.image_key IS NOT NULL AND (c.user_a_id = ? OR c.user_b_id = ?)",
+        [message_id, member_id, member_id]
+    )
+    if not rows:
+        return text_resp("画像が見つかりません。", 404)
+    try:
+        obj = await run_in_threadpool(
+            lambda: s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=rows[0]['image_key'])
+        )
+        data = await run_in_threadpool(obj['Body'].read)
+        ctype = obj.get('ContentType') or 'application/octet-stream'
+    except Exception as e:
+        print(f"DM画像の取得エラー: {e}")
+        return text_resp("画像が見つかりません。", 404)
+    return Response(
+        content=data, media_type=ctype,
+        headers={'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'},
+    )
 
 
 @app.get('/api/dm/unread_count')
