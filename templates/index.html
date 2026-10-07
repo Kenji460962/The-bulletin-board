@@ -1076,8 +1076,6 @@
 .cf-confirm-row{margin-bottom:10px;font-size:13.5px}
 .cf-confirm-label{font-size:12px;color:var(--text-muted,#475569);margin-bottom:2px}
 .cf-confirm-value{white-space:pre-wrap;overflow-wrap:anywhere;font-weight:600}
-.cf-confirm-note{font-size:12px;color:var(--text-muted,#475569);margin:12px 0 8px}
-#cf-ts-box{min-height:65px;margin:8px 0 4px}
 .cf-confirm-actions{display:flex;gap:8px;margin-top:14px}
 .cf-confirm-actions button{flex:1;padding:10px;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer}
 .cf-confirm-cancel{background:transparent;color:var(--text-muted,#475569);border:1px solid var(--card-border,#e5e7eb)}
@@ -1734,8 +1732,6 @@
     <div class="cf-confirm-row"><div class="cf-confirm-label">タイトル</div><div class="cf-confirm-value" id="cf-confirm-thread-title"></div></div>
     <div class="cf-confirm-row"><div class="cf-confirm-label">カテゴリ</div><div class="cf-confirm-value" id="cf-confirm-thread-category"></div></div>
     <div class="cf-confirm-row"><div class="cf-confirm-label">タグ</div><div class="cf-confirm-value" id="cf-confirm-thread-tags"></div></div>
-    <div class="cf-confirm-note" id="cf-confirm-note" style="display:none">人間であることを確認してください。</div>
-    <div id="cf-ts-box"></div>
     <div class="cf-confirm-actions">
       <button type="button" class="cf-confirm-cancel" id="cf-confirm-cancel">戻る</button>
       <button type="button" class="cf-confirm-ok" id="cf-confirm-ok">スレッドを作成する</button>
@@ -2053,46 +2049,19 @@
         }
     });
 
-    // ---- スレ立て: 確認画面 + 人間チェック(Cloudflare Turnstile) ----
-    const TURNSTILE_SITE_KEY = {{ (turnstile_site_key or '') | tojson }};
-    let cfWidgetId = null;
-    let cfToken = null;
+    // ---- スレ立て: 確認画面 ----
     let cfForm = null;
     let cfBusy = false;
 
     const cfOverlay = document.getElementById('cf-confirm-overlay');
     const cfOkBtn = document.getElementById('cf-confirm-ok');
 
-    function cfLoadTurnstile() {
-        return new Promise((resolve, reject) => {
-            if (window.turnstile) return resolve();
-            let s = document.getElementById('cf-ts-script');
-            if (!s) {
-                s = document.createElement('script');
-                s.id = 'cf-ts-script';
-                s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-                s.async = true;
-                document.head.appendChild(s);
-            }
-            s.addEventListener('load', () => resolve());
-            s.addEventListener('error', () => reject(new Error('turnstile load failed')));
-        });
-    }
-
-    function cfResetWidget() {
-        cfToken = null;
-        if (TURNSTILE_SITE_KEY) {
-            cfOkBtn.disabled = true;
-            if (cfWidgetId !== null && window.turnstile) window.turnstile.reset(cfWidgetId);
-        }
-    }
-
     function cfCloseConfirm() {
         cfOverlay.classList.remove('open');
         cfForm = null;
     }
 
-    async function openCreateConfirm(form) {
+    function openCreateConfirm(form) {
         const title = (form.elements['title'].value || '').trim();
         if (!title) { alert('タイトルを入力してください。'); return; }
         const catSel = form.elements['category'];
@@ -2103,33 +2072,8 @@
         document.getElementById('cf-confirm-thread-category').textContent = catLabel;
         document.getElementById('cf-confirm-thread-tags').textContent = tags || '（なし）';
         cfForm = form;
-        cfToken = null;
+        cfOkBtn.disabled = false;
         cfOverlay.classList.add('open');
-
-        if (!TURNSTILE_SITE_KEY) {
-            cfOkBtn.disabled = false;   // 人間チェック未設定の環境では確認画面のみ
-            return;
-        }
-        cfOkBtn.disabled = true;
-        document.getElementById('cf-confirm-note').style.display = '';
-        try {
-            await cfLoadTurnstile();
-            if (cfWidgetId === null) {
-                cfWidgetId = window.turnstile.render('#cf-ts-box', {
-                    sitekey: TURNSTILE_SITE_KEY,
-                    theme: 'auto',
-                    callback: (t) => { cfToken = t; cfOkBtn.disabled = false; },
-                    'expired-callback': () => { cfToken = null; cfOkBtn.disabled = true; },
-                    'error-callback': () => { cfToken = null; cfOkBtn.disabled = true; }
-                });
-            } else {
-                window.turnstile.reset(cfWidgetId);
-            }
-        } catch (err) {
-            console.error(err);
-            alert('人間チェックの読み込みに失敗しました。時間をおいて再度お試しください。');
-            cfCloseConfirm();
-        }
     }
 
     document.getElementById('cf-confirm-cancel').addEventListener('click', cfCloseConfirm);
@@ -2138,22 +2082,13 @@
 
     cfOkBtn.addEventListener('click', async () => {
         if (cfBusy || !cfForm) return;
-        if (TURNSTILE_SITE_KEY && !cfToken) return;
         cfBusy = true;
         cfOkBtn.disabled = true;
         const form = cfForm;
-        const formData = new FormData(form);
-        if (cfToken) formData.append('cf-turnstile-response', cfToken);
-        const ok = await doCreateThread(form, formData);
+        const ok = await doCreateThread(form, new FormData(form));
         cfBusy = false;
-        if (ok) {
-            cfCloseConfirm();
-            cfResetWidget();
-        } else {
-            // トークンは1回しか使えないので、失敗時は取り直してもらう
-            cfResetWidget();
-            if (!TURNSTILE_SITE_KEY) cfOkBtn.disabled = false;
-        }
+        cfOkBtn.disabled = false;
+        if (ok) cfCloseConfirm();
     });
 
     document.getElementById('create-thread-form').addEventListener('submit', (e) => {
