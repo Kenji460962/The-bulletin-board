@@ -1,328 +1,383 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ profile_user.username }} のプロフィール | talk-ch</title>
-<style>
-  :root {
-    --bg: #F6F8FA; --card-bg: #FFFFFF; --card-border: #E5E7EB;
-    --text: #111827; --text-muted: #475569; --primary: #2563EB;
-    --primary-hover: #1D4ED8; --primary-soft: #EFF4FE; --radius: 6px;
-  }
-  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Kaku Gothic ProN",sans-serif; }
-  .wrap { max-width: 520px; margin: 0 auto; padding: 28px 16px 60px; }
-  .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 24px; }
-  .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
-  .head-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+"""
+points_service.py
+==================
 
-  /* --- アバター --- */
-  .avatar {
-    width: 56px; height: 56px; border-radius: 50%; flex: none;
-    background: var(--primary-soft); color: var(--primary);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; font-weight: 800; overflow: hidden;
-    border: 1px solid var(--card-border);
-  }
-  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+talk-ch のポイント残高・ポイント履歴（元帳）を一元管理するモジュール。
 
-  .head-text { min-width: 0; }
-  .username { font-size: 22px; font-weight: 800; margin: 0; overflow-wrap: anywhere; }
-  .edit-link {
-    font-size: 12.5px; font-weight: 600; color: var(--primary); text-decoration: none;
-    border: 1px solid var(--primary); border-radius: var(--radius); padding: 6px 12px; white-space: nowrap;
-  }
-  .joined { font-size: 12.5px; color: var(--text-muted); margin: 4px 0 16px; }
-  .bio { font-size: 14px; line-height: 1.7; white-space: pre-wrap; margin: 0 0 22px; color: var(--text); overflow-wrap: anywhere; }
-  .bio.empty { color: var(--text-muted); font-style: italic; }
-  .bio a { color: var(--primary); word-break: break-all; }
+■ 設計方針: 広告機能からの独立
+--------------------------------
+AdGemのpostback処理や、将来追加されるかもしれない他の付与経路
+（ログインボーナス、スレッド投稿ボーナス、管理者による手動付与など）は、
+すべてこのモジュールの `add_points()` / `spend_points()` だけを呼び出せばよい。
+「ポイントをどう貯める/使わせるか」という各機能固有のロジックと、
+「どう安全に残高を増減させ、履歴を記録するか」という共通処理を分離することで、
+将来の付与経路の追加・変更が本モジュールにも既存の他機能にも影響しない。
 
-  .section-title { font-size: 13px; font-weight: 700; color: var(--text-muted); margin: 0 0 10px; }
+このモジュールはapp_49.py（メインアプリ）を一切importしない。
+DB接続の取得方法と排他ロックは起動時に `init()` で外から注入してもらう
+（依存性注入）。これにより循環importを避けつつ、既存アプリのDB接続の
+仕組み（単一のaiosqlite接続 + asyncio.Lockによる直列化）をそのまま再利用する。
 
-  /* ---- フォロー数 ---- */
-  .follow-counts { display: flex; gap: 18px; margin: 0 0 16px; }
-  .follow-counts a { text-decoration: none; color: var(--text-muted); font-size: 13px; }
-  .follow-counts a:hover { color: var(--primary); }
-  .follow-counts .num { font-weight: 800; color: var(--text); margin-right: 3px; }
+■ 二重付与・同時実行による不整合の防止
+--------------------------------------
+1. 残高の増減は「1本のUPDATE文」で行い、減算時に残高が0未満にならないか
+   という条件までWHERE句に含める:
+       UPDATE users SET points = points + ? WHERE id = ? AND points + ? >= 0
+   これにより「残高を確認してから更新する」方式につきまとう、
+   確認と更新の間に別のリクエストが割り込んでしまうリスクを構造的に排除する。
 
-  /* ---- アクションボタン ---- */
-  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 22px; }
-  .btn {
-    font-size: 13px; font-weight: 700; border-radius: var(--radius);
-    padding: 8px 16px; cursor: pointer; text-decoration: none;
-    border: 1px solid var(--primary); background: var(--primary); color: #fff;
-  }
-  .btn.secondary { background: transparent; color: var(--primary); }
-  .btn.muted { background: transparent; color: var(--text-muted); border-color: var(--card-border); }
-  .btn.danger { background: transparent; color: #DC2626; border-color: #FCA5A5; }
-  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  .mutual-tag { font-size: 11.5px; color: var(--text-muted); align-self: center; }
+2. `idempotency_key` を指定すると、同じキーでの呼び出しは実際には
+   1回しか反映されない（point_history.idempotency_key にUNIQUE制約）。
+   AdGemのpostback再送、二重クリック、ネットワーク再試行によるAPIの
+   多重リクエストなど「同じ加算/減算指示が複数回届く」ケース全般に有効。
 
-  /* ---- 通報モーダル ---- */
-  .modal-backdrop {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-    z-index: 50; align-items: center; justify-content: center; padding: 16px;
-  }
-  .modal-backdrop.open { display: flex; }
-  .modal {
-    background: var(--card-bg); border-radius: 8px; padding: 20px;
-    width: 100%; max-width: 380px;
-  }
-  .modal h2 { margin: 0 0 14px; font-size: 16px; }
-  .modal label { display: block; font-size: 12.5px; color: var(--text-muted); margin-bottom: 6px; }
-  .modal select, .modal textarea {
-    width: 100%; border: 1px solid var(--card-border); border-radius: var(--radius);
-    padding: 9px 10px; font-size: 13.5px; font-family: inherit; margin-bottom: 14px;
-    background: var(--bg); color: var(--text);
-  }
-  .modal textarea { resize: vertical; min-height: 70px; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+3. アプリ全体で使っているSQLite接続は1本（単一プロセス・単一コネクション）で、
+   すべての書き込みは共有の asyncio.Lock で直列化されている
+  （app_49.py の `_db_lock` を参照）。本モジュールはその接続とロックを
+   `init()` で受け取り、「残高更新 → 履歴INSERT → commit」を
+   ロックを1回だけ取得した区間の中で行う。これにより、他の同時実行中の
+   リクエストがこの一連の処理の途中に割り込むことはない。
+"""
 
-  /* --- 掲示板実績 --- */
-  .board-stats {
-    display: flex; gap: 10px; margin-bottom: 22px;
-  }
-  .board-stat-box {
-    flex: 1; background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
-    padding: 12px 14px; text-align: center;
-  }
-  .board-stat-box .num { font-size: 20px; font-weight: 800; color: var(--primary); line-height: 1.2; }
-  .board-stat-box .label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+from __future__ import annotations
 
-  /* --- ゲーム成績 --- */
-  .game-rows { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
-  .game-row {
-    display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
-    background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
-    padding: 10px 14px; font-size: 13.5px;
-  }
-  .game-row .name { font-weight: 600; min-width: 56px; }
-  .game-row .rating { font-weight: 700; color: var(--primary); }
-  .game-row .record { color: var(--text-muted); font-size: 12.5px; }
-  .game-row .win-rate { font-size: 12.5px; font-weight: 700; color: var(--text); }
-  .no-games { font-size: 13px; color: var(--text-muted); }
-  /* ---- ショップへのリンク ---- */
-  .shop-link {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
-    padding: 12px 16px; margin-bottom: 22px; text-decoration: none;
-    font-size: 13.5px; font-weight: 700; color: var(--primary);
-  }
-  .shop-link:hover { background: var(--primary-soft); }
-  .shop-link .arrow { color: var(--text-muted); }
-  .back-link { display: inline-block; margin-top: 20px; font-size: 13px; color: var(--primary); text-decoration: none; }
+import asyncio
+from typing import Any, Awaitable, Callable, Optional
 
-  /* ---- ポイント(本人のみ表示) ---- */
-  .points-box {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
-    background: var(--primary-soft); border: 1px solid var(--card-border); border-radius: var(--radius);
-    padding: 14px 16px; margin-bottom: 22px; text-decoration: none;
-  }
-  .points-box-balance { font-size: 24px; font-weight: 800; color: var(--primary); line-height: 1.2; }
-  .points-box-balance .unit { font-size: 13px; font-weight: 700; color: var(--text-muted); margin-left: 3px; }
-  .points-box-link { font-size: 12.5px; font-weight: 700; color: var(--primary); white-space: nowrap; }
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="head">
-        <div class="head-left">
-          <div class="avatar">
-            {% if profile_user.icon_path %}
-            <img src="{{ profile_user.icon_path }}" alt="{{ profile_user.username }}のアイコン" loading="lazy">
-            {% else %}
-            <span>{{ profile_user.username[:1] if profile_user.username else '?' }}</span>
-            {% endif %}
-          </div>
-          <div class="head-text">
-            <h1 class="username">{{ profile_user.username }}</h1>
-          </div>
-        </div>
-        {% if is_own_profile %}
-        <a class="edit-link" href="{{ url_for('profile_edit_form') }}">プロフィールを編集</a>
-        {% endif %}
-      </div>
-      <div class="joined">{{ profile_user.created_at[:10] if profile_user.created_at else '' }} 登録</div>
+import aiosqlite
 
-      <div class="follow-counts">
-        <a href="/profile/{{ profile_user.public_id }}/followers"><span class="num">{{ follow_counts.followers }}</span>フォロワー</a>
-        <a href="/profile/{{ profile_user.public_id }}/following"><span class="num">{{ follow_counts.following }}</span>フォロー中</a>
-      </div>
+_get_conn: Optional[Callable[[], Awaitable[Any]]] = None
+_lock: Optional[asyncio.Lock] = None
 
-      {% if profile_user.bio %}
-      <p class="bio">{{ profile_user.bio|linkify }}</p>
-      {% else %}
-      <p class="bio empty">自己紹介はまだありません。</p>
-      {% endif %}
 
-      {% if current_member and not is_own_profile %}
-      <div class="actions">
-        <button type="button" class="btn {{ 'secondary' if follow_state.following else '' }}" id="follow-btn"
-                {% if follow_state.blocked %}disabled{% endif %}>
-          {{ 'フォロー中' if follow_state.following else 'フォローする' }}
-        </button>
+def init(get_conn: Callable[[], Awaitable[Any]], lock: asyncio.Lock) -> None:
+    """呼び出し元（app_49.py）が持つDBコネクション取得関数と排他ロックを登録する。
 
-        {% if follow_state.mutual %}
-        <a class="btn secondary" href="/messages/{{ profile_user.public_id }}">DMを送る</a>
-        {% else %}
-        <span class="mutual-tag">相互フォローになるとDMを送れます</span>
-        {% endif %}
+    アプリ起動時に一度だけ呼び出すこと。例:
 
-        <button type="button" class="btn muted" id="block-btn">
-          {{ 'ブロック解除' if follow_state.blocked else 'ブロック' }}
-        </button>
-        <button type="button" class="btn danger" id="report-btn">通報</button>
-      </div>
-      {% endif %}
+        import points_service
+        points_service.init(_get_db_conn, _db_lock)
 
-      {% if is_own_profile %}
-      <div class="section-title">ポイント</div>
-      <a class="points-box" href="{{ url_for('points_page') }}">
-        <div class="points-box-balance">{{ "{:,}".format(points_balance or 0) }}<span class="unit">pt</span></div>
-        <span class="points-box-link">ポイント履歴を見る ›</span>
-      </a>
-      {% endif %}
+        @app.on_event("startup")
+        async def _startup():
+            ...
+            await points_service.ensure_schema()
+    """
+    global _get_conn, _lock
+    _get_conn = get_conn
+    _lock = lock
 
-      <div class="section-title">ショップ</div>
-      <a class="shop-link" href="/market/shop/{{ profile_user.public_id }}">
-        <span>{{ profile_user.username }} のショップを見る</span>
-        <span class="arrow">›</span>
-      </a>
 
-      <div class="section-title">掲示板実績</div>
-      <div class="board-stats">
-        <div class="board-stat-box">
-          <div class="num">{{ board_stats.thread_count }}</div>
-          <div class="label">作成スレッド数</div>
-        </div>
-        <div class="board-stat-box">
-          <div class="num">{{ board_stats.reply_count }}</div>
-          <div class="label">総レス数</div>
-        </div>
-      </div>
+def _check_initialized() -> None:
+    if _get_conn is None or _lock is None:
+        raise RuntimeError(
+            "points_service.init(get_conn, lock) が呼ばれていません。"
+            "アプリ起動時に一度だけ初期化してください。"
+        )
 
-      <div class="section-title">ゲーム成績</div>
-      {% set game_labels = {'othello': 'オセロ', 'chess': 'チェス', 'shogi': '将棋'} %}
-      {% if games.othello or games.chess or games.shogi %}
-      <div class="game-rows">
-        {% for key, label in game_labels.items() %}
-        {% if games[key] %}
-        <div class="game-row">
-          <span class="name">{{ label }}</span>
-          <span class="rating">R{{ games[key].rating }}</span>
-          <span class="record">{{ games[key].wins }}勝{{ games[key].losses }}敗{{ games[key].draws }}分</span>
-          <span class="win-rate">勝率 {{ games[key].win_rate }}</span>
-        </div>
-        {% endif %}
-        {% endfor %}
-      </div>
-      {% else %}
-      <p class="no-games">まだ対局記録がありません。</p>
-      {% endif %}
-    </div>
 
-    <a class="back-link" href="/">トップに戻る</a>
-  </div>
+async def ensure_schema() -> None:
+    """ポイント履歴テーブルを起動時に用意する（冪等）。
 
-{% if current_member and not is_own_profile %}
-<div class="modal-backdrop" id="report-modal">
-  <div class="modal">
-    <h2>{{ profile_user.username }} を通報</h2>
-    <label for="report-reason">通報理由</label>
-    <select id="report-reason">
-      {% for key, label in report_reasons.items() %}
-      <option value="{{ key }}">{{ label }}</option>
-      {% endfor %}
-    </select>
-    <label for="report-detail">詳細（任意・500文字まで）</label>
-    <textarea id="report-detail" maxlength="500" placeholder="状況を具体的に書いていただけると対応しやすくなります。"></textarea>
-    <div class="modal-actions">
-      <button type="button" class="btn muted" id="report-cancel">キャンセル</button>
-      <button type="button" class="btn danger" id="report-submit">通報する</button>
-    </div>
-  </div>
-</div>
+    users.points 自体は既存のAdGem連携が用意するカラムをそのまま
+    「現在の残高」として使い続ける（残高の二重管理を避けるため）。
+    本モジュールが追加するのは、その増減の証跡を残す point_history のみ。
+    ALTER TABLEは、users.points がまだ存在しない環境（本モジュール単体導入時）
+    への保険であり、既に存在する場合のエラーは無視してよい。
+    """
+    _check_initialized()
+    conn = await _get_conn()
 
-<script>
-  const PUBLIC_ID = {{ profile_user.public_id | tojson }};
+    try:
+        await conn.execute("ALTER TABLE users ADD COLUMN points INTEGER NOT NULL DEFAULT 0")
+    except Exception:
+        pass
 
-  async function postJson(url, body) {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body || {})
-    });
-    return res.json();
-  }
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS point_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            delta INTEGER NOT NULL,
+            balance_after INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            description TEXT,
+            source TEXT NOT NULL DEFAULT 'system',
+            idempotency_key TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_point_history_user_id "
+        "ON point_history(user_id, id DESC)"
+    )
+    # idempotency_key が同じ行は1つしか存在できない = 同一操作の二重反映を防ぐ一意制約。
+    # NULL/空文字は対象外（idempotency_keyを付けない単発の手動処理などは複数回あってよい）。
+    await conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_point_history_idempotency_key "
+        "ON point_history(idempotency_key) "
+        "WHERE idempotency_key IS NOT NULL AND idempotency_key != ''"
+    )
+    await conn.commit()
 
-  // ---- フォロー ----
-  const followBtn = document.getElementById('follow-btn');
-  followBtn.addEventListener('click', async () => {
-    followBtn.disabled = true;
-    try {
-      const data = await postJson(`/api/follow/${PUBLIC_ID}`);
-      if (data.success) {
-        followBtn.textContent = data.following ? 'フォロー中' : 'フォローする';
-        followBtn.classList.toggle('secondary', data.following);
-        // 相互になった／解除された時点でDMボタンの有無が変わるため読み直す
-        location.reload();
-      } else {
-        alert(data.error || '処理に失敗しました。');
-      }
-    } catch (e) {
-      alert('通信に失敗しました。');
-    } finally {
-      followBtn.disabled = false;
-    }
-  });
 
-  // ---- ブロック ----
-  const blockBtn = document.getElementById('block-btn');
-  blockBtn.addEventListener('click', async () => {
-    const isBlocked = blockBtn.textContent.trim() === 'ブロック解除';
-    if (!isBlocked && !confirm('このユーザーをブロックしますか？\n互いのフォローが解除され、DMのやり取りもできなくなります。')) return;
+async def get_balance(user_id: int) -> int:
+    """現在のポイント残高を返す。"""
+    _check_initialized()
+    conn = await _get_conn()
+    async with _lock:
+        cursor = await conn.execute("SELECT points FROM users WHERE id = ?", [user_id])
+        row = await cursor.fetchone()
+        await cursor.close()
+    return int(row[0]) if row else 0
 
-    blockBtn.disabled = true;
-    try {
-      const data = await postJson(`/api/block/${PUBLIC_ID}`);
-      if (data.success) {
-        location.reload();
-      } else {
-        alert(data.error || '処理に失敗しました。');
-        blockBtn.disabled = false;
-      }
-    } catch (e) {
-      alert('通信に失敗しました。');
-      blockBtn.disabled = false;
-    }
-  });
 
-  // ---- 通報 ----
-  const modal = document.getElementById('report-modal');
-  document.getElementById('report-btn').addEventListener('click', () => modal.classList.add('open'));
-  document.getElementById('report-cancel').addEventListener('click', () => modal.classList.remove('open'));
-  modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+async def get_history(user_id: int, limit: int = 20, offset: int = 0) -> list[dict]:
+    """ポイント履歴を新しい順に返す（一覧ページのページネーション用）。"""
+    _check_initialized()
+    conn = await _get_conn()
+    async with _lock:
+        cursor = await conn.execute(
+            "SELECT id, delta, balance_after, reason, description, source, created_at "
+            "FROM point_history WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+            [user_id, limit, offset]
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+    return [dict(row) for row in rows]
 
-  document.getElementById('report-submit').addEventListener('click', async () => {
-    const reason = document.getElementById('report-reason').value;
-    const detail = document.getElementById('report-detail').value;
-    try {
-      const data = await postJson('/api/report', {
-        target_type: 'user', target_id: PUBLIC_ID, reason, detail
-      });
-      if (data.success) {
-        modal.classList.remove('open');
-        document.getElementById('report-detail').value = '';
-        alert(data.already ? 'このユーザーは既に通報済みです。' : '通報を受け付けました。');
-      } else {
-        alert(data.error || '通報に失敗しました。');
-      }
-    } catch (e) {
-      alert('通信に失敗しました。');
-    }
-  });
-</script>
-{% endif %}
-</body>
-</html>
+
+async def count_history(user_id: int) -> int:
+    _check_initialized()
+    conn = await _get_conn()
+    async with _lock:
+        cursor = await conn.execute(
+            "SELECT COUNT(*) FROM point_history WHERE user_id = ?", [user_id]
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+    return int(row[0]) if row else 0
+
+
+async def add_points(
+    user_id: int,
+    delta: int,
+    reason: str,
+    description: str = "",
+    source: str = "system",
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    """ポイントを増減させ、履歴を1件残す。全ての増減はこの関数を経由すること。
+
+    引数:
+        user_id: 対象ユーザーのusers.id
+        delta: 正の値で加算、負の値で減算（残高が不足する減算は失敗する）
+        reason: 機械可読な理由コード。例: 'adgem_offer', 'admin_grant', 'thread_bonus'
+        description: 履歴ページに表示する日本語の説明文
+        source: どの機能からの操作かを表す分類タグ。例: 'ad', 'admin', 'system'
+                広告機能はここに 'ad' を渡すだけでよく、本モジュール内部の実装
+                （テーブル構造やロック方式）には一切依存しない。
+        idempotency_key: 同一操作を一意に識別するキー。同じキーで複数回呼んでも
+                実際に反映されるのは1回だけ（二重付与防止）。
+                例: f"adgem:{request_id}", f"daily_login:{user_id}:{date_str}"
+
+    戻り値:
+        {
+            'success': bool,      # 反映されたか
+            'duplicate': bool,    # idempotency_key重複によりスキップされたか
+            'balance': int,       # 処理後（またはスキップ時点）の残高
+            'error': str | None,  # 'insufficient_balance' / 'invalid_delta' など
+        }
+    """
+    _check_initialized()
+
+    if not isinstance(delta, int) or delta == 0:
+        return {
+            'success': False, 'duplicate': False,
+            'balance': await get_balance(user_id), 'error': 'invalid_delta',
+        }
+
+    conn = await _get_conn()
+    async with _lock:
+        try:
+            # 明示的にトランザクションを開始する。sqlite3/aiosqliteは
+            # isolation_level設定によっては「最初のDML文実行時に自動でBEGIN」
+            # という暗黙的な挙動に依存することになるが、それだと接続設定が
+            # 変わった場合に原子性の保証が崩れうる。ここでは残高更新(UPDATE)と
+            # 履歴追加(INSERT)を明示的に1つのトランザクションとして開始し、
+            # 最後に必ずcommit/rollbackすることで、「ポイントだけ増えて履歴が
+            # 残らない」「履歴だけ残って残高が変わらない」という中間状態が
+            # 決して観測されないことを保証する。
+            await conn.execute("BEGIN IMMEDIATE")
+
+            # 残高チェックと更新を1本のSQL文で行う。「減算後にマイナスにならない」
+            # という条件をWHERE句に含めることで、SELECTしてから判断する方式に
+            # つきまとう「チェックと更新の間に別処理が割り込む」余地を作らない。
+            cursor = await conn.execute(
+                "UPDATE users SET points = points + ? WHERE id = ? AND points + ? >= 0",
+                [delta, user_id, delta]
+            )
+            updated = cursor.rowcount
+            await cursor.close()
+
+            if updated == 0:
+                # 残高不足、またはuser_id自体が存在しない。
+                await conn.rollback()
+                current_balance = await _read_balance_nolock(conn, user_id)
+                return {
+                    'success': False, 'duplicate': False,
+                    'balance': current_balance, 'error': 'insufficient_balance',
+                }
+
+            new_balance = await _read_balance_nolock(conn, user_id)
+
+            try:
+                await conn.execute(
+                    "INSERT INTO point_history "
+                    "(user_id, delta, balance_after, reason, description, source, idempotency_key) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [user_id, delta, new_balance, reason, description, source, idempotency_key or None]
+                )
+            except aiosqlite.IntegrityError:
+                # idempotency_key のUNIQUE制約違反 = 同一操作の二重実行。
+                # usersへのUPDATEも含めて丸ごとロールバックし、「何も起きなかった」
+                # 状態に戻す（ポイントだけ増えて履歴が残らない、という不整合を防ぐ）。
+                await conn.rollback()
+                current_balance = await _read_balance_nolock(conn, user_id)
+                return {
+                    'success': False, 'duplicate': True,
+                    'balance': current_balance, 'error': None,
+                }
+
+            await conn.commit()
+            return {'success': True, 'duplicate': False, 'balance': new_balance, 'error': None}
+
+        except Exception:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            raise
+
+
+async def spend_points(
+    user_id: int,
+    amount: int,
+    reason: str,
+    description: str = "",
+    source: str = "system",
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    """ポイントを消費する（add_pointsのマイナス方向のラッパー）。amountは正の値で指定する。"""
+    if not isinstance(amount, int) or amount <= 0:
+        return {
+            'success': False, 'duplicate': False,
+            'balance': await get_balance(user_id), 'error': 'invalid_amount',
+        }
+    return await add_points(
+        user_id, -amount, reason,
+        description=description, source=source, idempotency_key=idempotency_key,
+    )
+
+
+async def transfer_points(
+    from_user_id: int,
+    to_user_id: int,
+    amount: int,
+    description_out: str = "",
+    description_in: str = "",
+    source: str = "transfer",
+    idempotency_key: Optional[str] = None,
+) -> dict:
+    """ユーザー間でポイントを送金する。「引き落とし」「入金」「履歴2件」を1トランザクションで行う。
+
+    add_points/spend_points を2回呼ぶ方式だと、1回目(引き落とし)の成功後に2回目(入金)が
+    失敗した場合にポイントが消えてしまう。ここでは全てを同じロック区間・同じ
+    トランザクション内で行い、どこかで失敗したら丸ごとロールバックする。
+
+    idempotency_key を指定すると、同じキーでの再実行(二重クリック・再送)は1回しか反映されない。
+    履歴には f"{key}:out" / f"{key}:in" を使う。
+
+    戻り値: {'success', 'duplicate', 'balance'(送金者の処理後残高), 'error'}
+        error: 'invalid_amount' / 'same_user' / 'insufficient_balance' / 'recipient_not_found'
+    """
+    _check_initialized()
+
+    if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+        return {'success': False, 'duplicate': False,
+                'balance': await get_balance(from_user_id), 'error': 'invalid_amount'}
+    if from_user_id == to_user_id:
+        return {'success': False, 'duplicate': False,
+                'balance': await get_balance(from_user_id), 'error': 'same_user'}
+
+    conn = await _get_conn()
+    async with _lock:
+        try:
+            await conn.execute("BEGIN IMMEDIATE")
+
+            # 送金者の残高チェックと引き落としを1本のSQLで行う(add_pointsと同じ方式)。
+            cursor = await conn.execute(
+                "UPDATE users SET points = points - ? WHERE id = ? AND points - ? >= 0",
+                [amount, from_user_id, amount]
+            )
+            debited = cursor.rowcount
+            await cursor.close()
+            if debited == 0:
+                await conn.rollback()
+                return {'success': False, 'duplicate': False,
+                        'balance': await _read_balance_nolock(conn, from_user_id),
+                        'error': 'insufficient_balance'}
+
+            cursor = await conn.execute(
+                "UPDATE users SET points = points + ? WHERE id = ?",
+                [amount, to_user_id]
+            )
+            credited = cursor.rowcount
+            await cursor.close()
+            if credited == 0:
+                # 受取人が存在しない → 引き落としも含めて取り消す
+                await conn.rollback()
+                return {'success': False, 'duplicate': False,
+                        'balance': await _read_balance_nolock(conn, from_user_id),
+                        'error': 'recipient_not_found'}
+
+            from_balance = await _read_balance_nolock(conn, from_user_id)
+            to_balance = await _read_balance_nolock(conn, to_user_id)
+
+            try:
+                await conn.execute(
+                    "INSERT INTO point_history "
+                    "(user_id, delta, balance_after, reason, description, source, idempotency_key) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [from_user_id, -amount, from_balance, "transfer_out", description_out, source,
+                     f"{idempotency_key}:out" if idempotency_key else None]
+                )
+                await conn.execute(
+                    "INSERT INTO point_history "
+                    "(user_id, delta, balance_after, reason, description, source, idempotency_key) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [to_user_id, amount, to_balance, "transfer_in", description_in, source,
+                     f"{idempotency_key}:in" if idempotency_key else None]
+                )
+            except aiosqlite.IntegrityError:
+                # 同じ idempotency_key の再実行 = 二重送金。全てなかったことにする。
+                await conn.rollback()
+                return {'success': False, 'duplicate': True,
+                        'balance': await _read_balance_nolock(conn, from_user_id), 'error': None}
+
+            await conn.commit()
+            return {'success': True, 'duplicate': False, 'balance': from_balance, 'error': None}
+
+        except Exception:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            raise
+
+
+async def _read_balance_nolock(conn, user_id: int) -> int:
+    """既にロックを保持している呼び出し元専用の内部ヘルパー（再ロックしない）。"""
+    cursor = await conn.execute("SELECT points FROM users WHERE id = ?", [user_id])
+    row = await cursor.fetchone()
+    await cursor.close()
+    return int(row[0]) if row else 0
