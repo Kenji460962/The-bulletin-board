@@ -5752,9 +5752,11 @@ async def market_sell_submit(request: Request):
         if font_err:
             return _market_redirect('/market/sell', err=MARKET_IMG_ERR[font_err])
 
+    # 18歳以上のコンテンツか(出品者の自己申告)。運営が後から設定することもできる。
     item_id = await market_service.create_item(
         seller_user_id=member_id, is_official=False,
-        image_url=image_url, asset_url=asset_url, **values
+        image_url=image_url, asset_url=asset_url,
+        is_adult=bool(form.get('is_adult')), **values
     )
     return _market_redirect(f'/market/item/{item_id}', ok='出品しました。')
 
@@ -5792,7 +5794,8 @@ async def market_official_submit(request: Request):
             return _market_redirect('/market/official/new', err=MARKET_IMG_ERR.get(font_err, 'フォントファイルが不正です。'))
     # seller_user_id=None: adminアカウント自身を出品者にはしない
     item_id = await market_service.create_item(
-        seller_user_id=None, is_official=True, image_url=image_url, asset_url=asset_url, **values
+        seller_user_id=None, is_official=True, image_url=image_url, asset_url=asset_url,
+        is_adult=bool(form.get('is_adult')), adult_by_admin=True, **values
     )
     return _market_redirect(f'/market/item/{item_id}', ok='公式商品を出品しました。')
 
@@ -5850,6 +5853,7 @@ async def market_item_page(request: Request, item_id: int):
         'can_manage': can_manage,
         'can_delete': can_delete,
         'can_report': can_report,
+        'can_set_adult': _can_moderate_market(request),
         'can_review': can_review,
         'reviews': reviews,
         'summary': summary,
@@ -5955,12 +5959,59 @@ async def market_edit_submit(request: Request, item_id: int):
         if font_err:
             return _market_redirect(f'/market/item/{item_id}/edit', err=MARKET_IMG_ERR.get(font_err, 'フォントファイルが不正です。'))
 
+    # 18歳以上フラグ: フォームに目印(adult_field)がある場合だけ更新する。
+    # 運営が設定したもの(adult_by_admin)は、出品者本人は解除できない。
+    adult_arg = None
+    if form.get('adult_field'):
+        if item.get('adult_by_admin') and not _can_moderate_market(request):
+            adult_arg = None
+        else:
+            adult_arg = bool(form.get('is_adult'))
+
     await market_service.update_item(
         item_id,
         title=values['title'], description=values['description'], price=values['price'],
         image_url=image_url, secret_url=values['secret_url'], asset_url=asset_url,
+        is_adult=adult_arg,
     )
     return _market_redirect(f'/market/item/{item_id}', ok='商品を更新しました。')
+
+
+@app.post('/market/item/{item_id}/adult')
+async def market_set_adult(request: Request, item_id: int):
+    """運営(管理者)が、商品を18歳以上のコンテンツとして設定/解除する。
+    運営が設定したものは、出品者は解除できない。"""
+    if not _can_moderate_market(request):
+        return text_resp("権限がありません。", 403)
+    item = await market_service.get_item(item_id)
+    if not item or item['status'] != 'active':
+        return text_resp("商品が見つかりません。", 404)
+    form = await request.form()
+    make_adult = (form.get('value') == '1')
+    await market_service.set_adult(item_id, make_adult, by_admin=True)
+    return _market_redirect(
+        f'/market/item/{item_id}',
+        ok='18歳以上のコンテンツとして設定しました。' if make_adult else '18歳以上の設定を解除しました。',
+    )
+
+
+_ADULT_PLACEHOLDER_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">'
+    '<rect width="400" height="300" fill="#1f2937"/>'
+    '<circle cx="200" cy="130" r="62" fill="none" stroke="#f87171" stroke-width="10"/>'
+    '<text x="200" y="148" font-family="sans-serif" font-size="46" font-weight="700" fill="#f87171" text-anchor="middle">18+</text>'
+    '<text x="200" y="244" font-family="sans-serif" font-size="20" fill="#9ca3af" text-anchor="middle">商品ページで確認してから表示</text>'
+    '</svg>'
+)
+
+
+@app.get('/market/adult-placeholder.svg')
+async def market_adult_placeholder():
+    """18歳以上の商品の、一覧用の伏せ画像。"""
+    return Response(
+        content=_ADULT_PLACEHOLDER_SVG, media_type='image/svg+xml',
+        headers={'Cache-Control': 'public, max-age=86400'},
+    )
 
 
 @app.post('/market/item/{item_id}/delete')
