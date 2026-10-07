@@ -96,6 +96,23 @@
         cursor: pointer; flex: none;
     }
     .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .attach-btn {
+        flex: none; width: 40px; height: 40px; border-radius: 8px; cursor: pointer;
+        background: var(--bg-color); color: var(--text-main);
+        border: 1px solid var(--border-color); font-size: 18px; line-height: 1;
+    }
+    .attach-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .dm-preview {
+        max-width: 720px; margin: 0 auto 8px; display: none; align-items: center; gap: 8px;
+    }
+    .dm-preview.show { display: flex; }
+    .dm-preview img { max-height: 72px; max-width: 120px; border-radius: 8px; border: 1px solid var(--border-color); object-fit: cover; }
+    .dm-preview-remove {
+        background: none; border: 1px solid var(--border-color); color: var(--text-muted);
+        border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer;
+    }
+    .dm-img { display: block; max-width: 100%; max-height: 320px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--panel-bg); }
+    .msg .dm-img-link { display: block; line-height: 0; margin-bottom: 4px; }
     .composer-hint { max-width: 720px; margin: 6px auto 0; font-size: 11px; color: var(--text-muted); }
     .composer-error { max-width: 720px; margin: 6px auto 0; font-size: 12px; color: var(--danger-color); }
 
@@ -150,7 +167,8 @@
     {% if messages %}
         {% for m in messages %}
         <div class="msg {{ 'mine' if m.is_mine else 'theirs' }}" data-msg-id="{{ m.id }}">
-            <div class="bubble">{{ m.content | safe }}</div>
+            {% if m.image_url %}<a class="dm-img-link" href="{{ m.image_url }}" target="_blank" rel="noopener"><img class="dm-img" src="{{ m.image_url }}" alt="送信画像" loading="lazy" onload="scrollToBottom()"></a>{% endif %}
+            {% if m.content %}<div class="bubble">{{ m.content | safe }}</div>{% endif %}
             <div class="msg-time">{{ m.created_at }}</div>
         </div>
         {% endfor %}
@@ -161,7 +179,13 @@
 
 {% if can_send %}
 <div class="composer">
+    <div class="dm-preview" id="dm-preview">
+        <img id="dm-preview-img" alt="添付する画像">
+        <button type="button" class="dm-preview-remove" id="dm-preview-remove">取り消す</button>
+    </div>
     <div class="composer-inner">
+        <input type="file" id="dm-image" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        <button type="button" class="attach-btn" id="dm-attach" aria-label="写真を添付">📷</button>
         <textarea id="dm-input" placeholder="メッセージを入力…" maxlength="1000"></textarea>
         <button type="button" class="send-btn" id="dm-send">送信</button>
     </div>
@@ -239,8 +263,13 @@
         const div = document.createElement('div');
         div.className = 'msg ' + (msg.is_mine ? 'mine' : 'theirs');
         if (id != null) div.setAttribute('data-msg-id', String(id));
+        const imgHtml = msg.image_url
+            ? `<a class="dm-img-link" href="${escapeHtml(msg.image_url)}" target="_blank" rel="noopener"><img class="dm-img" src="${escapeHtml(msg.image_url)}" alt="送信画像" onload="scrollToBottom()"></a>`
+            : '';
+        const textHtml = msg.content ? `<div class="bubble">${renderContent(msg.content)}</div>` : '';
         div.innerHTML = `
-            <div class="bubble">${renderContent(msg.content)}</div>
+            ${imgHtml}
+            ${textHtml}
             <div class="msg-time">${escapeHtml(msg.created_at || '')}</div>
         `;
         messagesEl.appendChild(div);
@@ -252,35 +281,80 @@
     const sendBtn = document.getElementById('dm-send');
     const errorEl = document.getElementById('dm-error');
 
+    // ---- 画像の添付(選択 → プレビュー → 送信) ----
+    const fileInput = document.getElementById('dm-image');
+    const attachBtn = document.getElementById('dm-attach');
+    const previewEl = document.getElementById('dm-preview');
+    const previewImg = document.getElementById('dm-preview-img');
+    const DM_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+    let pendingFile = null;
+    let pendingUrl = null;
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.style.display = 'block';
+    }
+
+    function clearPendingImage() {
+        pendingFile = null;
+        if (pendingUrl) { URL.revokeObjectURL(pendingUrl); pendingUrl = null; }
+        if (fileInput) fileInput.value = '';
+        if (previewEl) previewEl.classList.remove('show');
+    }
+
+    if (attachBtn && fileInput) {
+        attachBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', () => {
+            const f = fileInput.files && fileInput.files[0];
+            if (!f) return;
+            errorEl.style.display = 'none';
+            if (f.size > DM_IMAGE_MAX_BYTES) {
+                clearPendingImage();
+                showError('画像は8MB以下にしてください。');
+                return;
+            }
+            pendingFile = f;
+            if (pendingUrl) URL.revokeObjectURL(pendingUrl);
+            pendingUrl = URL.createObjectURL(f);
+            previewImg.src = pendingUrl;
+            previewEl.classList.add('show');
+        });
+        document.getElementById('dm-preview-remove').addEventListener('click', clearPendingImage);
+    }
+
     async function sendMessage() {
         if (!input) return;
         const content = input.value.trim();
-        if (!content) return;
+        if (!content && !pendingFile) return;
 
         sendBtn.disabled = true;
+        if (attachBtn) attachBtn.disabled = true;
         errorEl.style.display = 'none';
 
         try {
+            // 画像を送れるよう multipart で送る(Content-Typeはブラウザに任せる)
+            const fd = new FormData();
+            fd.append('content', content);
+            if (pendingFile) fd.append('image', pendingFile);
             const res = await fetch(`/api/dm/${PARTNER_PUBLIC_ID}/send`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content })
+                body: fd
             });
             const data = await res.json();
             if (data.success) {
                 input.value = '';
+                clearPendingImage();
                 // 自分の送信分はここで即描画する。WebSocket/ポーリング経由で
                 // 同じメッセージが後から届いても、IDで重複排除されるので問題ない。
                 appendMessage(data.message);
             } else {
-                errorEl.textContent = data.error || '送信に失敗しました。';
-                errorEl.style.display = 'block';
+                showError(data.error || '送信に失敗しました。');
             }
         } catch (e) {
-            errorEl.textContent = '通信に失敗しました。';
-            errorEl.style.display = 'block';
+            showError('通信に失敗しました。');
         } finally {
             sendBtn.disabled = false;
+            if (attachBtn) attachBtn.disabled = false;
             input.focus();
         }
     }
