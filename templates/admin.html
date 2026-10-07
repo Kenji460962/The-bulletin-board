@@ -131,7 +131,7 @@
             <div class="report" id="report-{{ r.id }}">
                 <div class="report-head">
                     <span class="badge">{{ r.reason_label }}</span>
-                    <span class="badge type">{{ r.target_type }}</span>
+                    <span class="badge type">{{ {'user': 'ユーザー', 'dm': 'DM', 'thread': 'スレッド', 'reply': 'レス', 'market_item': '商品'}.get(r.target_type, r.target_type) }}</span>
                     <span class="report-time">{{ r.created_at }}</span>
                 </div>
 
@@ -141,12 +141,32 @@
                     <a href="/profile/{{ r.target_id }}" target="_blank">/profile/{{ r.target_id }}</a>
                     {% elif r.target_type == 'thread' %}
                     <a href="/thread/{{ r.target_id }}" target="_blank">スレッド #{{ r.target_id }}</a>
+                    {% elif r.target_type == 'market_item' %}
+                        {% if r.market_item_id %}
+                        <a href="/market/item/{{ r.market_item_id }}" target="_blank">商品 #{{ r.market_item_id }}「{{ r.market_item_title }}」</a>
+                        {% else %}
+                        商品 #{{ r.target_id }}（対象が見つかりません。削除済みの可能性があります）
+                        {% endif %}
                     {% elif r.target_type == 'reply' and r.reply_thread_id %}
                     <a href="/thread/{{ r.reply_thread_id }}#post-{{ r.reply_post_num }}" target="_blank">レス #{{ r.target_id }}（スレッド #{{ r.reply_thread_id }} の {{ r.reply_post_num }}番目）</a>
                     {% else %}
                     レス #{{ r.target_id }}（対象が見つかりません。削除済みの可能性があります）
                     {% endif %}
                 </div>
+
+                {% if r.target_type == 'market_item' and r.market_item_id %}
+                <div class="report-meta" style="margin-bottom:4px;">
+                    {{ r.market_item_type }} ／ {{ r.market_item_price }} pt ／
+                    出品者: {% if r.market_item_official %}Talk-ch公式{% else %}{{ r.market_item_seller or '不明' }}{% endif %}
+                    {% if r.market_item_status != 'active' %} ／ <strong>（削除済み）</strong>{% endif %}
+                </div>
+                {% if r.market_item_image %}
+                <a href="/market/item/{{ r.market_item_id }}" target="_blank">
+                    <img src="{{ r.market_item_image }}" alt="" loading="lazy"
+                         style="max-height:90px;max-width:160px;border-radius:6px;border:1px solid var(--border-color);object-fit:cover;margin-bottom:6px;">
+                </a>
+                {% endif %}
+                {% endif %}
 
                 {% if r.target_type == 'reply' and r.reply_content is not none %}
                 <div class="report-meta" style="margin-bottom:4px;">
