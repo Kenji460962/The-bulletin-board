@@ -149,6 +149,10 @@ async def ensure_schema() -> None:
         # フォント商品のフォントファイル(woff2等)のURL。image_url はプレビュー画像、
         # asset_url がフォントファイル本体。購入者のみが利用できる。
         "ALTER TABLE market_items ADD COLUMN asset_url TEXT",
+        # 18歳以上のコンテンツ。is_adult=1 の商品は一覧では伏せ、詳細ページで確認後に表示する。
+        # adult_by_admin=1 は運営が18歳以上と判断して設定したもの(出品者は解除できない)。
+        "ALTER TABLE market_items ADD COLUMN is_adult INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE market_items ADD COLUMN adult_by_admin INTEGER NOT NULL DEFAULT 0",
     ):
         try:
             await conn.execute(ddl)
@@ -210,6 +214,24 @@ async def ensure_schema() -> None:
     await conn.commit()
 
 
+ADULT_PLACEHOLDER_URL = "/market/adult-placeholder.svg"
+ADULT_LIST_NOTICE = "18歳以上のコンテンツです。商品ページで確認してから表示されます。"
+
+
+def _mask_adult_for_list(row: dict) -> dict:
+    """一覧系(商品一覧・ショップ・インベントリ)用: 18歳以上の商品は画像と説明を伏せる。
+    実際の画像・説明・URLは、商品詳細ページで「表示する」を押して確認した後にだけ出る。"""
+    if row.get("is_adult"):
+        row["image_url"] = ADULT_PLACEHOLDER_URL
+        if "description" in row:
+            row["description"] = ADULT_LIST_NOTICE
+        if "secret_url" in row:
+            row["secret_url"] = None
+        if row.get("title") is not None and not str(row["title"]).startswith("🔞"):
+            row["title"] = "🔞 " + str(row["title"])
+    return row
+
+
 def _with_seller_name(row: dict) -> dict:
     """LEFT JOIN の結果に表示用の出品者名を付ける。公式商品は 'Talk-ch公式'。"""
     if row.get("is_official"):
@@ -234,6 +256,8 @@ async def create_item(
     image_url: Optional[str] = None,
     secret_url: Optional[str] = None,
     asset_url: Optional[str] = None,
+    is_adult: bool = False,
+    adult_by_admin: bool = False,
 ) -> int:
     """商品を登録してitem_idを返す。公式商品は seller_user_id=None を渡すこと。
     asset_url はフォント商品のフォントファイルURLを想定。"""
@@ -244,10 +268,12 @@ async def create_item(
     async with _lock:
         cur = await conn.execute(
             "INSERT INTO market_items "
-            "(seller_user_id, is_official, item_type, title, description, price, image_url, secret_url, asset_url) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(seller_user_id, is_official, item_type, title, description, price, image_url, secret_url, asset_url, "
+            " is_adult, adult_by_admin) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [seller_user_id, 1 if is_official else 0, item_type,
-             title, description, price, image_url, secret_url, asset_url],
+             title, description, price, image_url, secret_url, asset_url,
+             1 if is_adult else 0, 1 if (is_adult and adult_by_admin) else 0],
         )
         item_id = cur.lastrowid
         await cur.close()
@@ -264,8 +290,9 @@ async def update_item(
     secret_url: Optional[str] = None,
     clear_secret: bool = False,
     asset_url: Optional[str] = None,
+    is_adult: Optional[bool] = None,
 ) -> None:
-    """商品情報を更新する(image_url/secret_url/asset_url は None なら変更しない)。"""
+    """商品情報を更新する(image_url/secret_url/asset_url/is_adult は None なら変更しない)。"""
     _check_initialized()
     conn = await _get_conn()
     sets = ["title = ?", "description = ?", "price = ?", "updated_at = datetime('now')"]
@@ -281,9 +308,25 @@ async def update_item(
     if asset_url is not None:
         sets.append("asset_url = ?")
         params.append(asset_url)
+    if is_adult is not None:
+        sets.append("is_adult = ?")
+        params.append(1 if is_adult else 0)
     params.append(item_id)
     async with _lock:
         await conn.execute(f"UPDATE market_items SET {', '.join(sets)} WHERE id = ?", params)
+        await conn.commit()
+
+
+async def set_adult(item_id: int, is_adult: bool, by_admin: bool) -> None:
+    """18歳以上フラグを設定する。by_admin=True(運営の判断)で設定すると、出品者は解除できない。
+    運営が解除するとき(is_adult=False)は adult_by_admin も 0 に戻す。"""
+    _check_initialized()
+    conn = await _get_conn()
+    async with _lock:
+        await conn.execute(
+            "UPDATE market_items SET is_adult = ?, adult_by_admin = ?, updated_at = datetime('now') WHERE id = ?",
+            [1 if is_adult else 0, 1 if (is_adult and by_admin) else 0, item_id],
+        )
         await conn.commit()
 
 
@@ -308,6 +351,7 @@ async def get_item(item_id: int) -> Optional[dict]:
         cur = await conn.execute(
             "SELECT i.id, i.seller_user_id, i.is_official, i.item_type, i.title, "
             "       i.description, i.price, i.image_url, i.status, i.created_at, "
+            "       i.is_adult, i.adult_by_admin, "
             "       u.username AS seller_username, u.public_id AS seller_public_id "
             "FROM market_items i LEFT JOIN users u ON u.id = i.seller_user_id "
             "WHERE i.id = ?",
@@ -345,7 +389,7 @@ async def list_items(item_type: Optional[str] = None, limit: int = 60, offset: i
     conn = await _get_conn()
     sql = (
         "SELECT i.id, i.is_official, i.item_type, i.title, i.description, i.price, "
-        "       i.image_url, i.created_at, i.seller_user_id, "
+        "       i.image_url, i.created_at, i.seller_user_id, i.is_adult, "
         "       u.username AS seller_username, u.public_id AS seller_public_id "
         "FROM market_items i LEFT JOIN users u ON u.id = i.seller_user_id "
         "WHERE i.status = 'active'"
@@ -360,7 +404,7 @@ async def list_items(item_type: Optional[str] = None, limit: int = 60, offset: i
         cur = await conn.execute(sql, params)
         rows = await cur.fetchall()
         await cur.close()
-    return [_with_seller_name(dict(r)) for r in rows]
+    return [_mask_adult_for_list(_with_seller_name(dict(r))) for r in rows]
 
 
 async def shop_items(seller_user_id: int, limit: int = 100) -> list[dict]:
@@ -369,14 +413,14 @@ async def shop_items(seller_user_id: int, limit: int = 100) -> list[dict]:
     conn = await _get_conn()
     async with _lock:
         cur = await conn.execute(
-            "SELECT id, is_official, item_type, title, description, price, image_url, created_at "
+            "SELECT id, is_official, item_type, title, description, price, image_url, created_at, is_adult "
             "FROM market_items WHERE seller_user_id = ? AND status = 'active' "
             "ORDER BY id DESC LIMIT ?",
             [seller_user_id, limit],
         )
         rows = await cur.fetchall()
         await cur.close()
-    return [dict(r) for r in rows]
+    return [_mask_adult_for_list(dict(r)) for r in rows]
 
 
 # =========================
@@ -590,7 +634,7 @@ async def get_inventory(buyer_id: int) -> list[dict]:
         cur = await conn.execute(
             "SELECT p.id AS purchase_id, p.price_paid, p.created_at AS purchased_at, "
             "       i.id AS item_id, i.title, i.item_type, i.image_url, i.secret_url, "
-            "       i.asset_url, i.is_official, i.status, "
+            "       i.asset_url, i.is_official, i.status, i.is_adult, "
             "       u.username AS seller_username, u.public_id AS seller_public_id "
             "FROM market_purchases p "
             "JOIN market_items i ON i.id = p.item_id "
@@ -600,7 +644,9 @@ async def get_inventory(buyer_id: int) -> list[dict]:
         )
         rows = await cur.fetchall()
         await cur.close()
-    return [_with_seller_name(dict(r)) for r in rows]
+    # 18歳以上の商品は、インベントリでも画像とURLを伏せる(商品ページで確認後に表示)。
+    # 適用(asset_url)は購入者本人の操作なので、ここでは触れない。
+    return [_mask_adult_for_list(_with_seller_name(dict(r))) for r in rows]
 
 
 # =========================
