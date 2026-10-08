@@ -490,6 +490,20 @@
             font-family: 'talkch-market-font-{{ f.item_id }}', 'Inter', sans-serif;
         }
         {% endfor %}
+    .online-toggle { margin-left: 12px; padding: 0; background: none; border: none; font: inherit; font-size: 12px;
+        color: var(--text-muted); cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+    .online-toggle strong { color: var(--accent-color); }
+    .online-toggle:hover { color: var(--text-main); }
+    #online-panel { position: fixed; z-index: 250; width: 280px; max-width: calc(100vw - 16px); max-height: 55vh; overflow-y: auto;
+        background: var(--panel-bg); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.35); padding: 8px 0; font-size: 13px; }
+    #online-panel[hidden] { display: none; }
+    #online-panel .online-head { padding: 4px 14px 8px; font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
+    #online-panel .online-item { display: flex; flex-direction: column; padding: 8px 14px; text-decoration: none; color: inherit; }
+    #online-panel .online-item:hover { background: rgba(127,127,127,.15); }
+    #online-panel .online-name { font-weight: 700; overflow-wrap: anywhere; }
+    #online-panel .online-id { font-size: 11px; color: var(--text-muted); }
+    #online-panel .online-guests, #online-panel .online-empty { padding: 8px 14px; font-size: 12px; color: var(--text-muted); }
     #reply-image-preview { height: 28px; width: 28px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color); flex: none; }
     .reply-image-clear { font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;
         background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
@@ -510,7 +524,7 @@
         <div style="font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; margin-top: 3px; flex-wrap: wrap; gap: 6px;">
             <div>
                 <a href="{{ back_to_board }}">← 掲示板に戻る</a>
-                <span style="margin-left: 12px;">アクセス中: <strong id="active-count" style="color: var(--accent-color);">{{ active_count }}</strong>人</span>
+                <button type="button" id="online-toggle" class="online-toggle" aria-haspopup="true" aria-expanded="false">オンライン人数: <strong id="active-count">{{ active_count }}</strong>人</button>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
                 <button type="button" id="theme-toggle-btn" class="theme-toggle-btn">🌙</button>
@@ -984,6 +998,8 @@
             }
         }
 
+        let wsHeartbeat = null;
+
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${protocol}//${window.location.host}/ws/thread/${threadId}`);
@@ -991,6 +1007,11 @@
             ws.addEventListener('open', () => {
                 wsReconnectDelay = 1000;
                 catchUpReplies();
+                // サーバーが「まだ居る人」を判定できるよう、定期的にpingを送る
+                if (wsHeartbeat) clearInterval(wsHeartbeat);
+                wsHeartbeat = setInterval(() => {
+                    try { if (ws && ws.readyState === 1) ws.send('ping'); } catch (e) {}
+                }, 25000);
             });
 
             ws.addEventListener('message', (event) => {
@@ -998,6 +1019,8 @@
                     const data = JSON.parse(event.data);
                     if (data.type === 'new_reply' && data.reply) {
                         handleNewReply(data.reply);
+                    } else if (data.type === 'presence') {
+                        if (window.updatePresence) window.updatePresence(data);
                     }
                 } catch (e) {
                     console.error('WSメッセージ処理エラー:', e);
@@ -1005,6 +1028,7 @@
             });
 
             ws.addEventListener('close', () => {
+                if (wsHeartbeat) { clearInterval(wsHeartbeat); wsHeartbeat = null; }
                 wsReconnectTimer = setTimeout(connectWebSocket, wsReconnectDelay);
                 wsReconnectDelay = Math.min(wsReconnectDelay * 2, 15000);
             });
@@ -1426,6 +1450,78 @@
 
     
 
+<div id="online-panel" role="dialog" aria-label="オンラインのユーザー" hidden></div>
+<script>
+(function () {
+    var toggle = document.getElementById('online-toggle');
+    var panel = document.getElementById('online-panel');
+    var countEl = document.getElementById('active-count');
+    if (!toggle || !panel) return;
+    var state = { count: null, guests: 0, members: [] };
+
+    function render() {
+        panel.textContent = '';
+        var head = document.createElement('div');
+        head.className = 'online-head';
+        head.textContent = 'オンライン ' + (state.count == null ? '' : state.count + '人');
+        panel.appendChild(head);
+
+        state.members.forEach(function (m) {
+            var a = document.createElement('a');
+            a.className = 'online-item';
+            a.href = '/profile/' + encodeURIComponent(m.public_id);
+            var n = document.createElement('span');
+            n.className = 'online-name';
+            n.textContent = m.username || '(名前なし)';
+            var i = document.createElement('span');
+            i.className = 'online-id';
+            i.textContent = 'ID:' + m.public_id;
+            a.appendChild(n); a.appendChild(i);
+            panel.appendChild(a);
+        });
+        if (state.guests > 0) {
+            var g = document.createElement('div');
+            g.className = 'online-guests';
+            g.textContent = (state.members.length ? 'ほか ' : '') + 'ゲスト ' + state.guests + '人';
+            panel.appendChild(g);
+        }
+        if (!state.members.length && !state.guests) {
+            var e = document.createElement('div');
+            e.className = 'online-empty';
+            e.textContent = 'オンラインの人はいません。';
+            panel.appendChild(e);
+        }
+    }
+
+    function place() {
+        var r = toggle.getBoundingClientRect();
+        var w = panel.offsetWidth || 280;
+        panel.style.top = (r.bottom + 6) + 'px';
+        panel.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + 'px';
+    }
+    function open() { render(); panel.hidden = false; place(); toggle.setAttribute('aria-expanded', 'true'); }
+    function close() { panel.hidden = true; toggle.setAttribute('aria-expanded', 'false'); }
+
+    toggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (panel.hidden) open(); else close();
+    });
+    document.addEventListener('click', function (e) {
+        if (!panel.hidden && !panel.contains(e.target) && e.target !== toggle) close();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    window.addEventListener('resize', function () { if (!panel.hidden) place(); });
+
+    // WebSocket から人数・在室メンバーが届くたびに更新(開いている間もその場で変わる)
+    window.updatePresence = function (data) {
+        state.count = Number(data.count) || 0;
+        state.guests = Number(data.guests) || 0;
+        state.members = Array.isArray(data.members) ? data.members : [];
+        if (countEl) countEl.textContent = state.count;
+        if (!panel.hidden) { render(); place(); }
+    };
+})();
+</script>
 <script>
 (function () {
     var input = document.querySelector('#bbsForm input[type="file"][name="image"]');
