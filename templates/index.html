@@ -2256,5 +2256,37 @@
     </script>
 
     <div class="toast-stack" id="toast-stack"></div>
+{% if current_member %}
+<script>
+(function () {
+    // ログインボーナス: ページを開いたとき、その日の初回だけ付与されてお知らせが出る
+    fetch('/api/login_bonus/claim', { method: 'POST', credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d || !d.granted) return;
+            var el = document.createElement('div');
+            el.setAttribute('role', 'status');
+            el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);z-index:400;'
+                + 'background:#111827;color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:12px;padding:12px 18px;'
+                + 'font-size:14px;line-height:1.5;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.4);opacity:0;'
+                + 'transition:opacity .3s, transform .3s;max-width:calc(100vw - 32px);';
+            var line1 = document.createElement('div');
+            line1.style.fontWeight = '700';
+            line1.textContent = '🎁 ログインボーナス +' + d.points + ' pt';
+            var line2 = document.createElement('div');
+            line2.style.cssText = 'font-size:12px;color:#d1d5db;';
+            line2.textContent = d.streak + '日連続ログイン' + (d.extra ? '（連続ボーナス +' + d.extra + ' pt 込み）' : '');
+            el.appendChild(line1); el.appendChild(line2);
+            document.body.appendChild(el);
+            requestAnimationFrame(function () { el.style.opacity = '1'; el.style.transform = 'translateX(-50%) translateY(0)'; });
+            setTimeout(function () {
+                el.style.opacity = '0';
+                setTimeout(function () { el.remove(); }, 400);
+            }, 5000);
+        })
+        .catch(function () {});
+})();
+</script>
+{% endif %}
 </body>
 </html>
