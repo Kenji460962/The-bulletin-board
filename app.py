@@ -5,7 +5,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.concurrency import run_in_threadpool
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import json
 import html
@@ -222,6 +222,7 @@ async def _startup_redis():
     await _ensure_adgem_schema()
     await _ensure_dm_image_schema()
     await points_service.ensure_schema()
+    await _ensure_login_bonus_schema()
 
     try:
         redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
@@ -5119,6 +5120,94 @@ async def api_dm_poll(request: Request, public_id: str):
     except Exception as e:
         print(f"DMポーリングエラー: {e}")
         return json_resp({"success": False, "error": "取得に失敗しました。"}, 500)
+
+
+# ---------------------------------------------------------------------
+# ログインボーナス
+# ---------------------------------------------------------------------
+# 1日1回(日本時間の日付で切り替え)、ログイン中の会員がサイトを開いたときに付与する。
+# 連続日数も数え、LOGIN_BONUS_STREAK_EVERY 日ごとに追加ボーナスが付く。
+LOGIN_BONUS_POINTS = 10             # 毎日のボーナス
+LOGIN_BONUS_STREAK_EVERY = 7        # 何日連続ごとに追加ボーナスを付けるか
+LOGIN_BONUS_STREAK_EXTRA = 30       # 追加ボーナス(連続日数が LOGIN_BONUS_STREAK_EVERY の倍数の日)
+_JST = timezone(timedelta(hours=9))
+_LOGIN_BONUS_CLAIMED: dict[int, str] = {}   # {user_id: 付与済みの日付} DBへの問い合わせを省くキャッシュ
+
+
+async def _ensure_login_bonus_schema():
+    conn = await _get_db_conn()
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS login_bonus_state (
+            user_id INTEGER PRIMARY KEY,
+            last_date TEXT NOT NULL,
+            streak INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+    await conn.commit()
+
+
+async def claim_daily_login_bonus(user_id: int):
+    """その日の初回ならボーナスを付与して詳細を返す。付与済み/失敗なら None。
+    二重付与は points_service の冪等キー(daily_login:{user_id}:{日付})が防ぐ。"""
+    today_dt = datetime.now(_JST).date()
+    today = today_dt.isoformat()
+    if _LOGIN_BONUS_CLAIMED.get(user_id) == today:
+        return None
+
+    conn = await _get_db_conn()
+    async with _db_lock:
+        cur = await conn.execute(
+            "SELECT last_date, streak FROM login_bonus_state WHERE user_id = ?", [user_id]
+        )
+        row = await cur.fetchone()
+        await cur.close()
+    last_date = row[0] if row else None
+    prev_streak = int(row[1]) if row else 0
+
+    if last_date == today:
+        _LOGIN_BONUS_CLAIMED[user_id] = today
+        return None
+    streak = prev_streak + 1 if last_date == (today_dt - timedelta(days=1)).isoformat() else 1
+
+    extra = LOGIN_BONUS_STREAK_EXTRA if (LOGIN_BONUS_STREAK_EVERY and streak % LOGIN_BONUS_STREAK_EVERY == 0) else 0
+    bonus = LOGIN_BONUS_POINTS + extra
+    description = f"ログインボーナス（{streak}日連続）" + (f" 連続ボーナス+{extra}" if extra else "")
+
+    result = await points_service.add_points(
+        user_id, bonus, reason='daily_login', description=description,
+        source='system', idempotency_key=f"daily_login:{user_id}:{today}",
+    )
+    if result['duplicate']:
+        _LOGIN_BONUS_CLAIMED[user_id] = today
+        return None
+    if not result['success']:
+        return None
+
+    async with _db_lock:
+        await conn.execute(
+            "INSERT INTO login_bonus_state (user_id, last_date, streak) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET last_date = excluded.last_date, streak = excluded.streak",
+            [user_id, today, streak],
+        )
+        await conn.commit()
+    _LOGIN_BONUS_CLAIMED[user_id] = today
+    return {'points': bonus, 'extra': extra, 'streak': streak, 'balance': result['balance']}
+
+
+@app.post('/api/login_bonus/claim')
+async def api_login_bonus_claim(request: Request):
+    """ページ表示時にフロントから呼ばれる。その日の初回だけ granted=True を返す。"""
+    if not is_member_logged_in(request):
+        return json_resp({"success": True, "granted": False})
+    member_id = request.session.get('member_id')
+    try:
+        info = await claim_daily_login_bonus(member_id)
+    except Exception as e:
+        print(f"ログインボーナス付与エラー: {e}")
+        return json_resp({"success": True, "granted": False})
+    if not info:
+        return json_resp({"success": True, "granted": False})
+    return json_resp({"success": True, "granted": True, **info})
 
 
 # ---------------------------------------------------------------------
