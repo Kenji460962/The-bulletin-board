@@ -6,6 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.concurrency import run_in_threadpool
 from datetime import datetime, timedelta
+from typing import Optional
 import json
 import html
 import os
@@ -352,10 +353,17 @@ def _prime_psutil_cpu():
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[int, list[WebSocket]] = {}
+        # スレごとの在室情報: {thread_id: {websocket: 会員情報 or None(ゲスト)}}
+        # WebSocketの接続/切断そのものから数えるので、人数はリアルタイムに増減する。
+        # ※ 接続はこのプロセスのメモリ上にあるため、複数worker構成だとworkerごとの人数になる
+        #   (現在は単一worker運用なので問題なし)。
+        self.presence: dict[int, dict[WebSocket, Optional[dict]]] = {}
 
-    async def connect(self, thread_id: int, websocket: WebSocket):
+    async def connect(self, thread_id: int, websocket: WebSocket, member: Optional[dict] = None):
         await websocket.accept()
         self.active_connections.setdefault(thread_id, []).append(websocket)
+        self.presence.setdefault(thread_id, {})[websocket] = member
+        await self.broadcast_presence(thread_id)
 
     def disconnect(self, thread_id: int, websocket: WebSocket):
         conns = self.active_connections.get(thread_id)
@@ -363,6 +371,52 @@ class ConnectionManager:
             conns.remove(websocket)
             if not conns:
                 del self.active_connections[thread_id]
+        room = self.presence.get(thread_id)
+        if room is not None and websocket in room:
+            del room[websocket]
+            if not room:
+                del self.presence[thread_id]
+            else:
+                # 退室を残りの人にも即時反映する
+                try:
+                    asyncio.get_running_loop().create_task(self.broadcast_presence(thread_id))
+                except RuntimeError:
+                    pass
+
+    def presence_snapshot(self, thread_id: int) -> dict:
+        """人数と在室メンバー一覧。同じ会員が複数タブで開いていても1人として数え、
+        ログインしていない閲覧者は接続1本につきゲスト1人として数える。"""
+        members: dict[int, dict] = {}
+        guests = 0
+        for member in self.presence.get(thread_id, {}).values():
+            if member:
+                members[member['id']] = member
+            else:
+                guests += 1
+        listed = sorted(members.values(), key=lambda m: (m.get('username') or '').lower())
+        return {
+            "type": "presence",
+            "count": len(members) + guests,
+            "guests": guests,
+            "members": [
+                {"username": m.get('username') or '', "public_id": m.get('public_id') or ''}
+                for m in listed[:100]
+            ],
+        }
+
+    async def broadcast_presence(self, thread_id: int):
+        conns = list(self.active_connections.get(thread_id, []))
+        if not conns:
+            return
+        payload = self.presence_snapshot(thread_id)
+        dead = []
+        for ws in conns:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(thread_id, ws)
 
     async def broadcast_local(self, thread_id: int, reply: dict):
         """同一プロセス内でこのthread_idに接続しているWebSocketにのみ配信する。
@@ -400,16 +454,41 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+THREAD_WS_IDLE_TIMEOUT = 70  # 秒。クライアントは約25秒ごとにpingを送る。無通信が続く接続は在室から外す
+
+
 @app.websocket('/ws/thread/{thread_id}')
 async def thread_ws(websocket: WebSocket, thread_id: int):
-    await manager.connect(thread_id, websocket)
+    # ログイン中の会員なら名前とIDを控える(オンライン一覧に表示するため)。未ログインはゲスト扱い。
+    member = None
+    try:
+        member_id = websocket.session.get('member_id')
+        if member_id:
+            rows = await execute_query(
+                "SELECT id, username, public_id FROM users WHERE id = ?", [member_id]
+            )
+            if rows:
+                member = {'id': rows[0]['id'], 'username': rows[0]['username'],
+                          'public_id': rows[0]['public_id']}
+    except Exception as e:
+        print(f"スレWSの会員情報取得エラー: {e}")
+
+    await manager.connect(thread_id, websocket, member)
     try:
         while True:
             # クライアントは接続維持の確認用に定期的に 'ping' を送ってくる。
             # pongを返さないと、クライアント側が「死んだ接続」とみなして張り直す。
-            msg = await websocket.receive_text()
+            # 一定時間まったく届かない接続(電波が切れたスマホ等)は、人数が実態より多く
+            # 残らないよう切断扱いにする。
+            msg = await asyncio.wait_for(websocket.receive_text(), timeout=THREAD_WS_IDLE_TIMEOUT)
             if msg == 'ping':
                 await websocket.send_text('{"type":"pong"}')
+    except asyncio.TimeoutError:
+        manager.disconnect(thread_id, websocket)
+        try:
+            await websocket.close()
+        except Exception:
+            pass
     except WebSocketDisconnect:
         manager.disconnect(thread_id, websocket)
     except Exception:
