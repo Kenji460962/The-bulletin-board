@@ -1570,7 +1570,7 @@
             line1.textContent = '🎁 ログインボーナス +' + d.points + ' pt';
             var line2 = document.createElement('div');
             line2.style.cssText = 'font-size:12px;color:#d1d5db;';
-            line2.textContent = d.streak + '日連続ログイン' + (d.extra ? '（連続ボーナス +' + d.extra + ' pt 込み）' : '');
+            line2.textContent = d.streak + '日連続ログイン' + (d.extra ? '！' + d.streak + '日達成ボーナス +' + d.extra + ' pt 込み' : '');
             el.appendChild(line1); el.appendChild(line2);
             document.body.appendChild(el);
             requestAnimationFrame(function () { el.style.opacity = '1'; el.style.transform = 'translateX(-50%) translateY(0)'; });
