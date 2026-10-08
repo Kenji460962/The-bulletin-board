@@ -5126,10 +5126,13 @@ async def api_dm_poll(request: Request, public_id: str):
 # ログインボーナス
 # ---------------------------------------------------------------------
 # 1日1回(日本時間の日付で切り替え)、ログイン中の会員がサイトを開いたときに付与する。
-# 連続日数も数え、LOGIN_BONUS_STREAK_EVERY 日ごとに追加ボーナスが付く。
+# 連続日数も数え、「連続ログインが◯日に達した日」に追加ボーナスが付く(達成日ごとに金額が違う)。
 LOGIN_BONUS_POINTS = 10             # 毎日のボーナス
-LOGIN_BONUS_STREAK_EVERY = 7        # 何日連続ごとに追加ボーナスを付けるか
-LOGIN_BONUS_STREAK_EXTRA = 30       # 追加ボーナス(連続日数が LOGIN_BONUS_STREAK_EVERY の倍数の日)
+LOGIN_BONUS_MILESTONES = {          # {連続日数: 追加ポイント}  ← ここを書き換えれば調整できる
+    7: 10,
+    14: 20,
+    30: 50,
+}
 _JST = timezone(timedelta(hours=9))
 _LOGIN_BONUS_CLAIMED: dict[int, str] = {}   # {user_id: 付与済みの日付} DBへの問い合わせを省くキャッシュ
 
@@ -5169,9 +5172,9 @@ async def claim_daily_login_bonus(user_id: int):
         return None
     streak = prev_streak + 1 if last_date == (today_dt - timedelta(days=1)).isoformat() else 1
 
-    extra = LOGIN_BONUS_STREAK_EXTRA if (LOGIN_BONUS_STREAK_EVERY and streak % LOGIN_BONUS_STREAK_EVERY == 0) else 0
+    extra = LOGIN_BONUS_MILESTONES.get(streak, 0)
     bonus = LOGIN_BONUS_POINTS + extra
-    description = f"ログインボーナス（{streak}日連続）" + (f" 連続ボーナス+{extra}" if extra else "")
+    description = f"ログインボーナス（{streak}日連続）" + (f" {streak}日達成ボーナス+{extra}" if extra else "")
 
     result = await points_service.add_points(
         user_id, bonus, reason='daily_login', description=description,
