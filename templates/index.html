@@ -1475,6 +1475,9 @@
                                 <li><strong style="color: var(--text);">スレッドを探す:</strong> 「スレ一覧」タブから興味のある話題を選ぶか、上部の検索バーやカテゴリフィルターで検索できます。</li>
                                 <li><strong style="color: var(--text);">レス（返信）を書く:</strong> スレッド内の投稿フォームから、名前（省略可）と本文を入力して投稿できます。</li>
                                 <li><strong style="color: var(--text);">アンカー機能:</strong> 本文中に <code>&gt;&gt;1</code> や <code>&gt;&gt;5</code> のように入力すると、過去の書き込みにリンクできます。</li>
+                                <li><strong style="color: var(--text);">画像つきの投稿:</strong> 投稿フォームの「画像」から写真を添付できます。選んだ画像は横にプレビューが出て、<strong style="color: var(--text);">「✕ 取り消し」</strong>で選び直せます。大きな画像は自動で軽く変換されます。</li>
+                                <li><strong style="color: var(--text);">投稿のルール:</strong> 本文は500文字までで、連続投稿は3秒あけてください。</li>
+                                <li><strong style="color: var(--text);">閲覧モード / リアルタイムモード:</strong> スレ画面右上で「スレ閲覧」と「リアルタイム」を切り替えられます。リアルタイムでは新しいレスがすぐ表示されます。</li>
                             </ul>
                         </div>
 
@@ -1484,6 +1487,8 @@
                             <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
                                 <li>「スレ一覧」タブの上部にある<strong style="color: var(--text);">「新しい板（スレッド）を立てる」</strong>フォームから作成します。</li>
                                 <li>話題に合った<strong style="color: var(--text);">「カテゴリ」</strong>を選択し、50文字以内でタイトルを入力して送信してください。</li>
+                                <li>送信すると<strong style="color: var(--text);">確認画面</strong>が開きます。タイトル・カテゴリ・タグを確かめて「スレッドを作成する」を押すと立ちます。</li>
+                                <li>スレ立ては続けてできません。<strong style="color: var(--text);">5分に1回</strong>までです（VPN・プロキシ経由は15分）。</li>
                             </ul>
                         </div>
 
@@ -1493,13 +1498,66 @@
                             <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
                                 <li><strong style="color: var(--text);">ダークモード切り替え:</strong> 右上の「ダーク表示 / ライト表示」ボタンで画面デザインを切り替えられます。</li>
                                 <li><strong style="color: var(--text);">スレ番号ジャンプ:</strong> スレ一覧にある「スレ番号でジャンプ」にID番号を入力すると、目的のスレに一発で移動できます。</li>
-                                <li><strong style="color: var(--text);">ミニゲーム:</strong> サイドバーの「ゲーム」タブから、ブラウザで遊べるオセロ・チェス・将棋を楽しめます。</li>
+                                <li><strong style="color: var(--text);">ミニゲーム:</strong> サイドバーの「ゲーム」タブから、ブラウザで遊べるオセロ・チェス・将棋を楽しめます。戦績とレーティングはプロフィールに表示され、ゲームタブの「ランキングを見る」で順位も確認できます。</li>
+                                <li><strong style="color: var(--text);">オンライン人数と在室ユーザー:</strong> スレ画面の上部に「オンライン人数: ◯人」が出て、人の出入りに合わせてリアルタイムで変わります。押すと、いまそのスレにいる人の名前とIDが一覧で出て、名前を押すとその人のプロフィールに移動できます（ログインしていない人は「ゲスト」としてまとめて表示されます）。</li>
+                                <li><strong style="color: var(--text);">過去スレ:</strong> サイドバーの「過去スレ」から、過去のスレッドを見られます。</li>
                             </ul>
                         </div>
 
-                         <!-- 4. 謎機能 -->
+                        <!-- 4. アカウント -->
                         <div class="glass-panel">
-                            <h2 class="panel-title">4. 謎機能</h2>
+                            <h2 class="panel-title">4. アカウント・プロフィール・フォロー</h2>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li><strong style="color: var(--text);">会員登録・ログイン:</strong> 登録すると、プロフィール・フォロー・メッセージ・ポイント・取引所が使えるようになります。</li>
+                                <li><strong style="color: var(--text);">プロフィール:</strong> アイコンと自己紹介を設定できます。自分のプロフィールの「プロフィールを編集」から変更してください。作成したスレッド数・総レス数、ゲームの戦績もここに表示されます。</li>
+                                <li><strong style="color: var(--text);">フォロー:</strong> 気になる人のプロフィールで「フォローする」を押します。フォロワー数・フォロー中の数を押すと一覧が見られます。お互いにフォローし合うと「相互フォロー」になります。</li>
+                                <li><strong style="color: var(--text);">ブロック:</strong> プロフィールの「ブロック」を押すと、互いのフォローが外れ、メッセージのやり取りもできなくなります。同じ場所から解除もできます。</li>
+                                <li><strong style="color: var(--text);">通報:</strong> プロフィールの「通報」から、理由を選んで運営に知らせられます。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 5. DM -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">5. メッセージ（DM）</h2>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li><strong style="color: var(--text);">送れる相手:</strong> <strong style="color: var(--text);">相互フォローの相手</strong>だけです。相互フォローになると、プロフィールに「DMを送る」ボタンが出ます。</li>
+                                <li><strong style="color: var(--text);">入口:</strong> サイドバーの「メッセージ」から会話の一覧に入れます。未読があると、メッセージのアイコンに件数バッジが付きます。</li>
+                                <li><strong style="color: var(--text);">リアルタイム:</strong> メッセージは相手の画面にすぐ届きます。1通は1000文字までです。</li>
+                                <li><strong style="color: var(--text);">写真を送る:</strong> 入力欄の左の<strong style="color: var(--text);">📷</strong>から写真を選ぶと、プレビューが出ます（「取り消す」で外せます）。8MBまで、jpg / png / webp / gif に対応しています。送った写真は、その会話の2人だけが見られます。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 6. ポイント -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">6. ポイントの貯め方・使い方</h2>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li><strong style="color: var(--text);">ログインボーナス:</strong> ログインして掲示板のトップかスレを開くと、<strong style="color: var(--text);">1日1回、10ポイント</strong>がもらえます（日付は日本時間で切り替わります）。連続ログインでさらに追加があります：7日目 +10、14日目 +20、30日目 +50。1日でも空くと連続日数は1に戻ります。</li>
+                                <li><strong style="color: var(--text);">スレ主ボーナス:</strong> 自分が立てたスレに、<strong style="color: var(--text);">他の人がレスするたびに1ポイント</strong>もらえます。自分のレスには付きません。</li>
+                                <li><strong style="color: var(--text);">ポイントを貯める（広告）:</strong> 「オファーウォール」のページで、提携の広告タスクをこなすとポイントがもらえます。</li>
+                                <li><strong style="color: var(--text);">残高と履歴:</strong> 自分のプロフィールの「ポイント」欄から、残高と履歴のページを開けます。</li>
+                                <li><strong style="color: var(--text);">ポイントを送る:</strong> 相手のプロフィールの<strong style="color: var(--text);">「ポイントを送る」</strong>から送金できます。1回につき1〜100,000ポイントで、確認画面が出ます。<strong style="color: var(--text);">送金の取り消しはできません。</strong>送る相手をよく確かめてください。</li>
+                                <li><strong style="color: var(--text);">使い道:</strong> サイドバーの「取引所」で、壁紙やフォントなどと交換できます。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 7. 取引所 -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">7. 取引所（ポイントで売買）</h2>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li><strong style="color: var(--text);">公式商品:</strong> 運営（Talk-ch公式）が、フォント・壁紙などを出品しています。購入代金は運営に入ります。</li>
+                                <li><strong style="color: var(--text);">ユーザーの出品:</strong> 会員は自作の壁紙・Webプロキシ・その他を出品できます（フォントの出品は公式のみです）。「取引所」から出品フォームを開き、タイトル・説明・価格・画像を入力します。売れると、代金が出品者のポイントになります。</li>
+                                <li><strong style="color: var(--text);">購入とインベントリ:</strong> 商品ページで「購入する」を押すと、ポイントが引かれて<strong style="color: var(--text);">インベントリ</strong>に入ります。同じ商品を2回買うことはできません。自分の出品は買えません。</li>
+                                <li><strong style="color: var(--text);">壁紙・フォントを使う:</strong> 壁紙は「適用する」を押すとスレ画面の背景が変わります（自分の画面だけで、他の人の表示は変わりません）。フォントを適用すると、自分のレスがその書体で表示されます。「適用を解除する」でもとに戻せます。</li>
+                                <li><strong style="color: var(--text);">Webプロキシ:</strong> 購入前はURLが見えません。購入した人にだけURLが表示されます。</li>
+                                <li><strong style="color: var(--text);">評価とショップ:</strong> ユーザーが出品した商品は、購入した人が★1〜5とコメントで評価できます（公式商品は評価できません）。出品者の名前を押すと、その人のショップ（出品一覧）に移動できます。プロフィールにも「ショップを見る」があります。</li>
+                                <li><strong style="color: var(--text);">18歳以上のコンテンツ:</strong> 18歳以上向けの商品は、一覧では画像と説明が伏せられます。商品ページの「表示する」を押して、確認で18歳以上と答えると表示されます。出品者は、該当する商品に必ずチェックを付けてください。運営が18歳以上と判断した商品は、運営が設定します。</li>
+                                <li><strong style="color: var(--text);">通報:</strong> 規約に反する商品は、商品ページの「🚩通報する」から運営に知らせられます。</li>
+                            </ul>
+                        </div>
+
+                         <!-- 8. 謎機能 -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">8. 謎機能</h2>
                             <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
                                 <li><strong style="color: var(--text);">サーバー状況:</strong> サーバーのCPU,メモリ、ネットワークの稼働率のグラフです。見れるから何があるとかはありません。シンプル管理人の趣味です。疲れたときにぼーっと見るのもいいかもね。</li>
                             </ul>
@@ -1507,13 +1565,15 @@
 
                         <!-- 5. ルールとマナー -->
                         <div class="glass-panel">
-                            <h2 class="panel-title">5. 利用ルールとマナー</h2>
+                            <h2 class="panel-title">9. 利用ルールとマナー</h2>
                             <p style="color: var(--text-muted); margin: 0 0 10px; line-height: 1.7;">
                                 みんなが快適に利用できるよう、以下のマナーをお守りください。
                             </p>
                             <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
                                 <li>誹謗中傷、差別的発言、過度な荒らし行為は禁止されています。</li>
                                 <li>個人情報（本名・電話番号・住所など）は書き込まないでください。</li>
+                                <li>取引所で18歳以上向けの商品を出品するときは、必ず「18歳以上のコンテンツ」にチェックを付けてください。</li>
+                                <li>スレッド・レス・ユーザー・商品には、それぞれの画面の<strong style="color: var(--text);">「通報」ボタン</strong>から通報できます。個別に連絡したい場合は、下の窓口をご利用ください。</li>
                                 <li>違反・不適切な投稿を見つけた場合は、サイドバーの<a href="https://forms.cloud.microsoft/r/0txMxE8bs3" target="_blank" style="color: var(--primary); font-weight: 600;">「通報窓口・お問い合わせ」</a>よりご連絡ください。</li>
                             </ul>
                         </div>
@@ -2275,7 +2335,7 @@
             line1.textContent = '🎁 ログインボーナス +' + d.points + ' pt';
             var line2 = document.createElement('div');
             line2.style.cssText = 'font-size:12px;color:#d1d5db;';
-            line2.textContent = d.streak + '日連続ログイン' + (d.extra ? '（連続ボーナス +' + d.extra + ' pt 込み）' : '');
+            line2.textContent = d.streak + '日連続ログイン' + (d.extra ? '！' + d.streak + '日達成ボーナス +' + d.extra + ' pt 込み' : '');
             el.appendChild(line1); el.appendChild(line2);
             document.body.appendChild(el);
             requestAnimationFrame(function () { el.style.opacity = '1'; el.style.transform = 'translateX(-50%) translateY(0)'; });
