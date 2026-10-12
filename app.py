@@ -1453,6 +1453,7 @@ async def adgem_postback(request: Request):
 GAME_POINTS_WIN = 20
 GAME_POINTS_LOSS = 5
 GAME_LABELS = {'othello': 'オセロ', 'chess': 'チェス', 'shogi': '将棋'}
+GAME_RESIGN_PENALTY = 10  # 降参したログイン会員から引くポイント(残高が足りなければ残高の範囲で)
 THREAD_REPLY_POINTS = 1  # スレ主以外のレス1件につき、スレ主へ1ポイント
 
 
@@ -1489,6 +1490,63 @@ async def _award_game_result_points(game: str, room_code: str,
             )
         except Exception as e:
             print(f"ゲームポイント付与エラー({game}, room={room_code}, user={user_id}): {e}")
+
+
+_RESIGNABLE_TABLES = {'othello_rooms': False, 'chess_rooms': True, 'shogi_rooms': True}  # {テーブル: in_check列の有無}
+
+
+async def _finish_room_if_playing(table: str, room_code: str, winner: str) -> bool:
+    """部屋が「対局中」のときだけ終了(finished)にして勝者を記録する。更新できたら True。
+    execute_query は書き込みの結果(更新件数)を返さないため、ここでは接続を直接使って
+    rowcount を確認する。降参の二重送信や、相手の着手との競合で二重処理されないための関門。"""
+    if table not in _RESIGNABLE_TABLES:
+        return False
+    has_in_check = _RESIGNABLE_TABLES[table]
+    conn = await _get_db_conn()
+    async with _db_lock:
+        cur = await conn.execute(
+            f"UPDATE {table} SET status = 'finished', winner = ?, "
+            + ("in_check = NULL, " if has_in_check else "")
+            + "updated_at = ? WHERE room_code = ? AND status = 'playing'",
+            [winner, datetime.utcnow().isoformat(), room_code],
+        )
+        changed = cur.rowcount
+        await cur.close()
+        await conn.commit()
+    return changed > 0
+
+
+async def _award_game_resign_result(game: str, room_code: str,
+                                    resigner_member_id, winner_member_id):
+    """降参による対局終了時のポイント処理。
+
+    - 降参した側: 敗北の+5は付けず、代わりに GAME_RESIGN_PENALTY ポイントを引く
+      (残高がそれ未満なら残高ぶんだけ。ゲスト・残高0の人は対象外)。
+    - 降参された側(勝者): 通常の勝利と同じ(+20)。
+    レーティングと勝敗は、通常の勝ち負けと同じく apply_game_result で更新される。
+    """
+    label = GAME_LABELS.get(game, game)
+    if resigner_member_id:
+        try:
+            uid = int(resigner_member_id)
+            balance = await points_service.get_balance(uid)
+            penalty = min(GAME_RESIGN_PENALTY, balance)
+            if penalty > 0:
+                await points_service.add_points(
+                    uid, -penalty, reason='game_resign', description=f'{label}で降参(ペナルティ)',
+                    source='game', idempotency_key=f'game:{game}:{room_code}:{uid}',
+                )
+        except Exception as e:
+            print(f"降参ペナルティ処理エラー({game}, room={room_code}): {e}")
+    if winner_member_id:
+        try:
+            uid = int(winner_member_id)
+            await points_service.add_points(
+                uid, GAME_POINTS_WIN, reason='game_win', description=f'{label}で勝利',
+                source='game', idempotency_key=f'game:{game}:{room_code}:{uid}',
+            )
+        except Exception as e:
+            print(f"降参勝利ポイント付与エラー({game}, room={room_code}): {e}")
 
 
 async def _award_thread_reply_points(thread_id: int, op_public_id: str, reply_id):
@@ -3146,6 +3204,37 @@ async def game_move(request: Request, room_code: str):
     return {'success': True}
 
 
+@app.post('/game/{room_code}/resign')
+async def game_resign(request: Request, room_code: str):
+    """オセロ: 対局中の参加者が降参する。相手の勝ちとして終了し、レーティングは通常の敗北と同じ。"""
+    code = room_code.upper()
+    rows = await execute_query('SELECT * FROM othello_rooms WHERE room_code=? LIMIT 1', [code])
+    if not rows:
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
+    r = rows[0]
+    token = _game_token(request)
+    player = 'B' if r.get('black_token') == token else ('W' if r.get('white_token') == token else None)
+    if not player:
+        return json_resp({'success': False, 'error': '観戦者は降参できません'}, 403)
+    if r['status'] != 'playing':
+        return {'success': False, 'error': '対局は終了しています'}
+
+    winner = 'W' if player == 'B' else 'B'
+    # 先に「終了」へ更新できた1回だけが処理を続ける(二重送信・相手の着手との競合で二重処理しない)
+    if not await _finish_room_if_playing('othello_rooms', code, winner):
+        return {'success': False, 'error': '対局は終了しています'}
+
+    black_key = _rating_key(r.get('black_member_id'), r.get('black_token'))
+    white_key = _rating_key(r.get('white_member_id'), r.get('white_token'))
+    result_black = 1 if winner == 'B' else 0
+    await apply_game_result('othello', black_key, r.get('black_name') or '名無しさん',
+                            white_key, r.get('white_name') or '名無しさん', result_black)
+    resigner_id = r.get('black_member_id') if player == 'B' else r.get('white_member_id')
+    winner_id = r.get('white_member_id') if player == 'B' else r.get('black_member_id')
+    await _award_game_resign_result('othello', code, resigner_id, winner_id)
+    return {'success': True}
+
+
 @app.get('/chess')
 async def chess_lobby(request: Request):
     resp = templates.TemplateResponse(request, 'chess.html', {'room': None, 'my_color': None})
@@ -3333,6 +3422,36 @@ async def chess_move(request: Request, room_code: str):
         'UPDATE chess_rooms SET board=?,turn=?,updated_at=?,in_check=?,status=?,winner=?,castling=?,en_passant=? WHERE room_code=? AND turn=?',
         [new_board_json, next_color, now, (next_color if next_in_check else None), new_status, winner, new_castling, new_ep_json, code, color]
     )
+    return {'success': True}
+
+
+@app.post('/chess/{room_code}/resign')
+async def chess_resign(request: Request, room_code: str):
+    """チェス: 対局中の参加者が降参する。"""
+    code = room_code.upper()
+    rows = await execute_query('SELECT * FROM chess_rooms WHERE room_code=? LIMIT 1', [code])
+    if not rows:
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
+    r = rows[0]
+    token = _game_token(request)
+    color = 'w' if r.get('white_token') == token else ('b' if r.get('black_token') == token else None)
+    if not color:
+        return json_resp({'success': False, 'error': '観戦者は降参できません'}, 403)
+    if r['status'] != 'playing':
+        return {'success': False, 'error': '対局は終了しています'}
+
+    winner = 'b' if color == 'w' else 'w'
+    if not await _finish_room_if_playing('chess_rooms', code, winner):
+        return {'success': False, 'error': '対局は終了しています'}
+
+    white_key = _rating_key(r.get('white_member_id'), r.get('white_token'))
+    black_key = _rating_key(r.get('black_member_id'), r.get('black_token'))
+    result_white = 1 if winner == 'w' else 0
+    await apply_game_result('chess', white_key, r.get('white_name') or '名無しさん',
+                            black_key, r.get('black_name') or '名無しさん', result_white)
+    resigner_id = r.get('white_member_id') if color == 'w' else r.get('black_member_id')
+    winner_id = r.get('black_member_id') if color == 'w' else r.get('white_member_id')
+    await _award_game_resign_result('chess', code, resigner_id, winner_id)
     return {'success': True}
 
 
@@ -3529,6 +3648,36 @@ async def shogi_move(request: Request, room_code: str):
         'UPDATE shogi_rooms SET board=?,hands=?,turn=?,updated_at=?,in_check=?,status=?,winner=? WHERE room_code=? AND turn=?',
         [json.dumps(board), json.dumps(hands), next_color, now, (next_color if next_in_check else None), new_status, winner, code, color]
     )
+    return {'success': True}
+
+
+@app.post('/shogi/{room_code}/resign')
+async def shogi_resign(request: Request, room_code: str):
+    """将棋: 対局中の参加者が投了(降参)する。"""
+    code = room_code.upper()
+    rows = await execute_query('SELECT * FROM shogi_rooms WHERE room_code=? LIMIT 1', [code])
+    if not rows:
+        return json_resp({'success': False, 'error': '部屋が見つかりません'}, 404)
+    r = rows[0]
+    token = _game_token(request)
+    color = 's' if r.get('sente_token') == token else ('g' if r.get('gote_token') == token else None)
+    if not color:
+        return json_resp({'success': False, 'error': '観戦者は投了できません'}, 403)
+    if r['status'] != 'playing':
+        return {'success': False, 'error': '対局は終了しています'}
+
+    winner = 'g' if color == 's' else 's'
+    if not await _finish_room_if_playing('shogi_rooms', code, winner):
+        return {'success': False, 'error': '対局は終了しています'}
+
+    sente_key = _rating_key(r.get('sente_member_id'), r.get('sente_token'))
+    gote_key = _rating_key(r.get('gote_member_id'), r.get('gote_token'))
+    result_sente = 1 if winner == 's' else 0
+    await apply_game_result('shogi', sente_key, r.get('sente_name') or '名無しさん',
+                            gote_key, r.get('gote_name') or '名無しさん', result_sente)
+    resigner_id = r.get('sente_member_id') if color == 's' else r.get('gote_member_id')
+    winner_id = r.get('gote_member_id') if color == 's' else r.get('sente_member_id')
+    await _award_game_resign_result('shogi', code, resigner_id, winner_id)
     return {'success': True}
 
 
