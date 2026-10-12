@@ -1021,6 +1021,8 @@
                         handleNewReply(data.reply);
                     } else if (data.type === 'presence') {
                         if (window.updatePresence) window.updatePresence(data);
+                    } else if (data.type === 'hello') {
+                        if (window.onWsHello) window.onWsHello(data);
                     }
                 } catch (e) {
                     console.error('WSメッセージ処理エラー:', e);
@@ -1457,7 +1459,8 @@
     var panel = document.getElementById('online-panel');
     var countEl = document.getElementById('active-count');
     if (!toggle || !panel) return;
-    var state = { count: null, guests: 0, members: [] };
+    var PAGE_LOGGED_IN = {{ 'true' if current_member else 'false' }};
+    var state = { count: null, guests: 0, members: [], guestList: [], mismatch: false };
 
     function render() {
         panel.textContent = '';
@@ -1466,26 +1469,35 @@
         head.textContent = 'オンライン ' + (state.count == null ? '' : state.count + '人');
         panel.appendChild(head);
 
-        state.members.forEach(function (m) {
-            var a = document.createElement('a');
-            a.className = 'online-item';
-            a.href = '/profile/' + encodeURIComponent(m.public_id);
+        if (state.mismatch) {
+            var warn = document.createElement('div');
+            warn.className = 'online-empty';
+            warn.style.color = '#f59e0b';
+            warn.textContent = 'ログイン中ですが、ゲストとして接続されています。ページを再読み込みしてください。';
+            panel.appendChild(warn);
+        }
+        function row(tag, name, idText, href) {
+            var el = document.createElement(tag);
+            el.className = 'online-item';
+            if (href) el.href = href;
             var n = document.createElement('span');
             n.className = 'online-name';
-            n.textContent = m.username || '(名前なし)';
+            n.textContent = name;
             var i = document.createElement('span');
             i.className = 'online-id';
-            i.textContent = 'ID:' + m.public_id;
-            a.appendChild(n); a.appendChild(i);
-            panel.appendChild(a);
-        });
-        if (state.guests > 0) {
-            var g = document.createElement('div');
-            g.className = 'online-guests';
-            g.textContent = (state.members.length ? 'ほか ' : '') + 'ゲスト ' + state.guests + '人';
-            panel.appendChild(g);
+            i.textContent = idText;
+            el.appendChild(n); el.appendChild(i);
+            panel.appendChild(el);
         }
-        if (!state.members.length && !state.guests) {
+        state.members.forEach(function (m) {
+            var link = m.public_id ? '/profile/' + encodeURIComponent(m.public_id) : null;
+            row(link ? 'a' : 'div', m.username || '(名前なし)', m.public_id ? 'ID:' + m.public_id : '', link);
+        });
+        // ゲストも1人ずつ「名無しさん + ID」で表示する(プロフィールは無いのでリンクなし)
+        state.guestList.forEach(function (g) {
+            row('div', g.name || '名無しさん', 'ID:' + g.id + '（ゲスト）', null);
+        });
+        if (!state.members.length && !state.guestList.length) {
             var e = document.createElement('div');
             e.className = 'online-empty';
             e.textContent = 'オンラインの人はいません。';
@@ -1513,10 +1525,27 @@
     window.addEventListener('resize', function () { if (!panel.hidden) place(); });
 
     // WebSocket から人数・在室メンバーが届くたびに更新(開いている間もその場で変わる)
+    // サーバーが自分をどう認識しているか。ログイン中なのにゲストと認識された場合は、
+    // 1回だけ自動で再読み込みして直す(無限ループしないよう60秒に1回まで)。
+    window.onWsHello = function (data) {
+        state.mismatch = PAGE_LOGGED_IN && !data.member;
+        if (!state.mismatch) return;
+        try {
+            var last = Number(sessionStorage.getItem('wsGuestReloadAt') || 0);
+            if (Date.now() - last > 60000) {
+                sessionStorage.setItem('wsGuestReloadAt', String(Date.now()));
+                location.reload();
+                return;
+            }
+        } catch (e) {}
+        if (!panel.hidden) render();
+    };
+
     window.updatePresence = function (data) {
         state.count = Number(data.count) || 0;
         state.guests = Number(data.guests) || 0;
         state.members = Array.isArray(data.members) ? data.members : [];
+        state.guestList = Array.isArray(data.guest_list) ? data.guest_list : [];
         if (countEl) countEl.textContent = state.count;
         if (!panel.hidden) { render(); place(); }
     };
