@@ -360,7 +360,7 @@ class ConnectionManager:
         #   (現在は単一worker運用なので問題なし)。
         self.presence: dict[int, dict[WebSocket, Optional[dict]]] = {}
 
-    async def connect(self, thread_id: int, websocket: WebSocket, member: Optional[dict] = None):
+    async def connect(self, thread_id: int, websocket: WebSocket, member: Optional[dict] = None):  # member=在室情報(会員/ゲスト)
         await websocket.accept()
         self.active_connections.setdefault(thread_id, []).append(websocket)
         self.presence.setdefault(thread_id, {})[websocket] = member
@@ -387,21 +387,28 @@ class ConnectionManager:
     def presence_snapshot(self, thread_id: int) -> dict:
         """人数と在室メンバー一覧。同じ会員が複数タブで開いていても1人として数え、
         ログインしていない閲覧者は接続1本につきゲスト1人として数える。"""
-        members: dict[int, dict] = {}
-        guests = 0
-        for member in self.presence.get(thread_id, {}).values():
-            if member:
-                members[member['id']] = member
+        members: dict = {}
+        guests: dict = {}
+        for who in self.presence.get(thread_id, {}).values():
+            if not who:
+                continue
+            if who.get('guest'):
+                guests[who['id']] = who      # 同じゲストID(同じ回線)の複数タブは1人
             else:
-                guests += 1
+                members[who['id']] = who     # 同じ会員の複数タブは1人
         listed = sorted(members.values(), key=lambda m: (m.get('username') or '').lower())
+        guest_listed = sorted(guests.values(), key=lambda g: g.get('guest_id') or '')
         return {
             "type": "presence",
-            "count": len(members) + guests,
-            "guests": guests,
+            "count": len(members) + len(guests),
+            "guests": len(guests),
             "members": [
                 {"username": m.get('username') or '', "public_id": m.get('public_id') or ''}
                 for m in listed[:100]
+            ],
+            "guest_list": [
+                {"name": g.get('username') or '名無しさん', "id": g.get('guest_id') or ''}
+                for g in guest_listed[:100]
             ],
         }
 
@@ -458,23 +465,52 @@ manager = ConnectionManager()
 THREAD_WS_IDLE_TIMEOUT = 70  # 秒。クライアントは約25秒ごとにpingを送る。無通信が続く接続は在室から外す
 
 
-@app.websocket('/ws/thread/{thread_id}')
-async def thread_ws(websocket: WebSocket, thread_id: int):
-    # ログイン中の会員なら名前とIDを控える(オンライン一覧に表示するため)。未ログインはゲスト扱い。
-    member = None
+async def _thread_ws_identity(websocket: WebSocket) -> dict:
+    """WebSocket接続の持ち主を判定する。
+    ログイン中の会員 → 名前とIDを返す(オンライン一覧でプロフィールにリンクする)。
+    未ログイン → ゲスト。掲示板の投稿と同じ「名無しさん + 日替わりID」で表示する。"""
+    member_id = None
     try:
         member_id = websocket.session.get('member_id')
-        if member_id:
+    except Exception as e:
+        print(f"スレWSのセッション読み取りエラー: {e}")
+
+    if member_id:
+        username = None
+        public_id = None
+        try:
+            username = websocket.session.get('member_username')
+            public_id = websocket.session.get('member_public_id')
+        except Exception:
+            pass
+        # DBで最新の名前・IDを取る。失敗しても「会員であること」は変えない
+        # (以前はここで例外が出ると、ログイン中でもゲスト扱いになっていた)。
+        try:
             rows = await execute_query(
-                "SELECT id, username, public_id FROM users WHERE id = ?", [member_id]
+                "SELECT username, public_id FROM users WHERE id = ?", [member_id]
             )
             if rows:
-                member = {'id': rows[0]['id'], 'username': rows[0]['username'],
-                          'public_id': rows[0]['public_id']}
-    except Exception as e:
-        print(f"スレWSの会員情報取得エラー: {e}")
+                username = rows[0].get('username') or username
+                public_id = rows[0].get('public_id') or public_id
+        except Exception as e:
+            print(f"スレWSの会員情報取得エラー: {e}")
+        return {'id': f"m:{member_id}", 'guest': False,
+                'username': username or '(名前なし)', 'public_id': public_id or ''}
 
-    await manager.connect(thread_id, websocket, member)
+    ip = websocket.headers.get('cf-connecting-ip') or (websocket.client.host if websocket.client else None)
+    guest_id = get_daily_user_id(ip) if ip else secrets.token_hex(3)
+    return {'id': f"g:{guest_id}", 'guest': True, 'username': '名無しさん', 'guest_id': guest_id}
+
+
+@app.websocket('/ws/thread/{thread_id}')
+async def thread_ws(websocket: WebSocket, thread_id: int):
+    who = await _thread_ws_identity(websocket)
+    await manager.connect(thread_id, websocket, who)
+    try:
+        # 「サーバーはあなたをこう認識している」を本人にだけ知らせる(ログイン状態の食い違いの検出用)
+        await websocket.send_json({"type": "hello", "member": not who['guest']})
+    except Exception:
+        pass
     try:
         while True:
             # クライアントは接続維持の確認用に定期的に 'ping' を送ってくる。
