@@ -310,6 +310,13 @@
 
         <div class="board" id="board"></div>
         <div class="msg" id="game-msg"></div>
+        <div id="resign-area" style="display:none; margin-top:12px; text-align:center;">
+            <button type="button" id="resign-btn"
+                    style="background:transparent; color:#ef4444; border:1px solid #ef4444; border-radius:8px; padding:8px 18px; font-size:13px; font-weight:700; cursor:pointer;">
+                🏳️ 降参する
+            </button>
+        </div>
+
 
         <!--
           対局画面の一番下。盤面の外側で誤タップの心配がない位置。
@@ -624,6 +631,34 @@
                 setTimeout(() => { btn.textContent = original; }, 1500);
             });
         });
+
+        // 降参(対局中の参加者だけにボタンを出す)
+        (function () {
+            var area = document.getElementById('resign-area');
+            var btn = document.getElementById('resign-btn');
+            var busy = false;
+            function sync(data) {
+                var show = !!(data && data.status === 'playing' && myColor);
+                area.style.display = show ? 'block' : 'none';
+            }
+            var origUpdate = updateStatusBar;
+            updateStatusBar = function (data) { origUpdate(data); sync(data); };
+            btn.addEventListener('click', async function () {
+                if (busy) return;
+                if (!confirm('本当に降参しますか？\n\n降参すると負けになります。\n・レーティングが下がります\n・勝利/敗北のポイントは付かず、ペナルティとしてポイントが引かれます（ログイン中のみ）')) return;
+                busy = true; btn.disabled = true;
+                try {
+                    var res = await fetch('/chess/' + encodeURIComponent(roomCode) + '/resign', { method: 'POST' });
+                    var data = await res.json();
+                    if (!data.success) alert(data.error || '降参できませんでした。');
+                    await fetchState();
+                } catch (e) {
+                    alert('通信に失敗しました。');
+                } finally {
+                    busy = false; btn.disabled = false;
+                }
+            });
+        })();
 
         // 初回読み込み
         fetchState();
