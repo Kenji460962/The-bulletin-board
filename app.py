@@ -32,7 +32,10 @@ import uvicorn
 import redis.asyncio as aioredis
 import aiosqlite
 
+
 import points_service
+import casino_service
+import casino_games
 
 load_dotenv()
 
@@ -759,6 +762,11 @@ async def _get_db_conn() -> aiosqlite.Connection:
 # 即座に実行される通常の関数呼び出しなので、_get_db_conn という名前が
 # 既に定義済みである必要がある)。
 points_service.init(_get_db_conn, _db_lock)
+
+# === カジノ追加 ===
+casino_service.init(_get_db_conn, _db_lock)
+casino_games.register_all(casino_service)
+# ==================
 
 
 async def execute_query(sql, params=None):
@@ -4786,14 +4794,24 @@ async def _cleanup_memory_caches_loop():
         await asyncio.sleep(_CACHE_CLEANUP_INTERVAL_SECONDS)
         try:
             now = time.time()
+
+
             _prune_expired(LAST_THREAD_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             _prune_expired(LAST_REPLY_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             _prune_expired(LAST_REPLY_SIGNATURES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             _prune_expired(LAST_DM_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            # === カジノ追加 ===
+            _prune_expired(casino_service.LAST_BET_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            # ==================
             # 経過時間による掃除に加え、件数上限でも必ず有界にする
             for _d in (LAST_THREAD_TIMES, LAST_REPLY_TIMES, LAST_REPLY_SIGNATURES,
-                       LAST_DM_TIMES, _PROXY_CHECK_CACHE, _BANNED_IP_CACHE):
+                       LAST_DM_TIMES, _PROXY_CHECK_CACHE, _BANNED_IP_CACHE,
+                       casino_service.LAST_BET_TIMES):  # === カジノ追加 ===
                 _cap_dict_size(_d, 20000)
+
+
+
+            
             _prune_expired(
                 _PROXY_CHECK_CACHE, now, _PROXY_CACHE_TTL,
                 get_timestamp=lambda v: v["checked_at"]
@@ -5940,6 +5958,10 @@ market_service.init(_get_db_conn, _db_lock)
 async def _market_startup():
     await market_service.ensure_schema()
 
+@app.on_event("startup")
+async def _casino_startup():
+    await casino_service.ensure_schema()
+
 
 MARKET_MAX_IMAGE_BYTES = 8 * 1024 * 1024
 MARKET_ALLOWED_IMG_EXT = {'.jpg', '.jpeg', '.png', '.webp'}
@@ -6646,6 +6668,131 @@ async def market_shop(request: Request, public_id: str):
 
 
 app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
+
+# =========================
+# カジノ
+# =========================
+
+@app.get('/casino')
+async def casino_hub(request: Request):
+    """カジノのハブ。ゲーム一覧と今日の成績を表示する。"""
+    current_member = await get_current_member(request)
+    stats = None
+    balance = None
+    if current_member:
+        stats, balance = await asyncio.gather(
+            casino_service.stats_today(current_member['id']),
+            points_service.get_balance(current_member['id']),
+        )
+
+    games = [
+        {
+            'key': g.key, 'label': g.label, 'icon': g.icon,
+            'description': g.description,
+            'min_bet': g.min_bet, 'max_bet': g.max_bet,
+        }
+        for g in casino_service.all_games()
+    ]
+
+    return templates.TemplateResponse(request, 'casino.html', {
+        'current_member': current_member,
+        'games': games,
+        'stats': stats,
+        'balance': balance,
+        'daily_loss_limit': casino_service.DAILY_LOSS_LIMIT,
+        'unread_dm_count': await get_unread_dm_count(request),
+    })
+
+
+@app.get('/casino/{game_key}')
+async def casino_game_page(request: Request, game_key: str):
+    """個別ゲームのページ。テンプレートは各ゲームの Game.template を使う。"""
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login', status_code=303)
+    game = casino_service.get_game(game_key)
+    if not game:
+        return text_resp("そのゲームは見つかりません。", 404)
+
+    member_id = request.session.get('member_id')
+    balance, history, stats, current_member = await asyncio.gather(
+        points_service.get_balance(member_id),
+        casino_service.recent_bets(member_id, game=game_key, limit=20),
+        casino_service.stats_today(member_id),
+        get_current_member(request),
+    )
+    for h in history:
+        h['created_at'] = _to_jst_string(h.get('created_at'))
+        try:
+            h['detail'] = json.loads(h.get('detail') or '{}')
+        except Exception:
+            h['detail'] = {}
+
+    return templates.TemplateResponse(request, game.template, {
+        'game': {
+            'key': game.key, 'label': game.label, 'icon': game.icon,
+            'description': game.description,
+            'min_bet': game.min_bet, 'max_bet': game.max_bet,
+            'rules': game.rules,
+        },
+        'current_member': current_member,
+        'balance': balance,
+        'history': history,
+        'stats': stats,
+        'daily_loss_limit': casino_service.DAILY_LOSS_LIMIT,
+        'unread_dm_count': await get_unread_dm_count(request),
+    })
+
+
+@app.post('/api/casino/{game_key}/play')
+async def api_casino_play(request: Request, game_key: str):
+    """全カジノゲーム共通のプレイAPI。game_key で分岐する。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    public_id = await get_member_public_id(request)
+    if public_id and await is_banned_member_public_id(public_id):
+        return json_resp({"success": False, "error": "利用できません。"}, 403)
+
+    if not casino_service.get_game(game_key):
+        return json_resp({"success": False, "error": "そのゲームは見つかりません。"}, 404)
+
+    body = await get_json_silent(request) or {}
+    try:
+        bet = int(body.get('bet'))
+    except (TypeError, ValueError):
+        return json_resp({"success": False, "error": "賭け金は整数で指定してください。"}, 400)
+    request_id = str(body.get('request_id') or '').strip()[:64] or None
+
+    try:
+        result = await casino_service.place_bet(member_id, game_key, bet, request_id)
+    except Exception as e:
+        print(f"カジノ実行エラー({game_key}): {e}")
+        return json_resp({"success": False, "error": "サーバーエラーが発生しました。"}, 500)
+
+    if result['success']:
+        return json_resp({
+            "success": True,
+            "duplicate": result['duplicate'],
+            "detail": result['detail'],
+            "payout": result['payout'],
+            "net": result['net'],
+            "balance": result['balance'],
+        })
+
+    err_map = {
+        'unknown_game': "そのゲームは見つかりません。",
+        'invalid_bet': "賭け金が範囲外です。",
+        'insufficient_balance': "ポイントが足りません。",
+        'daily_limit': f"本日の損失上限({casino_service.DAILY_LOSS_LIMIT}pt)に達しました。"
+                       "日付が変わるとまた遊べます。",
+        'cooldown': "操作が速すぎます。少し待ってください。",
+        'duplicate_request': "同じ操作がすでに処理されています。",
+    }
+    return json_resp({
+        "success": False,
+        "error": err_map.get(result['error'], "実行に失敗しました。"),
+        "balance": result['balance'],
+    }, 400)
 
 
 if __name__ == '__main__':
