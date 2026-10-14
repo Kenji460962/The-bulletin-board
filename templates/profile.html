@@ -110,6 +110,18 @@
   }
   .shop-link:hover { background: var(--primary-soft); }
   .shop-link .arrow { color: var(--text-muted); }
+  /* ---- 作成したスレッド ---- */
+  .thread-list-box { margin-bottom: 22px; border: 1px solid var(--card-border); border-radius: var(--radius); background: var(--bg); }
+  .thread-list-box summary { cursor: pointer; padding: 12px 14px; font-size: 13.5px; font-weight: 700; color: var(--primary); list-style: none; }
+  .thread-list-box summary::-webkit-details-marker { display: none; }
+  .thread-list-box summary::after { content: '▾'; float: right; color: var(--text-muted); }
+  .thread-list-box[open] summary::after { content: '▴'; }
+  .thread-list { list-style: none; margin: 0; padding: 0 14px 8px; }
+  .thread-list li { padding: 9px 0; border-top: 1px solid var(--card-border); font-size: 13.5px; }
+  .thread-list a { color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+  .thread-list a:hover { color: var(--primary); text-decoration: underline; }
+  .thread-list .meta { display: block; margin-top: 2px; font-size: 11.5px; color: var(--text-muted); }
+  .thread-list-empty { padding: 0 14px 12px; font-size: 13px; color: var(--text-muted); }
   .back-link { display: inline-block; margin-top: 20px; font-size: 13px; color: var(--primary); text-decoration: none; }
 
   /* ---- ポイント(本人のみ表示) ---- */
@@ -204,6 +216,26 @@
           <div class="label">総レス数</div>
         </div>
       </div>
+
+      <div class="section-title">{{ '自分が立てたスレッド' if is_own_profile else '立てたスレッド' }}</div>
+      <details class="thread-list-box">
+        <summary>スレッド一覧を見る（{{ board_stats.thread_count }}件）</summary>
+        {% if user_threads %}
+        <ul class="thread-list">
+          {% for t in user_threads %}
+          <li>
+            <a href="/thread/{{ t.id }}">{{ t.title }}</a>
+            <span class="meta">{% if t.category_label %}{{ t.category_label }} ／ {% endif %}{{ t.created_at }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% if board_stats.thread_count > user_threads|length %}
+        <div class="thread-list-empty">新しい順に{{ user_threads|length }}件まで表示しています。</div>
+        {% endif %}
+        {% else %}
+        <div class="thread-list-empty">まだスレッドを立てていません。</div>
+        {% endif %}
+      </details>
 
       <div class="section-title">ゲーム成績</div>
       {% set game_labels = {'othello': 'オセロ', 'chess': 'チェス', 'shogi': '将棋'} %}
