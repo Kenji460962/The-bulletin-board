@@ -351,6 +351,27 @@ def _prime_psutil_cpu():
         pass
 
 
+RETRACTED_TEXT = '内容を送信取り消しされました。'
+
+
+def _r2_key_from_url(url: str):
+    """R2の公開URLからオブジェクトキーを取り出す(自分のR2のURLでなければ None)。"""
+    if not url or not R2_PUBLIC_URL:
+        return None
+    prefix = R2_PUBLIC_URL.rstrip('/') + '/'
+    return url[len(prefix):] if url.startswith(prefix) else None
+
+
+async def _delete_r2_key(key):
+    """取り消した投稿の画像をR2から削除する(失敗しても取り消し自体は成功させる)。"""
+    if not key:
+        return
+    try:
+        await run_in_threadpool(lambda: s3_client.delete_object(Bucket=R2_BUCKET_NAME, Key=key))
+    except Exception as e:
+        print(f"R2画像の削除エラー(key={key}): {e}")
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[int, list[WebSocket]] = {}
@@ -437,6 +458,18 @@ class ConnectionManager:
         for ws in conns:
             try:
                 await ws.send_json({"type": "new_reply", "reply": reply})
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(thread_id, ws)
+
+    async def broadcast_event(self, thread_id: int, payload: dict):
+        """このプロセス内でそのスレを見ている全員に、任意のイベント(送信取り消しなど)を配信する。"""
+        conns = list(self.active_connections.get(thread_id, []))
+        dead = []
+        for ws in conns:
+            try:
+                await ws.send_json(payload)
             except Exception:
                 dead.append(ws)
         for ws in dead:
@@ -2111,7 +2144,7 @@ async def profile_view(request: Request, public_id: str):
     # ゲーム3種の成績・フォロー数・ログイン中会員情報・未読DM件数・ポイント残高も
     # 互いに独立なので並列化する。ポイント残高は points_service 経由で取得し、
     # users.points を直接SELECTしない(広告機能・ゲーム機能と同じ取得経路に揃える)。
-    othello_res, chess_res, shogi_res, follow_counts, current_member, unread_dm_count, points_balance = await asyncio.gather(
+    othello_res, chess_res, shogi_res, follow_counts, current_member, unread_dm_count, points_balance, user_threads_res = await asyncio.gather(
         execute_query("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'othello']),
         execute_query("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'chess']),
         execute_query("SELECT rating, wins, losses, draws FROM game_ratings WHERE player_key = ? AND game = ?", [member_key, 'shogi']),
@@ -2119,7 +2152,20 @@ async def profile_view(request: Request, public_id: str):
         get_current_member(request),
         get_unread_dm_count(request),
         points_service.get_balance(profile_user['id']),
+        # このユーザーが立てたスレッド(新しい順・最大50件)。threads.user_id には会員のpublic_idが入る。
+        execute_query(
+            "SELECT id, title, category, created_at FROM threads WHERE user_id = ? ORDER BY id DESC LIMIT 50",
+            [public_id]
+        ),
     )
+    user_threads = []
+    for t in (user_threads_res or []):
+        user_threads.append({
+            'id': t['id'],
+            'title': t.get('title') or '',
+            'category_label': THREAD_CATEGORY_LABELS.get(t.get('category') or '', ''),
+            'created_at': str(t.get('created_at') or '')[:10],
+        })
     games = {}
     for g, gr in (('othello', othello_res), ('chess', chess_res), ('shogi', shogi_res)):
         if gr:
@@ -2153,6 +2199,7 @@ async def profile_view(request: Request, public_id: str):
         'profile_user': profile_user,
         'games': games,
         'board_stats': board_stats,
+        'user_threads': user_threads,
         'is_own_profile': is_own_profile,
         'current_member': current_member,
         'follow_counts': follow_counts,
@@ -4500,6 +4547,42 @@ async def delete_thread(request: Request, thread_id: int):
     return RedirectResponse(url='/', status_code=303)
 
 
+@app.post('/api/reply/{reply_id}/retract')
+async def api_reply_retract(request: Request, reply_id: int):
+    """自分が書いたレスを送信取り消しする。本文は「内容を送信取り消しされました。」に置き換わり、
+    画像は消える。レス番号やアンカーがずれないよう、レス自体は残す。会員本人のみ可能。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    my_public_id = await get_member_public_id(request)
+    rows = await execute_query(
+        "SELECT id, thread_id, poster_public_id, content, image_url FROM replies WHERE id = ?", [reply_id]
+    )
+    if not rows:
+        return json_resp({"success": False, "error": "レスが見つかりません。"}, 404)
+    r = rows[0]
+    if not my_public_id or r.get('poster_public_id') != my_public_id:
+        return json_resp({"success": False, "error": "自分のレスだけ取り消せます。"}, 403)
+    if (r.get('content') or '') == RETRACTED_TEXT:
+        return json_resp({"success": False, "error": "すでに取り消されています。"}, 400)
+
+    try:
+        await execute_query(
+            "UPDATE replies SET content = ?, image_url = ? WHERE id = ? AND poster_public_id = ?",
+            [RETRACTED_TEXT, '', reply_id, my_public_id]
+        )
+    except Exception as e:
+        print(f"レス取り消しエラー: {e}")
+        return json_resp({"success": False, "error": "取り消しに失敗しました。"}, 500)
+
+    await _delete_r2_key(_r2_key_from_url(r.get('image_url') or ''))
+    # そのスレを見ている全員の画面にも反映する
+    await manager.broadcast_event(r['thread_id'], {
+        "type": "reply_retracted", "reply_id": reply_id, "text": RETRACTED_TEXT,
+    })
+    return {"success": True, "text": RETRACTED_TEXT}
+
+
 @app.post('/thread/{thread_id}/delete/{reply_id}')
 async def delete_reply(request: Request, thread_id: int, reply_id: int):
     if not can_manage_board(request):
@@ -5239,6 +5322,45 @@ async def api_dm_send(request: Request, public_id: str):
     return json_resp({"success": True, "message": {**new_message, "is_mine": True}})
 
 
+@app.post('/api/dm/message/{message_id}/retract')
+async def api_dm_retract(request: Request, message_id: int):
+    """自分が送ったDMを送信取り消しする。本文は「内容を送信取り消しされました。」になり、
+    添付画像は消える。相手の画面にも反映される。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    rows = await execute_query(
+        "SELECT m.id, m.sender_id, m.content, m.image_key, m.conversation_id, "
+        "       c.user_a_id, c.user_b_id "
+        "FROM dm_messages m JOIN dm_conversations c ON c.id = m.conversation_id WHERE m.id = ?",
+        [message_id]
+    )
+    if not rows:
+        return json_resp({"success": False, "error": "メッセージが見つかりません。"}, 404)
+    m = rows[0]
+    if m['sender_id'] != member_id:
+        return json_resp({"success": False, "error": "自分が送ったメッセージだけ取り消せます。"}, 403)
+    if (m.get('content') or '') == RETRACTED_TEXT and not m.get('image_key'):
+        return json_resp({"success": False, "error": "すでに取り消されています。"}, 400)
+
+    try:
+        await execute_query(
+            "UPDATE dm_messages SET content = ?, image_key = NULL WHERE id = ? AND sender_id = ?",
+            [RETRACTED_TEXT, message_id, member_id]
+        )
+    except Exception as e:
+        print(f"DM取り消しエラー: {e}")
+        return json_resp({"success": False, "error": "取り消しに失敗しました。"}, 500)
+
+    await _delete_r2_key(m.get('image_key'))
+    other_id = m['user_b_id'] if m['user_a_id'] == member_id else m['user_a_id']
+    event = {"type": "dm_retracted", "message_id": message_id,
+             "conversation_id": m['conversation_id'], "text": RETRACTED_TEXT}
+    await dm_manager.send_to_user(other_id, event)
+    await dm_manager.send_to_user(member_id, event)
+    return {"success": True, "text": RETRACTED_TEXT}
+
+
 @app.get('/api/dm/{public_id}/poll')
 async def api_dm_poll(request: Request, public_id: str):
     """
@@ -5301,7 +5423,13 @@ async def api_dm_poll(request: Request, public_id: str):
                 "created_at": _to_jst_string(r.get('created_at')),
                 "is_mine": r['sender_id'] == member_id,
             })
-        return {"success": True, "messages": messages}
+        retracted = await execute_query(
+            "SELECT id FROM dm_messages WHERE conversation_id = ? AND content = ? "
+            "ORDER BY id DESC LIMIT 100",
+            [conversation_id, RETRACTED_TEXT]
+        ) or []
+        return {"success": True, "messages": messages,
+                "retracted_ids": [x['id'] for x in retracted], "retracted_text": RETRACTED_TEXT}
     except Exception as e:
         print(f"DMポーリングエラー: {e}")
         return json_resp({"success": False, "error": "取得に失敗しました。"}, 500)
