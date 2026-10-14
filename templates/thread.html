@@ -504,6 +504,21 @@
     #online-panel .online-name { font-weight: 700; overflow-wrap: anywhere; }
     #online-panel .online-id { font-size: 11px; color: var(--text-muted); }
     #online-panel .online-guests, #online-panel .online-empty { padding: 8px 14px; font-size: 12px; color: var(--text-muted); }
+    .more-btn { background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); border-radius: 6px;
+        padding: 0 9px; font-size: 16px; line-height: 1.3; cursor: pointer; flex: none; }
+    .more-btn:hover { color: var(--text-main); border-color: var(--text-muted); }
+    #more-menu { position: fixed; z-index: 260; min-width: 170px; max-width: calc(100vw - 16px); padding: 6px 0;
+        background: var(--panel-bg); color: var(--text-main); border: 1px solid var(--border-color); border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+    #more-menu[hidden] { display: none; }
+    #more-menu .more-item { display: block; width: 100%; text-align: left; background: none; border: none; border-radius: 0;
+        padding: 10px 16px; font-size: 13px; color: inherit; cursor: pointer; white-space: nowrap; line-height: 1.4; }
+    #more-menu .more-item:hover { background: rgba(127,127,127,.15); }
+    #more-menu .more-item.danger { color: var(--danger-color, #ef4444); }
+    #more-menu .more-sep { height: 1px; background: var(--border-color); margin: 4px 0; }
+    .retract-btn { font-size: 10.5px; padding: 1px 7px; border-radius: 6px; cursor: pointer; background: transparent;
+        color: var(--text-muted); border: 1px solid var(--border-color); white-space: nowrap; }
+    .retract-btn:hover { color: var(--danger-color, #ef4444); border-color: var(--danger-color, #ef4444); }
     #reply-image-preview { height: 28px; width: 28px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border-color); flex: none; }
     .reply-image-clear { font-size: 11px; padding: 3px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap;
         background: transparent; color: var(--text-muted); border: 1px solid var(--border-color); }
@@ -536,12 +551,10 @@
                 <a href="/messages" class="dm-link" id="dm-link">✉️<span class="dm-badge" id="dm-badge" {% if not unread_dm_count %}style="display:none;"{% endif %}>{{ unread_dm_count }}</span></a>
                 {% endif %}
             </div>
-            {% if is_admin_user %}
-            <form action="{{ url_for('delete_thread', thread_id=thread.id) }}" method="POST" onsubmit="return confirm('本当にこのスレッドを削除しますか？');" style="margin: 0;">
-                <button type="submit" style="background-color: var(--danger-color); color: white; border: none; padding: 2px 6px; font-size: 11px;">スレッド削除</button>
-            </form>
-            {% endif %}
-            <button type="button" class="report-btn" data-report-type="thread" data-report-id="{{ thread.id }}">🚩 通報</button>
+            <button type="button" class="more-btn" data-kind="thread" data-id="{{ thread.id }}"
+                    data-admin="{{ '1' if is_admin_user else '' }}"
+                    data-delete-url="{{ url_for('delete_thread', thread_id=thread.id) }}"
+                    aria-haspopup="menu" aria-label="その他の操作">⋯</button>
         </div>
     </div>
 
@@ -601,21 +614,11 @@
                 <span>{{ r.date }}</span>
                 <span style="color: var(--text-muted);">ID:{{ r.user_id }}</span>
                 
-                {% if is_admin_user %}
-                <div style="margin-left: auto; display: flex; gap: 4px;">
-                    <form action="{{ url_for('delete_reply', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('削除しますか？');">
-                        <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
-                    </form>
-                    <form action="{{ url_for('ban_user', thread_id=thread.id, reply_id=r.id) }}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');">
-                        <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
-                    </form>
-                    <button type="button" class="report-btn" data-report-type="reply" data-report-id="{{ r.id }}">🚩</button>
-                </div>
-                {% else %}
-                <div style="margin-left: auto;">
-                    <button type="button" class="report-btn" data-report-type="reply" data-report-id="{{ r.id }}">🚩 通報</button>
-                </div>
-                {% endif %}
+                <button type="button" class="more-btn" style="margin-left: auto;" data-kind="reply"
+                        data-id="{{ r.id }}" data-thread-id="{{ thread.id }}"
+                        data-retract="{{ '1' if (current_member and r.poster_public_id and r.poster_public_id == current_member.public_id and r.content != '内容を送信取り消しされました。') else '' }}"
+                        data-admin="{{ '1' if is_admin_user else '' }}"
+                        aria-haspopup="menu" aria-label="その他の操作">⋯</button>
             </div>
             <div class="post-content">{{ r.content | safe }}</div>
             {% if r.image_url %}
@@ -1023,6 +1026,8 @@
                         if (window.updatePresence) window.updatePresence(data);
                     } else if (data.type === 'hello') {
                         if (window.onWsHello) window.onWsHello(data);
+                    } else if (data.type === 'reply_retracted') {
+                        if (window.applyReplyRetraction) window.applyReplyRetraction(data.reply_id, data.text);
                     }
                 } catch (e) {
                     console.error('WSメッセージ処理エラー:', e);
@@ -1106,26 +1111,14 @@
                 `;
             }
 
-            let adminBtns = '';
-            if (isAdminUser) {
-                adminBtns = `
-                    <div style="margin-left: auto; display: flex; gap: 4px;">
-                        <form action="/thread/${threadId}/delete/${reply.id}" method="POST" onsubmit="return confirm('削除しますか？');" style="margin:0;">
-                            <button type="submit" style="font-size: 10px; background: #475569; color: white; border: none; padding: 2px 6px;">削除</button>
-                        </form>
-                        <form action="/ban_user/${threadId}/${reply.id}" method="POST" onsubmit="return confirm('このユーザーをBANしますか？');" style="margin:0;">
-                            <button type="submit" style="font-size: 10px; background: var(--danger-color); color: white; border: none; padding: 2px 6px;">BAN</button>
-                        </form>
-                        <button type="button" class="report-btn" data-report-type="reply" data-report-id="${reply.id}">🚩</button>
-                    </div>
+            const canRetract = !!(window.MY_PUBLIC_ID && reply.poster_public_id === window.MY_PUBLIC_ID
+                                  && reply.content !== '内容を送信取り消しされました。');
+            const adminBtns = `
+                    <button type="button" class="more-btn" style="margin-left: auto;" data-kind="reply"
+                            data-id="${reply.id}" data-thread-id="${threadId}"
+                            data-retract="${canRetract ? '1' : ''}" data-admin="${isAdminUser ? '1' : ''}"
+                            aria-haspopup="menu" aria-label="その他の操作">⋯</button>
                 `;
-            } else {
-                adminBtns = `
-                    <div style="margin-left: auto;">
-                        <button type="button" class="report-btn" data-report-type="reply" data-report-id="${reply.id}">🚩 通報</button>
-                    </div>
-                `;
-            }
 
             const nameHtml = reply.poster_public_id
                 ? `<a href="/profile/${reply.poster_public_id}" target="_blank" class="${roleCls}" style="text-decoration: none;">${reply.author || '名無しさん'}${starHtml}</a>`
@@ -1452,6 +1445,7 @@
 
     
 
+<div id="more-menu" role="menu" hidden></div>
 <div id="online-panel" role="dialog" aria-label="オンラインのユーザー" hidden></div>
 <script>
 (function () {
@@ -1549,6 +1543,140 @@
         if (countEl) countEl.textContent = state.count;
         if (!panel.hidden) { render(); place(); }
     };
+})();
+</script>
+<script>
+// ---- 「⋯」メニュー(通報・送信取り消し・管理操作をまとめる) ----
+// メニューは<body>直下に1つだけ置き、押された「⋯」の情報(data-*)から項目を組み立てる。
+// (各レスの中に置くと、壁紙のぼかし等で位置がずれたり、スクロール領域で切れたりするため)
+(function () {
+    var menu = document.getElementById('more-menu');
+    if (!menu) return;
+    var current = null;
+
+    function item(label, opts) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'more-item' + (opts.danger ? ' danger' : '') + (opts.cls ? ' ' + opts.cls : '');
+        b.setAttribute('role', 'menuitem');
+        b.textContent = label;
+        Object.keys(opts.attrs || {}).forEach(function (k) { b.setAttribute(k, opts.attrs[k]); });
+        if (opts.onclick) b.addEventListener('click', opts.onclick);
+        return b;
+    }
+    function postForm(url) {
+        var f = document.createElement('form');
+        f.method = 'POST'; f.action = url; f.style.display = 'none';
+        document.body.appendChild(f); f.submit();
+    }
+    function sep() { var d = document.createElement('div'); d.className = 'more-sep'; return d; }
+
+    function build(btn) {
+        menu.textContent = '';
+        var kind = btn.getAttribute('data-kind');
+        var id = btn.getAttribute('data-id');
+        var admin = btn.getAttribute('data-admin') === '1';
+
+        // 通報(既存の通報ダイアログを使う。.report-btn は document でイベント委譲されている)
+        menu.appendChild(item('🚩 通報する', { cls: 'report-btn', attrs: { 'data-report-type': kind, 'data-report-id': id } }));
+
+        if (kind === 'reply' && btn.getAttribute('data-retract') === '1') {
+            // 既存の送信取り消し処理(.retract-btn の委譲)を使う
+            menu.appendChild(item('↩ 送信取り消し', { cls: 'retract-btn', attrs: { 'data-reply-id': id } }));
+        }
+        if (admin) {
+            menu.appendChild(sep());
+            if (kind === 'reply') {
+                var tid = btn.getAttribute('data-thread-id');
+                menu.appendChild(item('🗑 このレスを削除', { danger: true, onclick: function () {
+                    if (confirm('削除しますか？')) postForm('/thread/' + tid + '/delete/' + id);
+                } }));
+                menu.appendChild(item('⛔ このユーザーをBAN', { danger: true, onclick: function () {
+                    if (confirm('このユーザーをBANしますか？')) postForm('/ban_user/' + tid + '/' + id);
+                } }));
+            } else {
+                var url = btn.getAttribute('data-delete-url');
+                menu.appendChild(item('🗑 スレッドを削除', { danger: true, onclick: function () {
+                    if (url && confirm('本当にこのスレッドを削除しますか？')) postForm(url);
+                } }));
+            }
+        }
+    }
+
+    function place(btn) {
+        var r = btn.getBoundingClientRect();
+        var w = menu.offsetWidth, h = menu.offsetHeight;
+        var left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+        var top = r.bottom + 6;
+        if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);   // 下に入らなければ上に出す
+        menu.style.left = left + 'px';
+        menu.style.top = top + 'px';
+    }
+    function open(btn) {
+        build(btn);
+        menu.hidden = false;
+        place(btn);
+        current = btn;
+        btn.setAttribute('aria-expanded', 'true');
+    }
+    function close() {
+        menu.hidden = true;
+        if (current) current.removeAttribute('aria-expanded');
+        current = null;
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.more-btn');
+        if (btn) {
+            e.stopPropagation();
+            if (current === btn && !menu.hidden) close(); else open(btn);
+            return;
+        }
+        // メニュー内の項目を押したあと、および外側を押したときは閉じる
+        if (!menu.hidden) close();
+    }, true);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+    window.addEventListener('resize', close);
+    document.addEventListener('scroll', close, true);   // レス一覧のスクロールでも閉じる
+})();
+
+// ---- レスの送信取り消し ----
+window.MY_PUBLIC_ID = {{ ((current_member.public_id if current_member else '') or '') | tojson }};
+(function () {
+    var DEFAULT_TEXT = '内容を送信取り消しされました。';
+
+    window.applyReplyRetraction = function (replyId, text) {
+        var el = document.querySelector('.post-item[data-reply-id="' + replyId + '"]');
+        if (!el) return;
+        var body = el.querySelector('.post-content');
+        if (body) body.textContent = text || DEFAULT_TEXT;
+        el.querySelectorAll('.post-image').forEach(function (img) {
+            (img.closest('a') || img).remove();
+        });
+        var btn = el.querySelector('.retract-btn');
+        if (btn) btn.remove();
+        var more = el.querySelector('.more-btn');
+        if (more) more.setAttribute('data-retract', '');
+    };
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.retract-btn');
+        if (!btn) return;
+        var id = btn.getAttribute('data-reply-id');
+        if (!confirm('このレスを送信取り消ししますか？\n本文と画像は消え、「' + DEFAULT_TEXT + '」と表示されます。')) return;
+        btn.disabled = true;
+        fetch('/api/reply/' + encodeURIComponent(id) + '/retract', { method: 'POST' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    window.applyReplyRetraction(id, data.text);
+                } else {
+                    alert(data.error || '取り消せませんでした。');
+                    btn.disabled = false;
+                }
+            })
+            .catch(function () { alert('通信に失敗しました。'); btn.disabled = false; });
+    });
 })();
 </script>
 <script>
