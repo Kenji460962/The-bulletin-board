@@ -1115,6 +1115,16 @@
                     <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="3"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15.2" cy="13" r="1" fill="currentColor" stroke="none"/><circle cx="18" cy="11" r="1" fill="currentColor" stroke="none"/></svg></span>
                     <span class="nav-label">ゲーム</span>
                 </button>
+
+
+               <a class="side-nav-item" href="/casino">
+                    <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="8" y1="5" x2="8" y2="19"/><line x1="16" y1="5" x2="16" y2="19"/></svg></span>
+                    <span class="nav-label">カジノ</span>
+                </a>
+
+
+
+               
                 <button class="side-nav-item" data-tab="guide-tab" onclick="switchTab('guide-tab', this)">
                     <span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.7 1.2c0 1.6-2.2 1.8-2.2 3.3"/><line x1="12" y1="17" x2="12" y2="17.01"/></svg></span>
                     <span class="nav-label">使い方</span>
@@ -1563,9 +1573,21 @@
                             </ul>
                         </div>
 
+                       <!-- 9. カジノ -->
+                        <div class="glass-panel">
+                            <h2 class="panel-title">9. カジノ</h2>
+                            <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
+                                <li><strong style="color: var(--text);">遊び方:</strong> サイドバーの「カジノ」から、ポイントを賭けて遊べるミニゲームに入れます。現在はスロットがあります。</li>
+                                <li><strong style="color: var(--text);">賭け金:</strong> ゲームごとに賭け金の範囲が決まっています。スロットは1〜10,000ptです。</li>
+                                <li><strong style="color: var(--text);">1日の損失上限:</strong> 全カジノ合計で1日50,000ptまでしか負けられません。日付は日本時間で切り替わります。上限に達すると翌日まで賭けられなくなります。</li>
+                                <li><strong style="color: var(--text);">履歴:</strong> 勝敗と損益は自動的にポイント履歴（<a href="/points" style="color: var(--primary);">ポイント</a>）にも記録されます。</li>
+                                <li><strong style="color: var(--text);">還元率:</strong> スロットの還元率は約90%（ハウスエッジ 約10%）です。</li>
+                            </ul>
+                        </div>
+
                         <!-- 5. ルールとマナー -->
                         <div class="glass-panel">
-                            <h2 class="panel-title">9. 利用ルールとマナー</h2>
+                            <h2 class="panel-title">10. 利用ルールとマナー</h2>
                             <p style="color: var(--text-muted); margin: 0 0 10px; line-height: 1.7;">
                                 みんなが快適に利用できるよう、以下のマナーをお守りください。
                             </p>
@@ -1626,6 +1648,16 @@
                                         <div class="game-card-text">
                                             <div class="game-card-title">ランキングを見る</div>
                                             <div class="game-card-desc">オセロ・チェス・将棋のレーティング順位</div>
+                                        </div>
+                                        <div class="game-card-chevron">›</div>
+                                    </a>
+                                </li>
+                               <li>
+                                    <a class="game-card-item" href="/casino">
+                                        <div class="game-card-icon">🎰</div>
+                                        <div class="game-card-text">
+                                            <div class="game-card-title">カジノ</div>
+                                            <div class="game-card-desc">ポイントを賭けて遊べるミニゲーム（スロットなど）</div>
                                         </div>
                                         <div class="game-card-chevron">›</div>
                                     </a>
