@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ game.label }} - カジノ - talk-ch</title>
+    <link rel="icon" href="{{ url_for('static', path='favicon.webp') }}" type="image/webp">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap"></noscript>
+    <script>
+        (function() {
+            var saved = localStorage.getItem('talk_ch_theme');
+            if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        })();
+    </script>
+    <style>
+        :root {
+            --bg: #F6F8FA; --card-bg: #FFFFFF; --card-border: #E5E7EB;
+            --text: #111827; --text-muted: #475569; --text-faint: #64748B;
+            --primary: #2563EB; --primary-hover: #1D4ED8; --primary-soft: #EFF4FE;
+            --green: #16A34A; --red: #DC2626; --amber: #B45309;
+            --radius-lg: 6px; --radius-md: 5px; --radius-sm: 4px;
+        }
+        html[data-theme="dark"] {
+            --bg: #0F1115; --card-bg: #16181D; --card-border: #2A2D34;
+            --text: #E5E7EB; --text-muted: #CBD5E1; --text-faint: #94A3B8;
+            --primary: #5B93F5; --primary-hover: #7CA8F8; --primary-soft: rgba(91,147,245,0.12);
+            --green: #22C55E; --red: #EF4444; --amber: #F59E0B;
+        }
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg); color: var(--text);
+            font-family: 'Inter', "Hiragino Kaku Gothic ProN", "Yu Gothic", "MS PGothic", sans-serif;
+            margin: 0; min-height: 100vh; font-size: 16px; line-height: 1.65;
+        }
+        a { color: inherit; }
+        .casino-shell { max-width: 720px; margin: 0 auto; padding: 18px 20px 60px; }
+        .casino-topbar {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 0 18px; border-bottom: 1px solid var(--card-border);
+            margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .back-link {
+            font-size: 13px; font-weight: 600; color: var(--text-muted);
+            text-decoration: none; padding: 6px 12px;
+            border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+            background: var(--card-bg);
+        }
+        .back-link:hover { border-color: var(--primary); color: var(--primary); }
+        .casino-topbar .spacer { flex: 1 1 auto; }
+        .casino-title { font-size: 22px; font-weight: 800; margin: 0; }
+        .icon-btn {
+            border: 1px solid var(--card-border); background: var(--card-bg);
+            color: var(--text-muted); font-size: 12.5px; font-weight: 600;
+            padding: 7px 12px; border-radius: var(--radius-sm);
+            cursor: pointer; text-decoration: none;
+        }
+        .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .glass-panel { border-bottom: 1px solid var(--card-border); padding: 16px 0; }
+        .glass-panel:first-of-type { padding-top: 0; }
+        .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
+
+        .slot-reels { display: flex; gap: 16px; justify-content: center; padding: 20px 0; }
+        .slot-reels .reel {
+            width: 96px; height: 120px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 56px;
+            background: var(--card-bg);
+            border: 2px solid var(--card-border);
+            border-radius: var(--radius-md);
+            transition: transform 0.2s ease, border-color 0.2s ease;
+            user-select: none;
+        }
+        .slot-reels .reel.stopped { transform: scale(1.08); border-color: var(--primary); }
+
+        .slot-controls {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            padding: 8px 0 4px; justify-content: center;
+        }
+        .slot-controls label {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 14px; color: var(--text-muted); font-weight: 600;
+        }
+        .slot-controls input[type="number"] {
+            width: 110px; padding: 8px 10px;
+            background: var(--card-bg); color: var(--text);
+            border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+            font-family: inherit; font-size: 14px;
+        }
+        .slot-controls input[type="number"]:focus { outline: none; border-color: var(--primary); }
+        .slot-controls button {
+            background: var(--primary); color: #fff; border: none;
+            border-radius: var(--radius-sm); padding: 10px 24px;
+            font-family: inherit; font-weight: 700; font-size: 15px;
+            cursor: pointer; transition: background 0.15s ease;
+        }
+        .slot-controls button:hover { background: var(--primary-hover); }
+        .slot-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .slot-balance { text-align: center; font-size: 14px; color: var(--text-muted); }
+        .slot-balance strong { color: var(--text); font-weight: 700; font-size: 16px; }
+        .slot-result {
+            text-align: center; min-height: 1.6em;
+            font-weight: 700; font-size: 15px; margin-top: 6px;
+        }
+
+        .menu-list { list-style: none; margin: 0; padding: 0; }
+        .menu-list-item { padding: 10px 2px; border-bottom: 1px solid var(--card-border); }
+        .menu-list li:last-child .menu-list-item { border-bottom: none; }
+        .menu-list-title { font-weight: 600; font-size: 14px; }
+        .menu-list-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+        .empty-state { color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px 0; }
+
+        .rules-body { font-size: 14px; color: var(--text-muted); }
+        .rules-body ul { padding-left: 20px; margin: 0; }
+        .rules-body li { margin: 4px 0; }
+    </style>
+</head>
+<body>
+    <div class="casino-shell">
+        <div class="casino-topbar">
+            <a href="/casino" class="back-link">← カジノ</a>
+            <h1 class="casino-title">{{ game.icon }} {{ game.label }}</h1>
+            <span class="spacer"></span>
+            <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
+        </div>
+
+        <div class="glass-panel">
+            <p style="color: var(--text-muted); margin: 0;">{{ game.description }}</p>
+        </div>
+
+        <div class="glass-panel">
+            <div class="slot-reels">
+                <div class="reel" id="reel-0">🍒</div>
+                <div class="reel" id="reel-1">🍒</div>
+                <div class="reel" id="reel-2">🍒</div>
+            </div>
+
+            <div class="slot-controls">
+                <label>賭け金:
+                    <input type="number" id="bet" min="{{ game.min_bet }}" max="{{ game.max_bet }}" value="10">
+                    <span style="font-size:12px;">（{{ game.min_bet }}〜{{ game.max_bet }}pt）</span>
+                </label>
+                <button id="spin-btn">回す</button>
+            </div>
+
+            <div class="slot-balance">残高: <strong id="balance">{{ balance }}</strong> pt</div>
+            <div class="slot-result" id="result-msg"></div>
+        </div>
+
+        <div class="glass-panel">
+            <h2 class="panel-title">ルール</h2>
+            <div class="rules-body">{{ game.rules | safe }}</div>
+        </div>
+
+        <div class="glass-panel">
+            <h2 class="panel-title">最近のプレイ</h2>
+            <ul class="menu-list">
+                {% for h in history %}
+                <li class="menu-list-item">
+                    <div class="menu-list-title">
+                        {% if h.detail and h.detail.reels %}{{ h.detail.reels | join(' / ') }}{% endif %}
+                    </div>
+                    <div class="menu-list-desc">
+                        賭け {{ h.bet }}pt → 払戻 {{ h.payout }}pt
+                        （<span style="color: {% if h.net >= 0 %}var(--green){% else %}var(--red){% endif %};">
+                            {{ '+' if h.net >= 0 else '' }}{{ h.net }}pt</span>）
+                        / {{ h.created_at }}
+                    </div>
+                </li>
+                {% else %}
+                <li class="empty-state">まだプレイしていません。</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const btn = document.getElementById('theme-toggle-btn');
+        function applyLabel() {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            if (btn) btn.textContent = isDark ? 'ライト表示' : 'ダーク表示';
+        }
+        applyLabel();
+        if (btn) {
+            btn.addEventListener('click', () => {
+                const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                if (isDark) {
+                    document.documentElement.removeAttribute('data-theme');
+                    localStorage.setItem('talk_ch_theme', 'light');
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                    localStorage.setItem('talk_ch_theme', 'dark');
+                }
+                applyLabel();
+            });
+        }
+    })();
+
+    const GAME_KEY = {{ game.key | tojson }};
+    const SYMBOLS = ['7', '💎', '🔔', '🍉', '🍒', '⭐', '🍋'];
+    const API = `/api/casino/${GAME_KEY}/play`;
+
+    const spinBtn = document.getElementById('spin-btn');
+    const betInput = document.getElementById('bet');
+    const balanceEl = document.getElementById('balance');
+    const msgEl = document.getElementById('result-msg');
+    const reels = [0, 1, 2].map(i => document.getElementById('reel-' + i));
+
+    let spinning = false;
+
+    function randomSymbol() {
+        return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+    }
+    function startRolling(idx) {
+        return setInterval(() => { reels[idx].textContent = randomSymbol(); }, 60 + idx * 20);
+    }
+
+    async function spin() {
+        if (spinning) return;
+        const bet = parseInt(betInput.value, 10);
+        if (!bet || bet < 1) { msgEl.textContent = '賭け金を入力してください。'; return; }
+
+        spinning = true;
+        spinBtn.disabled = true;
+        msgEl.textContent = '';
+        const timers = reels.map((_, i) => startRolling(i));
+
+        try {
+            const requestId = crypto.randomUUID ? crypto.randomUUID()
+                                                : String(Date.now()) + Math.random();
+            const res = await fetch(API, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bet, request_id: requestId }),
+            });
+            const data = await res.json();
+
+            if (!data.success) {
+                timers.forEach(clearInterval);
+                msgEl.textContent = data.error || '失敗しました。';
+                msgEl.style.color = 'var(--red)';
+                if (typeof data.balance === 'number') balanceEl.textContent = data.balance;
+                spinning = false; spinBtn.disabled = false;
+                return;
+            }
+
+            data.detail.reels.forEach((symbol, i) => {
+                setTimeout(() => {
+                    clearInterval(timers[i]);
+                    reels[i].textContent = symbol;
+                    reels[i].classList.add('stopped');
+                    setTimeout(() => reels[i].classList.remove('stopped'), 300);
+
+                    if (i === 2) {
+                        balanceEl.textContent = data.balance;
+                        if (data.payout > 0) {
+                            msgEl.textContent = `🎉 ${data.payout}pt 当たり！（純損益 ${data.net >= 0 ? '+' : ''}${data.net}）`;
+                            msgEl.style.color = 'var(--green)';
+                        } else {
+                            msgEl.textContent = `ハズレ（-${bet}pt）`;
+                            msgEl.style.color = 'var(--red)';
+                        }
+                        spinning = false; spinBtn.disabled = false;
+                    }
+                }, 400 + i * 350);
+            });
+        } catch (e) {
+            timers.forEach(clearInterval);
+            msgEl.textContent = '通信エラーが発生しました。';
+            msgEl.style.color = 'var(--red)';
+            spinning = false; spinBtn.disabled = false;
+        }
+    }
+
+    spinBtn.addEventListener('click', spin);
+    })();
+    </script>
+</body>
+</html>
