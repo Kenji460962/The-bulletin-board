@@ -6667,7 +6667,6 @@ async def market_shop(request: Request, public_id: str):
     })
 
 
-app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
 
 # =========================
 # カジノ
@@ -6793,6 +6792,13 @@ async def api_casino_play(request: Request, game_key: str):
         "error": err_map.get(result['error'], "実行に失敗しました。"),
         "balance": result['balance'],
     }, 400)
+
+
+
+
+
+
+app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
 
 
 if __name__ == '__main__':
