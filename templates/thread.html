@@ -1578,7 +1578,7 @@
         var admin = btn.getAttribute('data-admin') === '1';
 
         // 通報(既存の通報ダイアログを使う。.report-btn は document でイベント委譲されている)
-        menu.appendChild(item('🚩 通報する', { cls: 'report-btn', attrs: { 'data-report-type': kind, 'data-report-id': id } }));
+        menu.appendChild(item('通報する', { cls: 'report-btn', attrs: { 'data-report-type': kind, 'data-report-id': id } }));
 
         if (kind === 'reply' && btn.getAttribute('data-retract') === '1') {
             // 既存の送信取り消し処理(.retract-btn の委譲)を使う
@@ -1588,15 +1588,15 @@
             menu.appendChild(sep());
             if (kind === 'reply') {
                 var tid = btn.getAttribute('data-thread-id');
-                menu.appendChild(item('🗑 このレスを削除', { danger: true, onclick: function () {
+                menu.appendChild(item('このレスを削除', { danger: true, onclick: function () {
                     if (confirm('削除しますか？')) postForm('/thread/' + tid + '/delete/' + id);
                 } }));
-                menu.appendChild(item('⛔ このユーザーをBAN', { danger: true, onclick: function () {
+                menu.appendChild(item('このユーザーをBAN', { danger: true, onclick: function () {
                     if (confirm('このユーザーをBANしますか？')) postForm('/ban_user/' + tid + '/' + id);
                 } }));
             } else {
                 var url = btn.getAttribute('data-delete-url');
-                menu.appendChild(item('🗑 スレッドを削除', { danger: true, onclick: function () {
+                menu.appendChild(item('スレッドを削除', { danger: true, onclick: function () {
                     if (url && confirm('本当にこのスレッドを削除しますか？')) postForm(url);
                 } }));
             }
