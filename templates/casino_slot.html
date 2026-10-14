@@ -178,6 +178,7 @@
     </div>
 
     <script>
+    // ---- テーマ切り替え ----
     (function() {
         const btn = document.getElementById('theme-toggle-btn');
         function applyLabel() {
@@ -200,42 +201,51 @@
         }
     })();
 
+    // ---- スロット ----
     const GAME_KEY = {{ game.key | tojson }};
     const SYMBOLS = ['7', '💎', '🔔', '🍉', '🍒', '⭐', '🍋'];
-    const API = `/api/casino/${GAME_KEY}/play`;
+    const API = '/api/casino/' + GAME_KEY + '/play';
 
     const spinBtn = document.getElementById('spin-btn');
     const betInput = document.getElementById('bet');
     const balanceEl = document.getElementById('balance');
     const msgEl = document.getElementById('result-msg');
-    const reels = [0, 1, 2].map(i => document.getElementById('reel-' + i));
+    const reels = [0, 1, 2].map(function(i) { return document.getElementById('reel-' + i); });
 
     let spinning = false;
 
     function randomSymbol() {
         return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
     }
+
     function startRolling(idx) {
-        return setInterval(() => { reels[idx].textContent = randomSymbol(); }, 60 + idx * 20);
+        return setInterval(function() {
+            reels[idx].textContent = randomSymbol();
+        }, 60 + idx * 20);
     }
 
     async function spin() {
         if (spinning) return;
         const bet = parseInt(betInput.value, 10);
-        if (!bet || bet < 1) { msgEl.textContent = '賭け金を入力してください。'; return; }
+        if (!bet || bet < 1) {
+            msgEl.textContent = '賭け金を入力してください。';
+            msgEl.style.color = 'var(--red)';
+            return;
+        }
 
         spinning = true;
         spinBtn.disabled = true;
         msgEl.textContent = '';
-        const timers = reels.map((_, i) => startRolling(i));
+        const timers = reels.map(function(_, i) { return startRolling(i); });
 
         try {
-            const requestId = crypto.randomUUID ? crypto.randomUUID()
-                                                : String(Date.now()) + Math.random();
+            const requestId = (window.crypto && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : String(Date.now()) + Math.random();
             const res = await fetch(API, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bet, request_id: requestId }),
+                body: JSON.stringify({ bet: bet, request_id: requestId })
             });
             const data = await res.json();
 
@@ -244,27 +254,29 @@
                 msgEl.textContent = data.error || '失敗しました。';
                 msgEl.style.color = 'var(--red)';
                 if (typeof data.balance === 'number') balanceEl.textContent = data.balance;
-                spinning = false; spinBtn.disabled = false;
+                spinning = false;
+                spinBtn.disabled = false;
                 return;
             }
 
-            data.detail.reels.forEach((symbol, i) => {
-                setTimeout(() => {
+            data.detail.reels.forEach(function(symbol, i) {
+                setTimeout(function() {
                     clearInterval(timers[i]);
                     reels[i].textContent = symbol;
                     reels[i].classList.add('stopped');
-                    setTimeout(() => reels[i].classList.remove('stopped'), 300);
+                    setTimeout(function() { reels[i].classList.remove('stopped'); }, 300);
 
                     if (i === 2) {
                         balanceEl.textContent = data.balance;
                         if (data.payout > 0) {
-                            msgEl.textContent = `🎉 ${data.payout}pt 当たり！（純損益 ${data.net >= 0 ? '+' : ''}${data.net}）`;
+                            msgEl.textContent = '🎉 ' + data.payout + 'pt 当たり！（純損益 ' + (data.net >= 0 ? '+' : '') + data.net + '）';
                             msgEl.style.color = 'var(--green)';
                         } else {
-                            msgEl.textContent = `ハズレ（-${bet}pt）`;
+                            msgEl.textContent = 'ハズレ（-' + bet + 'pt）';
                             msgEl.style.color = 'var(--red)';
                         }
-                        spinning = false; spinBtn.disabled = false;
+                        spinning = false;
+                        spinBtn.disabled = false;
                     }
                 }, 400 + i * 350);
             });
@@ -272,12 +284,12 @@
             timers.forEach(clearInterval);
             msgEl.textContent = '通信エラーが発生しました。';
             msgEl.style.color = 'var(--red)';
-            spinning = false; spinBtn.disabled = false;
+            spinning = false;
+            spinBtn.disabled = false;
         }
     }
 
     spinBtn.addEventListener('click', spin);
-    })();
     </script>
 </body>
 </html>
