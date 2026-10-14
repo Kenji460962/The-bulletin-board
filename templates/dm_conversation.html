@@ -73,6 +73,8 @@
     .msg.mine .bubble { background: var(--mine-bg); border-color: var(--mine-bg); color: #fff; }
     .bubble a { color: inherit; text-decoration: underline; }
     .msg-time { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
+    .dm-retract { background: none; border: none; padding: 0 0 0 8px; font-size: 10.5px; color: var(--text-muted); cursor: pointer; text-decoration: underline; }
+    .dm-retract:hover { color: #ef4444; }
 
     .empty-state { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 0; }
 
@@ -169,7 +171,7 @@
         <div class="msg {{ 'mine' if m.is_mine else 'theirs' }}" data-msg-id="{{ m.id }}">
             {% if m.image_url %}<a class="dm-img-link" href="{{ m.image_url }}" target="_blank" rel="noopener"><img class="dm-img" src="{{ m.image_url }}" alt="送信画像" loading="lazy" onload="scrollToBottom()"></a>{% endif %}
             {% if m.content %}<div class="bubble">{{ m.content | safe }}</div>{% endif %}
-            <div class="msg-time">{{ m.created_at }}</div>
+            <div class="msg-time">{{ m.created_at }}{% if m.is_mine and m.content != '内容を送信取り消しされました。' %}<button type="button" class="dm-retract" data-msg-id="{{ m.id }}">取り消す</button>{% endif %}</div>
         </div>
         {% endfor %}
     {% else %}
@@ -270,11 +272,51 @@
         div.innerHTML = `
             ${imgHtml}
             ${textHtml}
-            <div class="msg-time">${escapeHtml(msg.created_at || '')}</div>
+            <div class="msg-time">${escapeHtml(msg.created_at || '')}${(msg.is_mine && id != null && msg.content !== RETRACTED_TEXT) ? `<button type="button" class="dm-retract" data-msg-id="${id}">取り消す</button>` : ''}</div>
         `;
         messagesEl.appendChild(div);
         scrollToBottom();
     }
+
+    // ---- 送信取り消し ----
+    const RETRACTED_TEXT = '内容を送信取り消しされました。';
+
+    function applyRetraction(id, text) {
+        const el = messagesEl.querySelector(`.msg[data-msg-id="${id}"]`);
+        if (!el) return;
+        const img = el.querySelector('.dm-img-link');
+        if (img) img.remove();
+        let bubble = el.querySelector('.bubble');
+        if (!bubble) {
+            bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            el.insertBefore(bubble, el.querySelector('.msg-time'));
+        }
+        bubble.textContent = text || RETRACTED_TEXT;
+        const btn = el.querySelector('.dm-retract');
+        if (btn) btn.remove();
+    }
+
+    messagesEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.dm-retract');
+        if (!btn) return;
+        const id = btn.getAttribute('data-msg-id');
+        if (!confirm('このメッセージを送信取り消ししますか？\n相手の画面でも「' + RETRACTED_TEXT + '」に変わります。')) return;
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/api/dm/message/${id}/retract`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                applyRetraction(id, data.text);
+            } else {
+                alert(data.error || '取り消せませんでした。');
+                btn.disabled = false;
+            }
+        } catch (err) {
+            alert('通信に失敗しました。');
+            btn.disabled = false;
+        }
+    });
 
     // ---- 送信 ----
     const input = document.getElementById('dm-input');
@@ -396,6 +438,8 @@
                 appendMessage(data.message);
             } else if (data.type === 'dm_sent' && data.to_public_id === PARTNER_PUBLIC_ID) {
                 appendMessage(data.message);
+            } else if (data.type === 'dm_retracted') {
+                applyRetraction(data.message_id, data.text);
             }
         };
 
@@ -419,6 +463,10 @@
             const data = await res.json();
             if (data.success && Array.isArray(data.messages)) {
                 data.messages.forEach(appendMessage);
+            }
+            // WebSocketが届かない環境でも、相手の取り消しが反映されるようにする
+            if (data.success && Array.isArray(data.retracted_ids)) {
+                data.retracted_ids.forEach((rid) => applyRetraction(rid, data.retracted_text));
             }
         } catch (e) {
             // 通信エラー時は次回のポーリングに任せる
