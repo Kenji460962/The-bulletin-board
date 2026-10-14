@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>カジノ - talk-ch</title>
+    <link rel="icon" href="{{ url_for('static', path='favicon.webp') }}" type="image/webp">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap"></noscript>
+    <script>
+        (function() {
+            var saved = localStorage.getItem('talk_ch_theme');
+            if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+        })();
+    </script>
+    <style>
+        :root {
+            --bg: #F6F8FA; --card-bg: #FFFFFF; --card-border: #E5E7EB;
+            --text: #111827; --text-muted: #475569; --text-faint: #64748B;
+            --primary: #2563EB; --primary-hover: #1D4ED8; --primary-soft: #EFF4FE;
+            --green: #16A34A; --red: #DC2626; --amber: #B45309; --amber-soft: #FEF3E2;
+            --radius-lg: 6px; --radius-md: 5px; --radius-sm: 4px;
+        }
+        html[data-theme="dark"] {
+            --bg: #0F1115; --card-bg: #16181D; --card-border: #2A2D34;
+            --text: #E5E7EB; --text-muted: #CBD5E1; --text-faint: #94A3B8;
+            --primary: #5B93F5; --primary-hover: #7CA8F8; --primary-soft: rgba(91,147,245,0.12);
+            --green: #22C55E; --red: #EF4444; --amber: #F59E0B; --amber-soft: rgba(180,83,9,0.15);
+        }
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg); color: var(--text);
+            font-family: 'Inter', "Hiragino Kaku Gothic ProN", "Yu Gothic", "MS PGothic", sans-serif;
+            margin: 0; min-height: 100vh; font-size: 16px; line-height: 1.65;
+        }
+        a { color: inherit; }
+        .casino-shell { max-width: 900px; margin: 0 auto; padding: 18px 20px 60px; }
+        .casino-topbar {
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 0 18px; border-bottom: 1px solid var(--card-border);
+            margin-bottom: 20px; flex-wrap: wrap;
+        }
+        .back-link {
+            font-size: 13px; font-weight: 600; color: var(--text-muted);
+            text-decoration: none; padding: 6px 12px;
+            border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+            background: var(--card-bg);
+        }
+        .back-link:hover { border-color: var(--primary); color: var(--primary); }
+        .casino-topbar .spacer { flex: 1 1 auto; }
+        .casino-title { font-size: 26px; font-weight: 800; margin: 0; }
+        .icon-btn {
+            border: 1px solid var(--card-border); background: var(--card-bg);
+            color: var(--text-muted); font-size: 12.5px; font-weight: 600;
+            padding: 7px 12px; border-radius: var(--radius-sm);
+            cursor: pointer; text-decoration: none;
+        }
+        .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
+        .glass-panel { border-bottom: 1px solid var(--card-border); padding: 16px 0; }
+        .glass-panel:first-of-type { padding-top: 0; }
+        .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
+        .stat-row { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+        .stat-row strong { color: var(--text); font-weight: 700; }
+        .game-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+        .game-card-item {
+            display: flex; align-items: center; gap: 14px;
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: var(--radius-md); padding: 14px 16px;
+            text-decoration: none; color: var(--text);
+            transition: border-color 0.15s ease;
+        }
+        .game-card-item:hover { border-color: var(--primary); }
+        .game-card-item:hover .game-card-title { color: var(--primary); }
+        .game-card-icon {
+            flex: 0 0 auto; width: 44px; height: 44px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; background: var(--primary-soft);
+            border-radius: var(--radius-sm);
+        }
+        .game-card-text { min-width: 0; flex: 1 1 auto; }
+        .game-card-title { font-weight: 700; font-size: 15.5px; }
+        .game-card-desc { font-size: 13.5px; color: var(--text-muted); margin-top: 2px; }
+        .game-card-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div class="casino-shell">
+        <div class="casino-topbar">
+            <a href="/" class="back-link">← ホーム</a>
+            <h1 class="casino-title">🎰 カジノ</h1>
+            <span class="spacer"></span>
+            <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
+        </div>
+
+        <div class="glass-panel">
+            <p style="color: var(--text-muted); margin: 0;">
+                ポイントを賭けて遊べるミニゲーム。1日の損失上限は
+                <strong>{{ daily_loss_limit }}pt</strong> です（日本時間で日付が切り替わります）。
+            </p>
+        </div>
+
+        {% if current_member %}
+        <div class="glass-panel">
+            <h2 class="panel-title">今日の成績</h2>
+            <div class="stat-row">
+                <div>プレイ回数: <strong>{{ stats.spins }}</strong></div>
+                <div>賭け総額: <strong>{{ stats.total_bet }}pt</strong></div>
+                <div>払戻総額: <strong>{{ stats.total_payout }}pt</strong></div>
+                <div>収支:
+                    <strong style="color: {% if stats.net >= 0 %}var(--green){% else %}var(--red){% endif %};">
+                        {{ '+' if stats.net >= 0 else '' }}{{ stats.net }}pt
+                    </strong>
+                </div>
+            </div>
+            <div class="stat-row"><div>残高: <strong>{{ balance }} pt</strong></div></div>
+        </div>
+        {% else %}
+        <div class="glass-panel">
+            <p style="color: var(--text-muted); margin: 0;">
+                カジノで遊ぶには<a href="/login" style="color: var(--primary); font-weight: 600;">ログイン</a>が必要です。
+            </p>
+        </div>
+        {% endif %}
+
+        <div class="glass-panel">
+            <h2 class="panel-title">ゲーム一覧</h2>
+            <ul class="game-card-list">
+                {% for g in games %}
+                <li>
+                    <a class="game-card-item" href="/casino/{{ g.key }}">
+                        <div class="game-card-icon">{{ g.icon }}</div>
+                        <div class="game-card-text">
+                            <div class="game-card-title">{{ g.label }}</div>
+                            <div class="game-card-desc">{{ g.description }}</div>
+                        </div>
+                        <div class="game-card-chevron">›</div>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const btn = document.getElementById('theme-toggle-btn');
+        function applyLabel() {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            if (btn) btn.textContent = isDark ? 'ライト表示' : 'ダーク表示';
+        }
+        applyLabel();
+        if (btn) {
+            btn.addEventListener('click', () => {
+                const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                if (isDark) {
+                    document.documentElement.removeAttribute('data-theme');
+                    localStorage.setItem('talk_ch_theme', 'light');
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                    localStorage.setItem('talk_ch_theme', 'dark');
+                }
+                applyLabel();
+            });
+        }
+    })();
+    </script>
+</body>
+</html>
