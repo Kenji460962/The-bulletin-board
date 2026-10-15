@@ -68,8 +68,9 @@ class Game:
     """
 
     def __init__(self, key, label, icon, description,
-                 min_bet, max_bet, play, describe_result=None,
-                 template=None, rules="", category=None):
+                 min_bet, max_bet, play=None, describe_result=None,
+                 template=None, rules="", category=None,
+                 interactive=False, start=None, resolve=None, public_view=None):
         self.key = key
         self.label = label
         self.icon = icon
@@ -81,6 +82,15 @@ class Game:
         self.template = template or f"casino_{key}.html"
         self.rules = rules
         self.category = category
+        # --- 2段階で進むゲーム(ビデオポーカー等)用 ---
+        # interactive=True のゲームは place_bet ではなく start_interactive / resolve_interactive で進める。
+        #   start(bet)                  -> (state, view)        配る。state はサーバー側だけで保持(山札など)
+        #   resolve(bet, state, action) -> (detail, payout, view)  プレイヤーの選択で結果を確定。不正な入力は ValueError
+        #   public_view(state)          -> view                 再開時にプレイヤーへ見せてよい情報だけを返す
+        self.interactive = interactive
+        self.start = start
+        self.resolve = resolve
+        self.public_view = public_view or (lambda state: {})
 
     def validate_bet(self, bet) -> Optional[str]:
         if not isinstance(bet, int) or isinstance(bet, bool):
@@ -119,6 +129,24 @@ async def ensure_schema() -> None:
     await conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_casino_bets_game ON casino_bets(game, id DESC)"
     )
+    # 2段階ゲームの進行中データ。山札などはここ(サーバー側)にだけ置き、クライアントへは出さない。
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS casino_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            game TEXT NOT NULL,
+            bet INTEGER NOT NULL,
+            state TEXT NOT NULL,
+            bet_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+    # 同じユーザー・同じゲームで「進行中」は1つだけ(二重に配れない)
+    await conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_casino_sessions_open "
+        "ON casino_sessions(user_id, game) WHERE status = 'open'"
+    )
     await conn.commit()
 
 
@@ -148,6 +176,11 @@ async def place_bet(user_id: int, game_key: str, bet: int,
 
     game = get_game(game_key)
     if not game:
+        return {'success': False, 'error': 'unknown_game', 'detail': {}, 'payout': 0,
+                'net': 0, 'balance': 0, 'duplicate': False}
+
+    if game.interactive:
+        # ビデオポーカーなどは「配る→選ぶ」の2段階。専用の start_interactive を使う。
         return {'success': False, 'error': 'unknown_game', 'detail': {}, 'payout': 0,
                 'net': 0, 'balance': 0, 'duplicate': False}
 
@@ -256,6 +289,232 @@ async def place_bet(user_id: int, game_key: str, bet: int,
             await conn.rollback()
             return {'success': False, 'error': 'duplicate_request', 'detail': {},
                     'payout': 0, 'net': 0, 'balance': 0, 'duplicate': False}
+        except Exception:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            raise
+
+
+# =========================
+# 2段階で進むゲーム(ビデオポーカー等)
+# =========================
+# 流れ:
+#   1) start_interactive  : 賭け金を引き落として配る。この時点で casino_bets に「賭け金ぶん負け」として記録する
+#                           (途中で離脱しても賭け金は戻らない / 1日の損失上限にも最初から算入される)
+#   2) resolve_interactive: プレイヤーの選択(残すカード等)を受けて結果を確定し、払い戻しを加算して
+#                           casino_bets を最終結果に更新する
+# どちらも1リクエスト=1トランザクション。山札などの秘密情報は casino_sessions にだけ保存する。
+
+def _err(error: str, **extra) -> dict:
+    base = {'success': False, 'error': error, 'duplicate': False, 'balance': 0}
+    base.update(extra)
+    return base
+
+
+async def _balance_of(conn, user_id: int) -> int:
+    cur = await conn.execute("SELECT points FROM users WHERE id = ?", [user_id])
+    row = await cur.fetchone()
+    await cur.close()
+    return int(row[0]) if row else 0
+
+
+async def get_open_session(user_id: int, game_key: str) -> Optional[dict]:
+    """進行中のセッション(あれば)。ページを開き直しても続きから遊べるようにする。"""
+    _check_initialized()
+    game = get_game(game_key)
+    if not game or not game.interactive:
+        return None
+    conn = await _get_conn()
+    async with _lock:
+        cur = await conn.execute(
+            "SELECT id, bet, state FROM casino_sessions WHERE user_id = ? AND game = ? AND status = 'open'",
+            [user_id, game_key],
+        )
+        row = await cur.fetchone()
+        await cur.close()
+    if not row:
+        return None
+    return {'session_id': int(row[0]), 'bet': int(row[1]),
+            'view': game.public_view(json.loads(row[2]))}
+
+
+async def start_interactive(user_id: int, game_key: str, bet: int,
+                            request_id: Optional[str]) -> dict:
+    """賭け金を引き落として配る。成功すると session_id と、プレイヤーに見せてよい view を返す。
+    error: 'unknown_game' / 'invalid_bet' / 'cooldown' / 'insufficient_balance' / 'daily_limit' /
+           'pending_session'(進行中あり。session_id と view を添えて返す) / 'duplicate_request'"""
+    _check_initialized()
+    game = get_game(game_key)
+    if not game or not game.interactive or not game.start:
+        return _err('unknown_game')
+    if game.validate_bet(bet):
+        return _err('invalid_bet')
+
+    now = time.time()
+    last = LAST_BET_TIMES.get(user_id)
+    if last is not None and now - last < BET_COOLDOWN_SECONDS:
+        return _err('cooldown')
+    LAST_BET_TIMES[user_id] = now
+
+    conn = await _get_conn()
+    async with _lock:
+        try:
+            await conn.execute("BEGIN IMMEDIATE")
+
+            # 進行中のセッションがあれば、新しくは配らず続きから(再開)にする
+            cur = await conn.execute(
+                "SELECT id, bet, state FROM casino_sessions "
+                "WHERE user_id = ? AND game = ? AND status = 'open'", [user_id, game_key])
+            open_row = await cur.fetchone()
+            await cur.close()
+            if open_row:
+                balance = await _balance_of(conn, user_id)
+                await conn.rollback()
+                return _err('pending_session', session_id=int(open_row[0]), bet=int(open_row[1]),
+                            view=game.public_view(json.loads(open_row[2])), balance=balance)
+
+            # 二重送信: 同じ request_id が処理済みなら新しく配らない
+            if request_id:
+                cur = await conn.execute(
+                    "SELECT 1 FROM casino_bets WHERE request_id = ? AND user_id = ?", [request_id, user_id])
+                dup = await cur.fetchone()
+                await cur.close()
+                if dup:
+                    balance = await _balance_of(conn, user_id)
+                    await conn.rollback()
+                    return _err('duplicate_request', balance=balance)
+
+            net_today = await _daily_net(user_id, conn)
+            if net_today - bet < -DAILY_LOSS_LIMIT:
+                balance = await _balance_of(conn, user_id)
+                await conn.rollback()
+                return _err('daily_limit', balance=balance)
+
+            cur = await conn.execute(
+                "UPDATE users SET points = points - ? WHERE id = ? AND points >= ?",
+                [bet, user_id, bet],
+            )
+            debited = cur.rowcount
+            await cur.close()
+            if debited == 0:
+                balance = await _balance_of(conn, user_id)
+                await conn.rollback()
+                return _err('insufficient_balance', balance=balance)
+
+            state, view = game.start(bet)
+            balance = await _balance_of(conn, user_id)
+
+            # 賭け金ぶんの負けとして先に記録(最終結果は resolve で更新する)
+            cur = await conn.execute(
+                "INSERT INTO casino_bets (user_id, game, bet, payout, net, detail, request_id) "
+                "VALUES (?, ?, ?, 0, ?, ?, ?)",
+                [user_id, game_key, bet, -bet, json.dumps({'phase': 'dealt'}, ensure_ascii=False),
+                 request_id or None],
+            )
+            bet_id = cur.lastrowid
+            await cur.close()
+
+            await conn.execute(
+                "INSERT INTO point_history "
+                "(user_id, delta, balance_after, reason, description, source, idempotency_key) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [user_id, -bet, balance, f"casino_{game_key}_bet", f"{game.label}: 賭け{bet}pt", "casino",
+                 f"casino:{request_id}:bet" if request_id else None],
+            )
+            cur = await conn.execute(
+                "INSERT INTO casino_sessions (user_id, game, bet, state, bet_id) VALUES (?, ?, ?, ?, ?)",
+                [user_id, game_key, bet, json.dumps(state, ensure_ascii=False), bet_id],
+            )
+            session_id = cur.lastrowid
+            await cur.close()
+
+            await conn.commit()
+            return {'success': True, 'error': None, 'duplicate': False,
+                    'session_id': int(session_id), 'bet': bet, 'view': view, 'balance': balance}
+
+        except aiosqlite.IntegrityError:
+            await conn.rollback()
+            return _err('pending_session')
+        except Exception:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            raise
+
+
+async def resolve_interactive(user_id: int, game_key: str, session_id: int, action: dict) -> dict:
+    """プレイヤーの選択を受けて結果を確定する。
+    error: 'unknown_game' / 'no_session'(存在しない・自分のものでない・すでに確定済み) / 'invalid_action'"""
+    _check_initialized()
+    game = get_game(game_key)
+    if not game or not game.interactive or not game.resolve:
+        return _err('unknown_game')
+
+    conn = await _get_conn()
+    async with _lock:
+        try:
+            await conn.execute("BEGIN IMMEDIATE")
+
+            cur = await conn.execute(
+                "SELECT bet, state, bet_id FROM casino_sessions "
+                "WHERE id = ? AND user_id = ? AND game = ? AND status = 'open'",
+                [session_id, user_id, game_key],
+            )
+            row = await cur.fetchone()
+            await cur.close()
+            if not row:
+                balance = await _balance_of(conn, user_id)
+                await conn.rollback()
+                return _err('no_session', balance=balance)
+            bet, state_json, bet_id = int(row[0]), row[1], int(row[2])
+
+            try:
+                detail, payout, view = game.resolve(bet, json.loads(state_json), action or {})
+            except ValueError:
+                balance = await _balance_of(conn, user_id)
+                await conn.rollback()
+                return _err('invalid_action', balance=balance)
+            payout = max(0, int(payout))
+            net = payout - bet
+
+            # 確定済みにする(二重実行を防ぐ関門)。更新できなければ他のリクエストが先に確定した。
+            cur = await conn.execute(
+                "UPDATE casino_sessions SET status = 'closed' WHERE id = ? AND status = 'open'", [session_id])
+            closed = cur.rowcount
+            await cur.close()
+            if closed == 0:
+                balance = await _balance_of(conn, user_id)
+                await conn.rollback()
+                return _err('no_session', balance=balance)
+
+            if payout > 0:
+                cur = await conn.execute(
+                    "UPDATE users SET points = points + ? WHERE id = ?", [payout, user_id])
+                await cur.close()
+            balance = await _balance_of(conn, user_id)
+
+            await conn.execute(
+                "UPDATE casino_bets SET payout = ?, net = ?, detail = ? WHERE id = ?",
+                [payout, net, json.dumps(detail, ensure_ascii=False), bet_id],
+            )
+            if payout > 0:
+                desc = game.describe_result(detail) or ""
+                await conn.execute(
+                    "INSERT INTO point_history "
+                    "(user_id, delta, balance_after, reason, description, source, idempotency_key) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [user_id, payout, balance, f"casino_{game_key}_win",
+                     f"{game.label}: {desc} / 払戻{payout}pt" if desc else f"{game.label}: 払戻{payout}pt",
+                     "casino", f"casino_session:{session_id}:payout"],
+                )
+
+            await conn.commit()
+            return {'success': True, 'error': None, 'duplicate': False, 'detail': detail,
+                    'view': view, 'bet': bet, 'payout': payout, 'net': net, 'balance': balance}
+
         except Exception:
             try:
                 await conn.rollback()
