@@ -769,13 +769,14 @@
 
         .empty-state { color: var(--text-muted); font-size: 13px; text-align: center; padding: 24px 0; }
 
-        .pagination-row { margin-top: 14px; display: flex; gap: 8px; align-items: center; }
+        .pagination-row { margin-top: 14px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .page-link {
             background: var(--card-bg); color: var(--text); padding: 6px 14px; border-radius: var(--radius-sm);
             text-decoration: none; border: 1px solid var(--card-border); font-size: 12.5px; font-weight: 600;
         }
         .page-link:hover { border-color: var(--primary); color: var(--primary); }
         .page-indicator { color: var(--text-muted); font-size: 12.5px; font-weight: 600; }
+        .page-link.page-current { background: var(--primary); color: #fff; border-color: var(--primary); cursor: default; }
 
         /* ---- ロビー：ヘッダー ---- */
         .lobby-hero {
@@ -1455,15 +1456,30 @@
                             </ul>
 
                             <!-- ページ切り替え -->
+                            {% macro page_href(n) -%}
+/?tab=threads&page={{ n }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_tag %}&tag={{ current_tag|urlencode }}{% endif %}{% if current_sort and current_sort != 'latest_activity' %}&sort={{ current_sort }}{% endif %}
+{%- endmacro %}
                             <div class="pagination-row">
                                 {% if current_page > 1 %}
-                                    <a href="/?tab=threads&page={{ current_page - 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_tag %}&tag={{ current_tag|urlencode }}{% endif %}" class="page-link">前のページ</a>
+                                    <a href="{{ page_href(current_page - 1) }}" class="page-link">前のページ</a>
                                 {% endif %}
 
-                                <span class="page-indicator">ページ {{ current_page }}</span>
+                                {% if page_numbers %}
+                                    {% for p in page_numbers %}
+                                        {% if p == '…' %}
+                                            <span class="page-indicator">…</span>
+                                        {% elif p == current_page %}
+                                            <span class="page-link page-current" aria-current="page">{{ p }}</span>
+                                        {% else %}
+                                            <a href="{{ page_href(p) }}" class="page-link">{{ p }}</a>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% else %}
+                                    <span class="page-indicator">ページ {{ current_page }}</span>
+                                {% endif %}
 
                                 {% if has_next %}
-                                    <a href="/?tab=threads&page={{ current_page + 1 }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_tag %}&tag={{ current_tag|urlencode }}{% endif %}" class="page-link">次のページ</a>
+                                    <a href="{{ page_href(current_page + 1) }}" class="page-link">次のページ</a>
                                 {% endif %}
                             </div>
                         </div>
