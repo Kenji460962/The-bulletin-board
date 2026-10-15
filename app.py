@@ -2795,8 +2795,18 @@ async def archive_list(request: Request):
     )
     archived_threads = rows or []
     has_next = len(archived_threads) == per_page
+    total_pages = None
+    try:
+        cnt_rows = await execute_query("SELECT COUNT(*) AS cnt FROM archived_threads_index")
+        total_count = int(cnt_rows[0]['cnt']) if cnt_rows else 0
+        total_pages = max(1, -(-total_count // per_page))   # 切り上げ
+        has_next = page < total_pages
+    except Exception as e:
+        print(f"過去ログ件数取得エラー: {e}")
     return templates.TemplateResponse(request, 'archive_list.html', {
-        'archived_threads': archived_threads, 'current_page': page, 'has_next': has_next
+        'archived_threads': archived_threads, 'current_page': page, 'has_next': has_next,
+        'total_pages': total_pages,
+        'page_numbers': _build_page_numbers(page, total_pages) if total_pages else [],
     })
 
 
@@ -3841,6 +3851,24 @@ def _parse_tags(raw_json):
         return []
 
 
+def _build_page_numbers(current: int, total: int, window: int = 2) -> list:
+    """ページ切り替えに並べる番号を作る。多いときは「1 … 4 5 [6] 7 8 … 20」のように省略する。
+    返すのは整数(ページ番号)か、省略を表す文字列 '…' のリスト。"""
+    if total <= 1:
+        return [1]
+    current = max(1, min(current, total))
+    pages = {1, total}
+    pages.update(range(max(1, current - window), min(total, current + window) + 1))
+    result = []
+    prev = 0
+    for p in sorted(pages):
+        if prev and p - prev > 1:
+            result.append('…')
+        result.append(p)
+        prev = p
+    return result
+
+
 async def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=None, offset=None):
     """threads を、レス数・最終更新日時・現在の閲覧人数・スレ主の表示名/アイコンつきで取得する共通ヘルパー"""
     active_cutoff = (datetime.utcnow() - timedelta(minutes=5)).isoformat()
@@ -3925,12 +3953,14 @@ async def index(request: Request):
     # 直列にawaitせず並列に投げてD1往復の回数分の待ち時間を潰す。
     # (トップページは最もアクセスされるページなので、ここの直列化が
     #  サイト全体の体感速度に一番効いていた)
-    threads_result, admin_result, active_count_result, current_member_result, unread_dm_result = await asyncio.gather(
+    threads_result, admin_result, active_count_result, current_member_result, unread_dm_result, thread_total_result = await asyncio.gather(
         _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=per_page, offset=start_index),
         execute_query("SELECT message FROM admin_messages WHERE id = ?", [1]),
         update_and_get_user_counts(user_token, "lobby"),
         get_current_member(request),
         get_unread_dm_count(request),
+        # ページ番号表示用の総スレッド数(一覧と同じ絞り込み条件)
+        execute_query(f"SELECT COUNT(*) AS cnt FROM threads t {where_sql}", list(where_params)),
         return_exceptions=True,
     )
 
@@ -3963,6 +3993,7 @@ async def index(request: Request):
         own_thread_count = own_thread_count_res[0]['cnt'] if (own_thread_count_res and not isinstance(own_thread_count_res, Exception)) else 0
         own_reply_count = own_reply_count_res[0]['cnt'] if (own_reply_count_res and not isinstance(own_reply_count_res, Exception)) else 0
 
+    total_pages = None  # 総ページ数(件数の取得に失敗したときは None のまま = 番号は出さない)
     if isinstance(threads_result, Exception):
         print(f"スレッド一覧取得エラー: {threads_result}")
         threads = []
@@ -3971,6 +4002,9 @@ async def index(request: Request):
         try:
             threads = threads_result
             has_next = len(threads) == per_page
+            if not isinstance(thread_total_result, Exception) and thread_total_result:
+                total_pages = max(1, -(-int(thread_total_result[0]['cnt']) // per_page))
+                has_next = page < total_pages
 
             pinned_ids = [4, 3, 2, 1]
             pinned_threads = []
@@ -4042,6 +4076,8 @@ async def index(request: Request):
         'active_count': active_count,
         'current_page': page,
         'has_next': has_next,
+        'total_pages': total_pages,
+        'page_numbers': _build_page_numbers(page, total_pages) if total_pages else [],
         'search_query': search_query,
         'thread_categories': THREAD_CATEGORIES,
         'thread_category_labels': THREAD_CATEGORY_LABELS,
