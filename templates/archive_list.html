@@ -52,13 +52,18 @@
         .archived-title { font-size: 15px; }
         .archived-meta { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
         .empty { color: var(--text-muted); font-size: 14px; padding: 12px 4px; }
-        .pagination { display: flex; justify-content: center; gap: 10px; margin-top: 16px; }
+        .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
         .pagination a {
             background: rgba(255,255,255,0.1);
             padding: 6px 12px;
             border-radius: 4px;
             border: 1px solid var(--border-color);
         }
+        .pagination .page-current {
+            background: var(--accent-color); color: #0f172a; font-weight: 700;
+            padding: 6px 12px; border-radius: 4px; border: 1px solid var(--accent-color);
+        }
+        .pagination .page-gap { color: var(--text-muted); }
     </style>
 </head>
 <body>
@@ -89,6 +94,17 @@
         {% if current_page > 1 %}
         <a href="/archive?page={{ current_page - 1 }}">◀ 前のページ</a>
         {% endif %}
+
+        {% for p in page_numbers %}
+            {% if p == '…' %}
+            <span class="page-gap">…</span>
+            {% elif p == current_page %}
+            <span class="page-current" aria-current="page">{{ p }}</span>
+            {% else %}
+            <a href="/archive?page={{ p }}">{{ p }}</a>
+            {% endif %}
+        {% endfor %}
+
         {% if has_next %}
         <a href="/archive?page={{ current_page + 1 }}">次のページ ▶</a>
         {% endif %}
