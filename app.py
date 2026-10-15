@@ -6762,7 +6762,11 @@ async def casino_game_page(request: Request, game_key: str):
         except Exception:
             h['detail'] = {}
 
+    # 2段階ゲーム(ビデオポーカー等)は、配ったまま閉じた進行中の手があれば続きから遊べるようにする
+    pending = await casino_service.get_open_session(member_id, game_key) if game.interactive else None
+
     return templates.TemplateResponse(request, game.template, {
+        'pending': pending,
         'game': {
             'key': game.key, 'label': game.label, 'icon': game.icon,
             'description': game.description,
@@ -6776,6 +6780,93 @@ async def casino_game_page(request: Request, game_key: str):
         'daily_loss_limit': casino_service.DAILY_LOSS_LIMIT,
         'unread_dm_count': await get_unread_dm_count(request),
     })
+
+
+_CASINO_ERR_MAP = {
+    'unknown_game': "そのゲームは見つかりません。",
+    'invalid_bet': "賭け金が範囲外です。",
+    'insufficient_balance': "ポイントが足りません。",
+    'daily_limit': f"本日の損失上限({casino_service.DAILY_LOSS_LIMIT}pt)に達しました。日付が変わるとまた遊べます。",
+    'cooldown': "操作が速すぎます。少し待ってください。",
+    'duplicate_request': "同じ操作がすでに処理されています。",
+    'pending_session': "前回の続きがあります。そのまま続けてください。",
+    'no_session': "この勝負は見つからないか、すでに終了しています。ページを開き直してください。",
+    'invalid_action': "選択が正しくありません。",
+}
+
+
+async def _casino_member_or_error(request: Request):
+    """カジノAPI共通の認証・BANチェック。(member_id, エラー応答) を返す。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return None, err
+    public_id = await get_member_public_id(request)
+    if public_id and await is_banned_member_public_id(public_id):
+        return None, json_resp({"success": False, "error": "利用できません。"}, 403)
+    return member_id, None
+
+
+@app.post('/api/casino/{game_key}/start')
+async def api_casino_start(request: Request, game_key: str):
+    """2段階ゲーム(ビデオポーカー)の「賭けて配る」。進行中の手があるときは続きの情報を返す。"""
+    member_id, err = await _casino_member_or_error(request)
+    if err:
+        return err
+    game = casino_service.get_game(game_key)
+    if not game or not game.interactive:
+        return json_resp({"success": False, "error": "そのゲームは見つかりません。"}, 404)
+
+    body = await get_json_silent(request) or {}
+    try:
+        bet = int(body.get('bet'))
+    except (TypeError, ValueError):
+        return json_resp({"success": False, "error": "賭け金は整数で指定してください。"}, 400)
+    request_id = str(body.get('request_id') or '').strip()[:64] or None
+
+    try:
+        result = await casino_service.start_interactive(member_id, game_key, bet, request_id)
+    except Exception as e:
+        print(f"カジノ開始エラー({game_key}): {e}")
+        return json_resp({"success": False, "error": "サーバーエラーが発生しました。"}, 500)
+
+    if result['success']:
+        return json_resp({"success": True, "session_id": result['session_id'], "bet": result['bet'],
+                          "view": result['view'], "balance": result['balance']})
+    payload = {"success": False, "error": _CASINO_ERR_MAP.get(result['error'], "実行に失敗しました。"),
+               "code": result['error'], "balance": result.get('balance', 0)}
+    if result['error'] == 'pending_session' and result.get('view') is not None:
+        payload.update({"session_id": result.get('session_id'), "bet": result.get('bet'), "view": result['view']})
+    return json_resp(payload, 400)
+
+
+@app.post('/api/casino/{game_key}/resolve')
+async def api_casino_resolve(request: Request, game_key: str):
+    """2段階ゲームの「選んで勝負」。残すカードなどの選択を受けて結果を確定する。"""
+    member_id, err = await _casino_member_or_error(request)
+    if err:
+        return err
+    game = casino_service.get_game(game_key)
+    if not game or not game.interactive:
+        return json_resp({"success": False, "error": "そのゲームは見つかりません。"}, 404)
+
+    body = await get_json_silent(request) or {}
+    try:
+        session_id = int(body.get('session_id'))
+    except (TypeError, ValueError):
+        return json_resp({"success": False, "error": "勝負の指定が正しくありません。"}, 400)
+    action = body.get('action') if isinstance(body.get('action'), dict) else {}
+
+    try:
+        result = await casino_service.resolve_interactive(member_id, game_key, session_id, action)
+    except Exception as e:
+        print(f"カジノ確定エラー({game_key}): {e}")
+        return json_resp({"success": False, "error": "サーバーエラーが発生しました。"}, 500)
+
+    if result['success']:
+        return json_resp({"success": True, "detail": result['detail'], "bet": result['bet'],
+                          "payout": result['payout'], "net": result['net'], "balance": result['balance']})
+    return json_resp({"success": False, "error": _CASINO_ERR_MAP.get(result['error'], "実行に失敗しました。"),
+                      "code": result['error'], "balance": result.get('balance', 0)}, 400)
 
 
 @app.post('/api/casino/{game_key}/play')
