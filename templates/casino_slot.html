@@ -300,7 +300,7 @@
     const GAME_KEY = {{ game.key | tojson }};
     const MIN_BET = {{ game.min_bet | tojson }};
     const MAX_BET = {{ game.max_bet | tojson }};
-    const SYMBOLS = ['7', '💎', '🔔', '🍉', '🍒', '⭐', '🍋'];
+    const SYMBOLS = ['7️⃣', '💎', '🔔', '🍉', '🍒', '⭐', '🍋'];
     const API = '/api/casino/' + GAME_KEY + '/play';
     const ERRORS = {
         insufficient_balance: '残高が足りません。',
@@ -395,7 +395,7 @@
     }
 
     // 初期表示
-    [['🍋', '🍒', '🔔'], ['🍉', '7', '⭐'], ['🔔', '🍒', '🍋']].forEach(function(c, i) { setStatic(reels[i], c); });
+    [['🍋', '🍒', '🔔'], ['🍉', '7️⃣', '⭐'], ['🔔', '🍒', '🍋']].forEach(function(c, i) { setStatic(reels[i], c); });
 
     function setBalance(from, to) {
         const t0 = performance.now(), dur = 600;
@@ -494,7 +494,7 @@
         const cols = (win && win.length === 3) ? win : line.map(function(s) { return [rnd(), s, rnd()]; });
 
         // リーチ: 左2つが同じ高配当絵柄 → 3つ目をじらして止める
-        const reach = line.length === 3 && line[0] === line[1] && ['7', '💎', '🔔'].indexOf(line[0]) >= 0;
+        const reach = line.length === 3 && line[0] === line[1] && ['7️⃣', '💎', '🔔'].indexOf(line[0]) >= 0;
         const stopAt = [1000, 1500, reach ? 2900 : 2000];
         const durs = [650, 650, reach ? 1500 : 700];
 
