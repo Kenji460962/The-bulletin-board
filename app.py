@@ -6888,9 +6888,10 @@ async def api_casino_play(request: Request, game_key: str):
     except (TypeError, ValueError):
         return json_resp({"success": False, "error": "賭け金は整数で指定してください。"}, 400)
     request_id = str(body.get('request_id') or '').strip()[:64] or None
+    choice = body.get('choice') if isinstance(body.get('choice'), dict) else None
 
     try:
-        result = await casino_service.place_bet(member_id, game_key, bet, request_id)
+        result = await casino_service.place_bet(member_id, game_key, bet, request_id, choice)
     except Exception as e:
         print(f"カジノ実行エラー({game_key}): {e}")
         return json_resp({"success": False, "error": "サーバーエラーが発生しました。"}, 500)
@@ -6908,6 +6909,7 @@ async def api_casino_play(request: Request, game_key: str):
     err_map = {
         'unknown_game': "そのゲームは見つかりません。",
         'invalid_bet': "賭け金が範囲外です。",
+        'invalid_choice': "賭け方が正しくありません。",
         'insufficient_balance': "ポイントが足りません。",
         'daily_limit': f"本日の損失上限({casino_service.DAILY_LOSS_LIMIT}pt)に達しました。"
                        "日付が変わるとまた遊べます。",
