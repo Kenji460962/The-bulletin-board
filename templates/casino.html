@@ -172,7 +172,8 @@
         </div>
 
         {% if current_member %}
-        {% set nh_days = net_history.days if (net_history is defined and net_history) else [] %}
+        {% set nh_ok = (net_history is defined and net_history) %}
+        {% set nh_days = net_history.days if nh_ok else [] %}
         <div class="glass-panel net-section">
             <div class="net-head">
                 <h2 class="panel-title" style="margin: 0;">収支グラフ</h2>
@@ -219,6 +220,7 @@
     {% if current_member %}
     (function() {
         const ALL_DAYS = {{ nh_days | tojson }};
+        const HAS_DATA = {{ 'true' if nh_ok else 'false' }};
         const wrap = document.getElementById('net-chart-wrap');
         if (!wrap) return;
         const host = document.getElementById('net-svg-host');
@@ -396,7 +398,12 @@
             const spins = view.reduce(function(a, d) { return a + d.spins; }, 0);
             if (!view.length || spins === 0) {
                 wrap.hidden = true; summaryEl.hidden = true; emptyEl.hidden = false;
-                emptyEl.textContent = ALL_DAYS.length ? 'この期間のプレイ記録はありません。' : 'まだプレイ記録がありません。';
+                if (!HAS_DATA) {
+                    console.warn('net_history がテンプレートに渡されていません(ルートで net_history を渡してください)');
+                    emptyEl.textContent = 'グラフのデータが渡されていません(ルートで net_history を渡す必要があります)。';
+                } else {
+                    emptyEl.textContent = 'この期間のプレイ記録はありません。';
+                }
                 return;
             }
             emptyEl.hidden = true; wrap.hidden = false; summaryEl.hidden = false;
