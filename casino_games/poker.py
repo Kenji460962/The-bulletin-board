@@ -6,7 +6,10 @@
 """
 import secrets
 
-from casino_service import Game
+from casino_service import Game, DAILY_LOSS_LIMIT, BET_COOLDOWN_SECONDS
+
+MIN_BET = 1
+MAX_BET = 10000
 
 # カードは [ランク, スート] の整数ペア。ランクは 2〜14 (11=J, 12=Q, 13=K, 14=A)、スートは 0〜3。
 SUITS = ['♠', '♥', '♦', '♣']
@@ -25,6 +28,12 @@ PAYTABLE = [
 ]
 PAY = {k: mult for k, _label, mult in PAYTABLE}
 LABEL = {k: label for k, label, _mult in PAYTABLE}
+
+# 画面上部の配当表(筐体)用。テンプレートから game.paytable で参照する。
+_SHORT = {'jacks_or_better': 'J以上のワンペア'}
+PAYTABLE_VIEW = [
+    {'key': k, 'label': _SHORT.get(k, label), 'mult': mult} for k, label, mult in PAYTABLE
+]
 
 
 def _new_deck():
@@ -105,15 +114,72 @@ def _describe(detail):
     return detail.get('rank_label') or ''
 
 
+# ---- ルール表示(HTML) ----
+# 役ごとの例と説明。例は「A♠ K♠ ...」の文字列で、♥♦は赤で表示する。
+_HAND_INFO = {
+    'royal_flush': ('A♠ K♠ Q♠ J♠ 10♠', '同じスート（マーク）の 10・J・Q・K・A。いちばん強い役です。'),
+    'straight_flush': ('9♥ 8♥ 7♥ 6♥ 5♥', '同じスートで数字が5枚連続（ロイヤルフラッシュを除く）。A-2-3-4-5 も対象です。'),
+    'four': ('8♠ 8♥ 8♦ 8♣ K♠', '同じ数字のカードが4枚。残りの1枚は何でもかまいません。'),
+    'full_house': ('Q♠ Q♥ Q♦ 4♣ 4♠', '同じ数字3枚 ＋ 別の同じ数字2枚の組み合わせ。'),
+    'flush': ('K♦ 9♦ 7♦ 4♦ 2♦', '5枚すべてが同じスート。数字は連続していなくてOKです。'),
+    'straight': ('9♠ 8♥ 7♦ 6♣ 5♠', '数字が5枚連続（スートはバラバラ）。A-2-3-4-5 と 10-J-Q-K-A は有効、Q-K-A-2-3 のように A をまたぐ並びは無効です。'),
+    'three': ('7♠ 7♥ 7♦ K♣ 2♠', '同じ数字が3枚。残り2枚は別の数字です。'),
+    'two_pair': ('J♠ J♥ 4♦ 4♣ A♠', '同じ数字のペアが2組。'),
+    'jacks_or_better': ('K♠ K♥ 9♦ 5♣ 2♠', 'J・Q・K・A のどれかのワンペア。10 以下のペアは払い戻しなしです。'),
+}
+
+
+def _mini_cards(text):
+    out = []
+    for tok in text.split():
+        rank, suit = tok[:-1], tok[-1]
+        cls = 'mc red' if suit in '♥♦' else 'mc'
+        out.append(f'<span class="{cls}">{rank}{suit}</span>')
+    return ''.join(out)
+
+
 def _rules_html():
-    rows = ''.join(f'<li>{label}: ×{mult}</li>' for _k, label, mult in PAYTABLE)
+    hand_rows = ''.join(
+        f'<div class="hand-row">'
+        f'<div class="hand-head"><span>{label}</span><span>×{mult}</span></div>'
+        f'<div class="mini">{_mini_cards(_HAND_INFO[k][0])}</div>'
+        f'<div class="hand-desc">{_HAND_INFO[k][1]}</div>'
+        f'</div>'
+        for k, label, mult in PAYTABLE
+    )
     return f"""
+      <h3>基本の流れ</h3>
+      <ol>
+        <li>賭け金（{MIN_BET}〜{MAX_BET}pt）を決めて「配る」を押すと、5枚のカードが配られます。賭け金はこの時点で引き落とされます。</li>
+        <li>残したいカードをタップして <b>HOLD</b> にします（もう一度タップで解除）。キーボードなら 1〜5 キーでも切り替えできます。</li>
+        <li>「交換する」を押すと、HOLD していないカードだけが新しいカードに入れ替わります。<b>交換は1回だけ</b>です。</li>
+        <li>最終的な5枚で役が成立していれば、賭け金 × 倍率が払い戻されます。役がなければ払い戻しはありません。</li>
+      </ol>
+
+      <h3>役と配当（強い順）</h3>
+      <p>倍率は賭け金にかかります。複数の役が成立する場合は、いちばん高い役だけが配当の対象です。</p>
+      {hand_rows}
+
+      <h3>遊び方のコツ</h3>
       <ul>
-        <li>賭けると5枚が配られます。残したいカードを選んで「交換する」を押すと、残りのカードが入れ替わります。</li>
-        <li>最終的な5枚の役で、賭け金に倍率をかけた額が払い戻されます（役なしは払い戻しなし）。</li>
-        {rows}
-        <li>還元率 約96%（最善の遊び方をした場合）</li>
-        <li>配ったあとで画面を閉じても、開き直せば続きから遊べます。途中でやめても賭け金は戻りません。</li>
+        <li>ストレート以上がすでに完成しているときは、5枚すべてを HOLD するのが基本です。</li>
+        <li>フォーカード・スリーカード・ツーペアは、そろっているカードだけを残します（ツーペアは残り1枚を交換すると、フルハウスのチャンスです）。</li>
+        <li>J 以上のワンペアは配当の対象なので、ペアを残して残り3枚を交換します。</li>
+        <li>10 以下のペアは配当にならないため、ペアを残して3枚引き、スリーカード以上を狙う手が一般的です。</li>
+        <li>同じスートや連続した数字が4枚そろっているときは、残り1枚を引いてフラッシュ・ストレートを狙う選択肢もあります。</li>
+        <li>これは簡易的な目安です。最善の手は手札によって変わります。</li>
+      </ul>
+
+      <h3>ルールの詳細</h3>
+      <ul>
+        <li>52枚のトランプ1組（ジョーカーなし）を使います。配るたびに山札を新しくシャッフルします。</li>
+        <li>山札のシャッフルはサーバー側で行い、交換で出るカードも配る時点で決まっています。プレイヤーの画面には最初の5枚しか送られません。</li>
+        <li>A（エース）は、10-J-Q-K-A では最も強く、A-2-3-4-5 では最も弱いカードとして扱われます。</li>
+        <li>スートの強弱はありません。♠♥♦♣は役の判定（フラッシュなど）にだけ使われます。</li>
+        <li>配った後に画面を閉じても、ページを開き直せば続きから遊べます。途中でやめても賭け金は戻りません。</li>
+        <li>1日（日本時間）の損失が合計 {DAILY_LOSS_LIMIT:,}pt に達すると、その日はそれ以上賭けられません（カジノ全ゲーム合計）。</li>
+        <li>連続して賭けるときは、{BET_COOLDOWN_SECONDS}秒以上の間隔が必要です。</li>
+        <li>還元率は約96%（最善の遊び方をした場合の理論値）です。短期的には大きく上下します。</li>
       </ul>
     """
 
@@ -123,8 +189,8 @@ GAME = Game(
     label='ビデオポーカー',
     icon='🃏',
     description='5枚から残すカードを選んで交換。ジャックス・オア・ベター以上で配当、最大250倍。',
-    min_bet=1,
-    max_bet=10000,
+    min_bet=MIN_BET,
+    max_bet=MAX_BET,
     describe_result=_describe,
     rules=_rules_html(),
     category='poker',
@@ -133,3 +199,4 @@ GAME = Game(
     resolve=_resolve,
     public_view=_public_view,
 )
+GAME.paytable = PAYTABLE_VIEW   # 筐体の配当表用(テンプレートが game.paytable で参照)
