@@ -22,12 +22,16 @@
             --primary: #2563EB; --primary-hover: #1D4ED8; --primary-soft: #EFF4FE;
             --green: #16A34A; --red: #DC2626; --amber: #B45309;
             --radius-lg: 6px; --radius-md: 5px; --radius-sm: 4px;
+            --h: 84px;              /* リール1段の高さ */
+            --cab-1: #3b3f4a; --cab-2: #23262e; --reel-bg: #FDFDFD;
+            --gold: #F5B400;
         }
         html[data-theme="dark"] {
             --bg: #0F1115; --card-bg: #16181D; --card-border: #2A2D34;
             --text: #E5E7EB; --text-muted: #CBD5E1; --text-faint: #94A3B8;
             --primary: #5B93F5; --primary-hover: #7CA8F8; --primary-soft: rgba(91,147,245,0.12);
             --green: #22C55E; --red: #EF4444; --amber: #F59E0B;
+            --cab-1: #2a2d36; --cab-2: #14161b; --reel-bg: #E9EBEF;
         }
         * { box-sizing: border-box; }
         body {
@@ -55,29 +59,85 @@
             border: 1px solid var(--card-border); background: var(--card-bg);
             color: var(--text-muted); font-size: 12.5px; font-weight: 600;
             padding: 7px 12px; border-radius: var(--radius-sm);
-            cursor: pointer; text-decoration: none;
+            cursor: pointer; text-decoration: none; font-family: inherit;
         }
         .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
         .glass-panel { border-bottom: 1px solid var(--card-border); padding: 16px 0; }
         .glass-panel:first-of-type { padding-top: 0; }
         .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
 
-        .slot-reels { display: flex; gap: 16px; justify-content: center; padding: 20px 0; }
-        .slot-reels .reel {
-            width: 96px; height: 120px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 56px;
-            background: var(--card-bg);
-            border: 2px solid var(--card-border);
-            border-radius: var(--radius-md);
-            transition: transform 0.2s ease, border-color 0.2s ease;
-            user-select: none;
+        /* ---- 筐体 ---- */
+        .machine {
+            position: relative; margin: 4px auto 0; max-width: 420px;
+            padding: 14px 14px 12px; border-radius: 14px;
+            background: linear-gradient(180deg, var(--cab-1), var(--cab-2));
+            border: 2px solid #0b0c10;
+            box-shadow: 0 6px 18px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.12);
         }
-        .slot-reels .reel.stopped { transform: scale(1.08); border-color: var(--primary); }
+        .machine.win { animation: cabinet-flash .45s ease-in-out 6; }
+        @keyframes cabinet-flash {
+            0%, 100% { box-shadow: 0 6px 18px rgba(0,0,0,.25), 0 0 0 0 rgba(245,180,0,0); }
+            50% { box-shadow: 0 6px 18px rgba(0,0,0,.25), 0 0 26px 6px rgba(245,180,0,.85); }
+        }
+        .lamps { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .lamp-label {
+            font-size: 11px; font-weight: 800; letter-spacing: .12em; color: #6b7080;
+            padding: 2px 8px; border-radius: 3px; background: #14161b;
+            border: 1px solid #000; transition: color .15s, background .15s, box-shadow .15s;
+        }
+        .lamp-label.on { color: #fff; background: #c81e1e; box-shadow: 0 0 10px rgba(255,60,60,.9); }
+        .lamp-label.gold.on { background: var(--gold); color: #3a2a00; box-shadow: 0 0 12px rgba(245,180,0,.95); }
+        .lamp-label.blink { animation: blink .35s steps(2, jump-none) infinite; }
+        @keyframes blink { 0% { opacity: 1; } 100% { opacity: .35; } }
+
+        .reel-frame {
+            position: relative; display: flex; gap: 6px; justify-content: center;
+            padding: 8px; background: #0b0c10; border-radius: 8px;
+        }
+        .reel {
+            position: relative; width: 96px; height: calc(var(--h) * 3);
+            overflow: hidden; border-radius: 6px; background: var(--reel-bg);
+        }
+        /* 円筒の陰影 */
+        .reel::after {
+            content: ""; position: absolute; inset: 0; pointer-events: none;
+            background: linear-gradient(180deg,
+                rgba(0,0,0,.55) 0%, rgba(0,0,0,.12) 22%, rgba(255,255,255,0) 40%,
+                rgba(255,255,255,0) 60%, rgba(0,0,0,.12) 78%, rgba(0,0,0,.55) 100%);
+        }
+        .strip { display: flex; flex-direction: column; will-change: transform; }
+        .cell {
+            height: var(--h); flex: 0 0 var(--h);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 50px; line-height: 1; user-select: none;
+            font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+        }
+        .reel.spinning .strip { animation: roll .5s linear infinite; filter: blur(1.6px); }
+        @keyframes roll {
+            from { transform: translateY(calc(var(--h) * -12)); }
+            to   { transform: translateY(0); }
+        }
+        .reel.reach { box-shadow: 0 0 0 2px var(--gold), 0 0 14px 2px rgba(245,180,0,.8); }
+        .cell.win { animation: win-pulse .5s ease-in-out infinite alternate; }
+        @keyframes win-pulse {
+            from { transform: scale(1); filter: drop-shadow(0 0 0 rgba(245,180,0,0)); }
+            to   { transform: scale(1.18); filter: drop-shadow(0 0 8px rgba(245,180,0,.95)); }
+        }
+        /* ペイライン(中段) */
+        .payline {
+            position: absolute; left: 2px; right: 2px; z-index: 3; pointer-events: none;
+            top: calc(8px + var(--h) * 1.5 - 1px); height: 2px;
+            background: rgba(220,38,38,.85); box-shadow: 0 0 6px rgba(220,38,38,.8);
+        }
+        .payline::before, .payline::after {
+            content: ""; position: absolute; top: -5px; border: 6px solid transparent;
+        }
+        .payline::before { left: -2px; border-left-color: #DC2626; }
+        .payline::after { right: -2px; border-right-color: #DC2626; }
 
         .slot-controls {
             display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-            padding: 8px 0 4px; justify-content: center;
+            padding: 16px 0 4px; justify-content: center;
         }
         .slot-controls label {
             display: flex; align-items: center; gap: 8px;
@@ -90,21 +150,32 @@
             font-family: inherit; font-size: 14px;
         }
         .slot-controls input[type="number"]:focus { outline: none; border-color: var(--primary); }
-        .slot-controls button {
-            background: var(--primary); color: #fff; border: none;
-            border-radius: var(--radius-sm); padding: 10px 24px;
-            font-family: inherit; font-weight: 700; font-size: 15px;
-            cursor: pointer; transition: background 0.15s ease;
+        .chips { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; padding-top: 8px; }
+        .chip {
+            border: 1px solid var(--card-border); background: var(--card-bg); color: var(--text-muted);
+            font-family: inherit; font-size: 12.5px; font-weight: 700;
+            padding: 5px 12px; border-radius: 999px; cursor: pointer;
         }
-        .slot-controls button:hover { background: var(--primary-hover); }
-        .slot-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .chip:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .chip:disabled { opacity: .5; cursor: not-allowed; }
+        #spin-btn {
+            background: linear-gradient(180deg, #ef4444, #b91c1c); color: #fff;
+            border: none; border-radius: 999px; padding: 12px 34px;
+            font-family: inherit; font-weight: 800; font-size: 16px; letter-spacing: .08em;
+            cursor: pointer; box-shadow: 0 4px 0 #7f1313, 0 6px 12px rgba(0,0,0,.25);
+            transition: transform .08s ease, box-shadow .08s ease;
+        }
+        #spin-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #7f1313; }
+        #spin-btn:disabled { opacity: .55; cursor: not-allowed; }
 
-        .slot-balance { text-align: center; font-size: 14px; color: var(--text-muted); }
+        .slot-balance { text-align: center; font-size: 14px; color: var(--text-muted); margin-top: 8px; }
         .slot-balance strong { color: var(--text); font-weight: 700; font-size: 16px; }
         .slot-result {
             text-align: center; min-height: 1.6em;
             font-weight: 700; font-size: 15px; margin-top: 6px;
         }
+        .slot-result.big { font-size: 20px; }
+        .hint { text-align: center; font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
 
         .menu-list { list-style: none; margin: 0; padding: 0; }
         .menu-list-item { padding: 10px 2px; border-bottom: 1px solid var(--card-border); }
@@ -116,6 +187,15 @@
         .rules-body { font-size: 14px; color: var(--text-muted); }
         .rules-body ul { padding-left: 20px; margin: 0; }
         .rules-body li { margin: 4px 0; }
+
+        @media (max-width: 420px) {
+            :root { --h: 72px; }
+            .reel { width: 84px; }
+            .cell { font-size: 44px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .machine.win, .cell.win, .lamp-label.blink { animation: none; }
+        }
     </style>
 </head>
 <body>
@@ -124,6 +204,7 @@
             <a href="/casino" class="back-link">← カジノ</a>
             <h1 class="casino-title">{{ game.icon }} {{ game.label }}</h1>
             <span class="spacer"></span>
+            <button type="button" id="sound-btn" class="icon-btn">音: OFF</button>
             <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
         </div>
 
@@ -132,10 +213,17 @@
         </div>
 
         <div class="glass-panel">
-            <div class="slot-reels">
-                <div class="reel" id="reel-0">🍒</div>
-                <div class="reel" id="reel-1">🍒</div>
-                <div class="reel" id="reel-2">🍒</div>
+            <div class="machine" id="machine">
+                <div class="lamps">
+                    <span class="lamp-label gold" id="lamp-reach">REACH</span>
+                    <span class="lamp-label" id="lamp-win">WIN</span>
+                </div>
+                <div class="reel-frame">
+                    <div class="reel" id="reel-0"></div>
+                    <div class="reel" id="reel-1"></div>
+                    <div class="reel" id="reel-2"></div>
+                    <div class="payline"></div>
+                </div>
             </div>
 
             <div class="slot-controls">
@@ -143,11 +231,18 @@
                     <input type="number" id="bet" min="{{ game.min_bet }}" max="{{ game.max_bet }}" value="10">
                     <span style="font-size:12px;">（{{ game.min_bet }}〜{{ game.max_bet }}pt）</span>
                 </label>
-                <button id="spin-btn">回す</button>
+                <button id="spin-btn">SPIN</button>
+            </div>
+            <div class="chips">
+                <button type="button" class="chip" data-bet="10">10</button>
+                <button type="button" class="chip" data-bet="100">100</button>
+                <button type="button" class="chip" data-bet="1000">1000</button>
+                <button type="button" class="chip" data-bet="max">MAX</button>
             </div>
 
             <div class="slot-balance">残高: <strong id="balance">{{ balance }}</strong> pt</div>
             <div class="slot-result" id="result-msg"></div>
+            <div class="hint">スペースキーでも回せます</div>
         </div>
 
         <div class="glass-panel">
@@ -157,7 +252,7 @@
 
         <div class="glass-panel">
             <h2 class="panel-title">最近のプレイ</h2>
-            <ul class="menu-list">
+            <ul class="menu-list" id="history-list">
                 {% for h in history %}
                 <li class="menu-list-item">
                     <div class="menu-list-title">
@@ -203,41 +298,176 @@
 
     // ---- スロット ----
     const GAME_KEY = {{ game.key | tojson }};
+    const MIN_BET = {{ game.min_bet | tojson }};
+    const MAX_BET = {{ game.max_bet | tojson }};
     const SYMBOLS = ['7', '💎', '🔔', '🍉', '🍒', '⭐', '🍋'];
     const API = '/api/casino/' + GAME_KEY + '/play';
+    const ERRORS = {
+        insufficient_balance: '残高が足りません。',
+        daily_limit: '1日の損失上限に達しました。',
+        cooldown: '少し待ってからもう一度回してください。',
+        invalid_bet: '賭け金が正しくありません。',
+        duplicate_request: '同じリクエストが処理済みです。'
+    };
 
     const spinBtn = document.getElementById('spin-btn');
     const betInput = document.getElementById('bet');
     const balanceEl = document.getElementById('balance');
     const msgEl = document.getElementById('result-msg');
+    const machine = document.getElementById('machine');
+    const lampReach = document.getElementById('lamp-reach');
+    const lampWin = document.getElementById('lamp-win');
+    const chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
     const reels = [0, 1, 2].map(function(i) { return document.getElementById('reel-' + i); });
 
+    let balance = Number({{ balance | tojson }}) || 0;
     let spinning = false;
 
-    function randomSymbol() {
-        return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)];
+    function rnd() { return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)]; }
+    function cell(sym, win) {
+        return '<div class="cell' + (win ? ' win' : '') + '">' + sym + '</div>';
     }
 
-    function startRolling(idx) {
-        return setInterval(function() {
-            reels[idx].textContent = randomSymbol();
-        }, 60 + idx * 20);
+    // ---- 音(WebAudio。初期はOFF) ----
+    let soundOn = localStorage.getItem('talk_ch_slot_sound') === 'on';
+    let audioCtx = null;
+    const soundBtn = document.getElementById('sound-btn');
+    function soundLabel() { soundBtn.textContent = soundOn ? '音: ON' : '音: OFF'; }
+    soundLabel();
+    soundBtn.addEventListener('click', function() {
+        soundOn = !soundOn;
+        localStorage.setItem('talk_ch_slot_sound', soundOn ? 'on' : 'off');
+        soundLabel();
+    });
+    function beep(freq, dur, type, vol, when) {
+        if (!soundOn) return;
+        try {
+            audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+            const t0 = audioCtx.currentTime + (when || 0);
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type || 'square';
+            osc.frequency.value = freq;
+            g.gain.setValueAtTime(vol || 0.05, t0);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(t0); osc.stop(t0 + dur);
+        } catch (e) {}
+    }
+    function sfxStart() { beep(220, 0.12, 'sawtooth', 0.04); beep(330, 0.12, 'sawtooth', 0.04, 0.08); }
+    function sfxStop() { beep(140, 0.09, 'square', 0.07); }
+    function sfxReach() { beep(880, 0.1, 'triangle', 0.05); beep(988, 0.1, 'triangle', 0.05, 0.12); }
+    function sfxWin(big) {
+        const notes = big ? [523, 659, 784, 1047, 1319, 1568] : [523, 659, 784];
+        notes.forEach(function(f, i) { beep(f, 0.18, 'triangle', 0.06, i * 0.11); });
+    }
+
+    // ---- リール描画 ----
+    // 停止状態: [余白, 上段, 中段, 下段] を表示(余白は行き過ぎ→戻りの演出用)
+    function setStatic(reelEl, col, winMid) {
+        reelEl.classList.remove('spinning');
+        reelEl.innerHTML = '<div class="strip" style="transform: translateY(calc(var(--h) * -1));">' +
+            cell(rnd()) + cell(col[0]) + cell(col[1], winMid) + cell(col[2]) + '</div>';
+    }
+    function startSpin(reelEl, idx) {
+        let html = '';
+        const first = [rnd(), rnd(), rnd()];
+        for (let i = 0; i < 12; i++) html += cell(i < 3 ? first[i] : rnd());
+        html += cell(first[0]) + cell(first[1]) + cell(first[2]);   // 継ぎ目なしループ用
+        reelEl.innerHTML = '<div class="strip">' + html + '</div>';
+        reelEl.querySelector('.strip').style.animationDuration = (0.46 + idx * 0.035) + 's';
+        reelEl.classList.add('spinning');
+    }
+    // 回転中 → 目標の出目へ減速して着地(少し行き過ぎて戻る)
+    function stopReel(reelEl, col, duration) {
+        const FILL = 9;
+        let html = cell(rnd()) + cell(col[0]) + cell(col[1]) + cell(col[2]);
+        for (let i = 0; i < FILL; i++) html += cell(rnd());
+        reelEl.classList.remove('spinning');
+        reelEl.innerHTML = '<div class="strip">' + html + '</div>';
+        const strip = reelEl.querySelector('.strip');
+        const rows = 1 + 3 + FILL;
+        strip.style.transition = 'none';
+        strip.style.transform = 'translateY(calc(var(--h) * -' + (rows - 3) + '))';
+        void strip.offsetHeight;   // 強制リフロー
+        strip.style.transition = 'transform ' + duration + 'ms cubic-bezier(0.22, 0.85, 0.3, 1.1)';
+        strip.style.transform = 'translateY(calc(var(--h) * -1))';
+    }
+
+    // 初期表示
+    [['🍋', '🍒', '🔔'], ['🍉', '7', '⭐'], ['🔔', '🍒', '🍋']].forEach(function(c, i) { setStatic(reels[i], c); });
+
+    function setBalance(from, to) {
+        const t0 = performance.now(), dur = 600;
+        function step(now) {
+            const p = Math.min(1, (now - t0) / dur);
+            balanceEl.textContent = Math.round(from + (to - from) * p);
+            if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    function winReels(hit) {
+        if (!hit) return [];
+        if (hit.indexOf('揃い') >= 0 || hit === 'フルーツ') return [0, 1, 2];
+        if (hit === 'チェリー2つ') return [0, 1];
+        if (hit === 'チェリー') return [0];
+        return [];
+    }
+
+    function setControls(disabled) {
+        spinBtn.disabled = disabled;
+        betInput.disabled = disabled;
+        chips.forEach(function(c) { c.disabled = disabled; });
+    }
+
+    function addHistory(detail, bet, payout, net) {
+        const list = document.getElementById('history-list');
+        const empty = list.querySelector('.empty-state');
+        if (empty) empty.remove();
+        const li = document.createElement('li');
+        li.className = 'menu-list-item';
+        const color = net >= 0 ? 'var(--green)' : 'var(--red)';
+        li.innerHTML = '<div class="menu-list-title"></div><div class="menu-list-desc"></div>';
+        li.firstChild.textContent = (detail.reels || []).join(' / ');
+        li.lastChild.innerHTML = '賭け ' + bet + 'pt → 払戻 ' + payout + 'pt（<span style="color:' + color + ';">' +
+            (net >= 0 ? '+' : '') + net + 'pt</span>） / たった今';
+        list.insertBefore(li, list.firstChild);
+        while (list.children.length > 20) list.removeChild(list.lastChild);
+    }
+
+    function fail(timers, text, newBalance) {
+        reels.forEach(function(r) { r.classList.remove('spinning'); });
+        msgEl.textContent = text;
+        msgEl.style.color = 'var(--red)';
+        if (typeof newBalance === 'number') { balance = newBalance; balanceEl.textContent = newBalance; }
+        spinning = false;
+        setControls(false);
     }
 
     async function spin() {
         if (spinning) return;
         const bet = parseInt(betInput.value, 10);
-        if (!bet || bet < 1) {
-            msgEl.textContent = '賭け金を入力してください。';
+        if (!bet || bet < MIN_BET || bet > MAX_BET) {
+            msgEl.textContent = '賭け金は ' + MIN_BET + '〜' + MAX_BET + 'pt で入力してください。';
             msgEl.style.color = 'var(--red)';
             return;
         }
 
         spinning = true;
-        spinBtn.disabled = true;
+        setControls(true);
         msgEl.textContent = '';
-        const timers = reels.map(function(_, i) { return startRolling(i); });
+        msgEl.className = 'slot-result';
+        machine.classList.remove('win');
+        lampWin.classList.remove('on', 'blink');
+        lampReach.classList.remove('on', 'blink');
+        reels.forEach(function(r) { r.classList.remove('reach'); });
 
+        const t0 = performance.now();
+        reels.forEach(function(r, i) { startSpin(r, i); });
+        sfxStart();
+
+        let data;
         try {
             const requestId = (window.crypto && crypto.randomUUID)
                 ? crypto.randomUUID()
@@ -247,49 +477,91 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ bet: bet, request_id: requestId })
             });
-            const data = await res.json();
-
-            if (!data.success) {
-                timers.forEach(clearInterval);
-                msgEl.textContent = data.error || '失敗しました。';
-                msgEl.style.color = 'var(--red)';
-                if (typeof data.balance === 'number') balanceEl.textContent = data.balance;
-                spinning = false;
-                spinBtn.disabled = false;
-                return;
-            }
-
-            data.detail.reels.forEach(function(symbol, i) {
-                setTimeout(function() {
-                    clearInterval(timers[i]);
-                    reels[i].textContent = symbol;
-                    reels[i].classList.add('stopped');
-                    setTimeout(function() { reels[i].classList.remove('stopped'); }, 300);
-
-                    if (i === 2) {
-                        balanceEl.textContent = data.balance;
-                        if (data.payout > 0) {
-                            msgEl.textContent = '🎉 ' + data.payout + 'pt 当たり！（純損益 ' + (data.net >= 0 ? '+' : '') + data.net + '）';
-                            msgEl.style.color = 'var(--green)';
-                        } else {
-                            msgEl.textContent = 'ハズレ（-' + bet + 'pt）';
-                            msgEl.style.color = 'var(--red)';
-                        }
-                        spinning = false;
-                        spinBtn.disabled = false;
-                    }
-                }, 400 + i * 350);
-            });
+            data = await res.json();
         } catch (e) {
-            timers.forEach(clearInterval);
-            msgEl.textContent = '通信エラーが発生しました。';
-            msgEl.style.color = 'var(--red)';
+            fail(null, '通信エラーが発生しました。');
+            return;
+        }
+        if (!data.success) {
+            fail(null, ERRORS[data.error] || data.error || '失敗しました。', data.balance);
+            return;
+        }
+
+        const detail = data.detail || {};
+        const win = detail.window;
+        const line = detail.reels || [];
+        // 古い形式(window なし)のデータにも対応
+        const cols = (win && win.length === 3) ? win : line.map(function(s) { return [rnd(), s, rnd()]; });
+
+        // リーチ: 左2つが同じ高配当絵柄 → 3つ目をじらして止める
+        const reach = line.length === 3 && line[0] === line[1] && ['7', '💎', '🔔'].indexOf(line[0]) >= 0;
+        const stopAt = [1000, 1500, reach ? 2900 : 2000];
+        const durs = [650, 650, reach ? 1500 : 700];
+
+        const elapsed = performance.now() - t0;
+        cols.forEach(function(col, i) {
+            setTimeout(function() {
+                stopReel(reels[i], col, durs[i]);
+                setTimeout(sfxStop, durs[i] * 0.55);
+                if (i === 1 && reach) {
+                    reels.forEach(function(r, k) { if (k < 2) r.classList.add('reach'); });
+                    lampReach.classList.add('on', 'blink');
+                    sfxReach();
+                }
+                if (i === 2) setTimeout(finish, durs[i] + 80);
+            }, Math.max(0, stopAt[i] - elapsed));
+        });
+
+        function finish() {
+            reels.forEach(function(r) { r.classList.remove('reach'); });
+            lampReach.classList.remove('on', 'blink');
+            const hitReels = winReels(detail.hit);
+            hitReels.forEach(function(i) {
+                const c = reels[i].querySelectorAll('.cell')[2];   // 中段(余白の次の次)
+                if (c) c.classList.add('win');
+            });
+
+            setBalance(balance, data.balance);
+            balance = data.balance;
+
+            if (data.payout > 0) {
+                const mult = bet > 0 ? data.payout / bet : 0;
+                const big = mult >= 25;
+                const label = detail.hit ? detail.hit + ' ' : '';
+                msgEl.textContent = (big ? '🎊 BIG WIN! ' : '🎉 ') + label + data.payout + 'pt（純損益 ' + (data.net >= 0 ? '+' : '') + data.net + '）';
+                msgEl.style.color = data.net > 0 ? 'var(--green)' : 'var(--text-muted)';
+                if (big) msgEl.classList.add('big');
+                if (data.net > 0) {
+                    machine.classList.add('win');
+                    lampWin.classList.add('on', 'blink');
+                    sfxWin(big);
+                } else {
+                    sfxStop();
+                }
+            } else {
+                msgEl.textContent = 'ハズレ（-' + bet + 'pt）';
+                msgEl.style.color = 'var(--red)';
+            }
+            addHistory(detail, bet, data.payout, data.net);
             spinning = false;
-            spinBtn.disabled = false;
+            setControls(false);
         }
     }
 
     spinBtn.addEventListener('click', spin);
+    chips.forEach(function(c) {
+        c.addEventListener('click', function() {
+            const v = c.getAttribute('data-bet');
+            betInput.value = v === 'max' ? Math.max(MIN_BET, Math.min(MAX_BET, balance)) : v;
+        });
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.code !== 'Space') return;
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'TEXTAREA') return;
+        e.preventDefault();
+        spin();
+    });
     </script>
 </body>
 </html>
