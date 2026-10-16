@@ -70,7 +70,8 @@ class Game:
     def __init__(self, key, label, icon, description,
                  min_bet, max_bet, play=None, describe_result=None,
                  template=None, rules="", category=None,
-                 interactive=False, start=None, resolve=None, public_view=None):
+                 interactive=False, start=None, resolve=None, public_view=None,
+                 accepts_choice=False, validate_choice=None):
         self.key = key
         self.label = label
         self.icon = icon
@@ -87,6 +88,11 @@ class Game:
         #   start(bet)                  -> (state, view)        配る。state はサーバー側だけで保持(山札など)
         #   resolve(bet, state, action) -> (detail, payout, view)  プレイヤーの選択で結果を確定。不正な入力は ValueError
         #   public_view(state)          -> view                 再開時にプレイヤーへ見せてよい情報だけを返す
+        # --- 賭け方(選択)つきの1回完結ゲーム(ルーレット等)用 ---
+        # accepts_choice=True のゲームは、play(bet, choice) が呼ばれる。choice はクライアントから届いた
+        # 賭け方(例: 赤/黒/数字)。validate_choice(choice) が False を返したら賭けを受け付けない。
+        self.accepts_choice = accepts_choice
+        self.validate_choice = validate_choice or (lambda choice: True)
         self.interactive = interactive
         self.start = start
         self.resolve = resolve
@@ -163,13 +169,13 @@ async def _daily_net(user_id: int, conn) -> int:
 
 
 async def place_bet(user_id: int, game_key: str, bet: int,
-                    request_id: Optional[str]) -> dict:
+                    request_id: Optional[str], choice: Optional[dict] = None) -> dict:
     """1ベットを原子的に処理する。全ゲームがここを通る。
 
     戻り値:
       {'success': bool, 'duplicate': bool, 'detail': dict, 'payout': int,
        'net': int, 'balance': int, 'error': str|None}
-    error: 'unknown_game' / 'invalid_bet' / 'insufficient_balance' /
+    error: 'unknown_game' / 'invalid_bet' / 'invalid_choice' / 'insufficient_balance' /
            'daily_limit' / 'cooldown' / 'duplicate_request'
     """
     _check_initialized()
@@ -187,6 +193,10 @@ async def place_bet(user_id: int, game_key: str, bet: int,
     verr = game.validate_bet(bet)
     if verr:
         return {'success': False, 'error': verr, 'detail': {}, 'payout': 0, 'net': 0,
+                'balance': 0, 'duplicate': False}
+
+    if game.accepts_choice and not game.validate_choice(choice):
+        return {'success': False, 'error': 'invalid_choice', 'detail': {}, 'payout': 0, 'net': 0,
                 'balance': 0, 'duplicate': False}
 
     now = time.time()
@@ -246,7 +256,7 @@ async def place_bet(user_id: int, game_key: str, bet: int,
             await cur.close()
 
             # --- ゲーム固有ロジック(純粋関数) ---
-            detail, payout = game.play(bet)
+            detail, payout = game.play(bet, choice) if game.accepts_choice else game.play(bet)
             payout = max(0, int(payout))
             net = payout - bet
 
