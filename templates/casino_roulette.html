@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ game.label }} - カジノ - talk-ch</title>
+    <title>カジノ - talk-ch</title>
     <link rel="icon" href="{{ url_for('static', path='favicon.webp') }}" type="image/webp">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,14 +20,14 @@
             --bg: #F6F8FA; --card-bg: #FFFFFF; --card-border: #E5E7EB;
             --text: #111827; --text-muted: #475569; --text-faint: #64748B;
             --primary: #2563EB; --primary-hover: #1D4ED8; --primary-soft: #EFF4FE;
-            --green: #16A34A; --red: #DC2626; --amber: #B45309;
+            --green: #16A34A; --red: #DC2626; --amber: #B45309; --amber-soft: #FEF3E2;
             --radius-lg: 6px; --radius-md: 5px; --radius-sm: 4px;
         }
         html[data-theme="dark"] {
             --bg: #0F1115; --card-bg: #16181D; --card-border: #2A2D34;
             --text: #E5E7EB; --text-muted: #CBD5E1; --text-faint: #94A3B8;
             --primary: #5B93F5; --primary-hover: #7CA8F8; --primary-soft: rgba(91,147,245,0.12);
-            --green: #22C55E; --red: #EF4444; --amber: #F59E0B;
+            --green: #22C55E; --red: #EF4444; --amber: #F59E0B; --amber-soft: rgba(180,83,9,0.15);
         }
         * { box-sizing: border-box; }
         body {
@@ -36,7 +36,7 @@
             margin: 0; min-height: 100vh; font-size: 16px; line-height: 1.65;
         }
         a { color: inherit; }
-        .casino-shell { max-width: 720px; margin: 0 auto; padding: 18px 20px 60px; }
+        .casino-shell { max-width: 900px; margin: 0 auto; padding: 18px 20px 60px; }
         .casino-topbar {
             display: flex; align-items: center; gap: 12px;
             padding: 12px 0 18px; border-bottom: 1px solid var(--card-border);
@@ -50,7 +50,7 @@
         }
         .back-link:hover { border-color: var(--primary); color: var(--primary); }
         .casino-topbar .spacer { flex: 1 1 auto; }
-        .casino-title { font-size: 22px; font-weight: 800; margin: 0; }
+        .casino-title { font-size: 26px; font-weight: 800; margin: 0; }
         .icon-btn {
             border: 1px solid var(--card-border); background: var(--card-bg);
             color: var(--text-muted); font-size: 12.5px; font-weight: 600;
@@ -61,186 +61,143 @@
         .glass-panel { border-bottom: 1px solid var(--card-border); padding: 16px 0; }
         .glass-panel:first-of-type { padding-top: 0; }
         .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
-
-        .roulette-ball-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0 8px; }
-        .wheel-canvas { width: 100%; max-width: 340px; aspect-ratio: 1 / 1; display: block; touch-action: manipulation; }
-        .roulette-ball {
-            width: 64px; height: 64px; border-radius: 50%;
+        .stat-row { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+        .stat-row strong { color: var(--text); font-weight: 700; }
+        .game-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+        .game-card-item {
+            display: flex; align-items: center; gap: 14px;
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: var(--radius-md); padding: 14px 16px;
+            text-decoration: none; color: var(--text);
+            transition: border-color 0.15s ease;
+        }
+        .game-card-item:hover { border-color: var(--primary); }
+        .game-card-item:hover .game-card-title { color: var(--primary); }
+        .game-card-icon {
+            flex: 0 0 auto; width: 44px; height: 44px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 26px; font-weight: 800; color: #fff;
-            background: #6B7280; border: 4px solid var(--card-border);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            transition: background 0.1s ease, transform 0.25s ease;
-            user-select: none;
+            font-size: 24px; background: var(--primary-soft);
+            border-radius: var(--radius-sm);
         }
-        .roulette-ball.red { background: #DC2626; }
-        .roulette-ball.black { background: #111827; }
-        .roulette-ball.green { background: #16A34A; }
-        .roulette-ball.landed { transform: scale(1.12); border-color: var(--primary); }
+        .game-card-text { min-width: 0; flex: 1 1 auto; }
+        .game-card-title { font-weight: 700; font-size: 15.5px; }
+        .game-card-desc { font-size: 13.5px; color: var(--text-muted); margin-top: 2px; }
+        .game-card-chevron { flex: 0 0 auto; color: var(--text-faint); font-size: 18px; }
 
-        .choice-row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; padding: 8px 0; }
-        .choice-btn {
-            min-width: 112px; padding: 10px 14px; font-family: inherit; font-weight: 700; font-size: 14px;
+        /* ---- 収支グラフ ---- */
+        .chart-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+        .range-btn {
+            border: 1px solid var(--card-border); background: var(--card-bg); color: var(--text-muted);
+            font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 12px;
             border-radius: var(--radius-sm); cursor: pointer;
-            border: 2px solid var(--card-border); background: var(--card-bg); color: var(--text);
-            transition: border-color 0.15s ease, background 0.15s ease;
         }
-        .choice-btn small { display: block; font-weight: 600; font-size: 11.5px; color: var(--text-muted); }
-        .choice-btn[data-type="red"] { color: #DC2626; }
-        .choice-btn.selected { border-color: var(--primary); background: var(--primary-soft); }
-        .choice-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-        .number-board {
-            display: none; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 6px;
-            padding: 10px 0 4px;
+        .range-btn.active { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
+        .chart-controls select {
+            margin-left: auto; padding: 6px 8px; font-family: inherit; font-size: 12.5px;
+            background: var(--card-bg); color: var(--text); border: 1px solid var(--card-border); border-radius: var(--radius-sm);
         }
-        .number-board.show { display: grid; }
-        .num-btn {
-            padding: 9px 0; font-family: inherit; font-weight: 700; font-size: 14px; color: #fff;
-            border: 2px solid transparent; border-radius: var(--radius-sm); cursor: pointer;
-        }
-        .num-btn.red { background: #DC2626; }
-        .num-btn.black { background: #111827; }
-        .num-btn.green { background: #16A34A; grid-column: 1 / -1; }
-        .num-btn.selected { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary); }
-        .num-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .picked-note { text-align: center; font-size: 13px; color: var(--text-muted); min-height: 1.4em; }
-
-        .recent-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding-top: 10px; }
-        .chip {
-            min-width: 30px; height: 30px; padding: 0 6px; border-radius: 50%;
-            display: inline-flex; align-items: center; justify-content: center;
-            font-size: 12.5px; font-weight: 700; color: #fff; background: #6B7280;
-        }
-        .chip.red { background: #DC2626; } .chip.black { background: #111827; } .chip.green { background: #16A34A; }
-
-        .slot-controls {
-            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-            padding: 8px 0 4px; justify-content: center;
-        }
-        .slot-controls label {
-            display: flex; align-items: center; gap: 8px;
-            font-size: 14px; color: var(--text-muted); font-weight: 600;
-        }
-        .slot-controls input[type="number"] {
-            width: 110px; padding: 8px 10px;
-            background: var(--card-bg); color: var(--text);
-            border: 1px solid var(--card-border); border-radius: var(--radius-sm);
-            font-family: inherit; font-size: 14px;
-        }
-        .slot-controls input[type="number"]:focus { outline: none; border-color: var(--primary); }
-        .slot-controls button {
-            background: var(--primary); color: #fff; border: none;
-            border-radius: var(--radius-sm); padding: 10px 24px;
-            font-family: inherit; font-weight: 700; font-size: 15px;
-            cursor: pointer; transition: background 0.15s ease;
-        }
-        .slot-controls button:hover { background: var(--primary-hover); }
-        .slot-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        .slot-balance { text-align: center; font-size: 14px; color: var(--text-muted); }
-        .slot-balance strong { color: var(--text); font-weight: 700; font-size: 16px; }
-        .slot-result {
-            text-align: center; min-height: 1.6em;
-            font-weight: 700; font-size: 15px; margin-top: 6px;
-        }
-
-        .menu-list { list-style: none; margin: 0; padding: 0; }
-        .menu-list-item { padding: 10px 2px; border-bottom: 1px solid var(--card-border); }
-        .menu-list li:last-child .menu-list-item { border-bottom: none; }
-        .menu-list-title { font-weight: 600; font-size: 14px; }
-        .menu-list-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
-        .empty-state { color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px 0; }
-
-        .rules-body { font-size: 14px; color: var(--text-muted); }
-        .rules-body ul { padding-left: 20px; margin: 0; }
-        .rules-body li { margin: 4px 0; }
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-bottom: 14px; }
+        .summary-card { border: 1px solid var(--card-border); background: var(--card-bg); border-radius: var(--radius-md); padding: 10px 12px; }
+        .summary-label { font-size: 11.5px; color: var(--text-faint); }
+        .summary-value { font-size: 17px; font-weight: 800; margin-top: 2px; overflow-wrap: anywhere; }
+        .summary-sub { font-size: 11px; color: var(--text-faint); font-weight: 600; }
+        .chart-box { position: relative; width: 100%; }
+        #pl-chart { width: 100%; height: 250px; display: block; touch-action: pan-y; cursor: crosshair; }
+        .chart-detail { min-height: 2.6em; font-size: 12.5px; color: var(--text-muted); margin-top: 6px; }
+        .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
+        .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+        .chart-empty { text-align: center; color: var(--text-muted); font-size: 13.5px; padding: 28px 0; }
+        .by-game-list { list-style: none; margin: 12px 0 0; padding: 0; }
+        .by-game-list li { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid var(--card-border); font-size: 13.5px; }
+        .by-game-list li:last-child { border-bottom: none; }
+        .by-game-list .sub { color: var(--text-faint); font-size: 12px; }
     </style>
 </head>
 <body>
     <div class="casino-shell">
         <div class="casino-topbar">
-            <a href="/casino" class="back-link">← カジノ</a>
-            <h1 class="casino-title">{{ game.icon }} {{ game.label }}</h1>
+            <a href="/" class="back-link">← ホーム</a>
+            <h1 class="casino-title">🎰 カジノ</h1>
             <span class="spacer"></span>
             <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
         </div>
 
         <div class="glass-panel">
-            <p style="color: var(--text-muted); margin: 0;">{{ game.description }}</p>
+            <p style="color: var(--text-muted); margin: 0;">
+                ポイントを賭けて遊べるミニゲーム。1日の損失上限は
+                <strong>{{ daily_loss_limit }}pt</strong> です（日本時間で日付が切り替わります）。
+            </p>
+        </div>
+
+        {% if current_member %}
+        <div class="glass-panel">
+            <h2 class="panel-title">今日の成績</h2>
+            <div class="stat-row">
+                <div>プレイ回数: <strong>{{ stats.spins }}</strong></div>
+                <div>賭け総額: <strong>{{ stats.total_bet }}pt</strong></div>
+                <div>払戻総額: <strong>{{ stats.total_payout }}pt</strong></div>
+                <div>収支:
+                    <strong style="color: {% if stats.net >= 0 %}var(--green){% else %}var(--red){% endif %};">
+                        {{ '+' if stats.net >= 0 else '' }}{{ stats.net }}pt
+                    </strong>
+                </div>
+            </div>
+            <div class="stat-row"><div>残高: <strong>{{ balance }} pt</strong></div></div>
         </div>
 
         <div class="glass-panel">
-            <div class="roulette-ball-wrap">
-                <canvas class="wheel-canvas" id="wheel" role="img" aria-label="ルーレットのホイール"></canvas>
-                <div class="roulette-ball" id="ball">?</div>
+            <h2 class="panel-title">📈 収支グラフ</h2>
+            <div class="chart-controls">
+                <button type="button" class="range-btn" data-days="7">7日</button>
+                <button type="button" class="range-btn active" data-days="30">30日</button>
+                <button type="button" class="range-btn" data-days="90">90日</button>
+                <button type="button" class="range-btn" data-days="0">全期間</button>
+                <select id="pl-game" aria-label="ゲームで絞り込み">
+                    <option value="">全ゲーム</option>
+                    {% for g in games %}<option value="{{ g.key }}">{{ g.label }}</option>{% endfor %}
+                </select>
             </div>
-            <div class="recent-chips" id="recent-chips">
-                {% for h in history[:12] %}{% if h.detail and h.detail.number is defined %}
-                <span class="chip {{ h.detail.color }}">{{ h.detail.number }}</span>
-                {% endif %}{% endfor %}
+            <div class="summary-grid" id="pl-summary"></div>
+            <div class="chart-box">
+                <canvas id="pl-chart" role="img" aria-label="日ごとの収支と累計収支のグラフ"></canvas>
             </div>
-
-            <div class="choice-row" id="choice-row">
-                <button type="button" class="choice-btn selected" data-type="red">赤<small>×2</small></button>
-                <button type="button" class="choice-btn" data-type="black">黒<small>×2</small></button>
-                <button type="button" class="choice-btn" data-type="number">数字<small>×36</small></button>
+            <div class="chart-legend">
+                <span><span class="legend-dot" style="background: var(--green);"></span>日ごとの収支（プラス）</span>
+                <span><span class="legend-dot" style="background: var(--red);"></span>日ごとの収支（マイナス）</span>
+                <span><span class="legend-dot" style="background: var(--primary);"></span>累計収支</span>
             </div>
-            <div class="number-board" id="number-board">
-                <button type="button" class="num-btn green" data-n="0">0</button>
-                {% set reds = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36] %}
-                {% for n in range(1, 37) %}
-                <button type="button" class="num-btn {{ 'red' if n in reds else 'black' }}" data-n="{{ n }}">{{ n }}</button>
-                {% endfor %}
-            </div>
-            <div class="picked-note" id="picked-note"></div>
-
-            <div class="slot-controls">
-                <label>賭け金:
-                    <input type="number" id="bet" min="{{ game.min_bet }}" max="{{ game.max_bet }}" value="10">
-                    <span style="font-size:12px;">（{{ game.min_bet }}〜{{ game.max_bet }}pt）</span>
-                </label>
-                <button id="spin-btn">回す</button>
-            </div>
-
-            <div class="slot-balance">残高: <strong id="balance">{{ balance }}</strong> pt</div>
-            <div class="slot-result" id="result-msg"></div>
+            <div class="chart-detail" id="pl-detail">グラフを押す（なぞる）と、その日の内訳が表示されます。</div>
+            <div class="chart-empty" id="pl-empty" style="display:none;">この期間のプレイ記録はまだありません。</div>
+            <ul class="by-game-list" id="pl-by-game"></ul>
         </div>
+        {% else %}
+        <div class="glass-panel">
+            <p style="color: var(--text-muted); margin: 0;">
+                カジノで遊ぶには<a href="/login" style="color: var(--primary); font-weight: 600;">ログイン</a>が必要です。
+            </p>
+        </div>
+        {% endif %}
 
         <div class="glass-panel">
-            <h2 class="panel-title">ルール</h2>
-            <div class="rules-body">{{ game.rules | safe }}</div>
-        </div>
-
-        <div class="glass-panel">
-            <h2 class="panel-title">最近のプレイ</h2>
-            <ul class="menu-list">
-                {% set color_jp = {'red': '赤', 'black': '黒', 'green': '緑'} %}
-                {% for h in history %}
-                <li class="menu-list-item">
-                    <div class="menu-list-title">
-                        {% if h.detail and h.detail.number is defined %}
-                            出目 {{ h.detail.number }}（{{ color_jp.get(h.detail.color, '') }}）／ 予想:
-                            {% if h.detail.choice and h.detail.choice.type == 'number' %}数字{{ h.detail.choice.number }}
-                            {% elif h.detail.choice %}{{ color_jp.get(h.detail.choice.type, '') }}{% endif %}
-                        {% endif %}
-                    </div>
-                    <div class="menu-list-desc">
-                        賭け {{ h.bet }}pt → 払戻 {{ h.payout }}pt
-                        （<span style="color: {% if h.net >= 0 %}var(--green){% else %}var(--red){% endif %};">
-                            {{ '+' if h.net >= 0 else '' }}{{ h.net }}pt</span>）
-                        / {{ h.created_at }}
-                    </div>
+            <h2 class="panel-title">ゲーム一覧</h2>
+            <ul class="game-card-list">
+                {% for g in games %}
+                <li>
+                    <a class="game-card-item" href="/casino/{{ g.key }}">
+                        <div class="game-card-icon">{{ g.icon }}</div>
+                        <div class="game-card-text">
+                            <div class="game-card-title">{{ g.label }}</div>
+                            <div class="game-card-desc">{{ g.description }}</div>
+                        </div>
+                        <div class="game-card-chevron">›</div>
+                    </a>
                 </li>
-                {% else %}
-                <li class="empty-state">まだプレイしていません。</li>
                 {% endfor %}
             </ul>
         </div>
     </div>
 
     <script>
-    // ---- テーマ切り替え ----
     (function() {
         const btn = document.getElementById('theme-toggle-btn');
         function applyLabel() {
@@ -263,366 +220,222 @@
         }
     })();
 
-    // ---- ルーレット ----
-    const GAME_KEY = {{ game.key | tojson }};
-    const API = '/api/casino/' + GAME_KEY + '/play';
-    const RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
-    const COLOR_JP = { red: '赤', black: '黒', green: '緑' };
+    {% if current_member %}
+    // ================= 収支グラフ =================
+    (function() {
+        const canvas = document.getElementById('pl-chart');
+        const ctx = canvas.getContext('2d');
+        const summaryEl = document.getElementById('pl-summary');
+        const detailEl = document.getElementById('pl-detail');
+        const emptyEl = document.getElementById('pl-empty');
+        const byGameEl = document.getElementById('pl-by-game');
+        const gameSel = document.getElementById('pl-game');
+        const rangeBtns = Array.from(document.querySelectorAll('.range-btn'));
+        const fmt = new Intl.NumberFormat('ja-JP');
+        const signed = function(n) { return (n > 0 ? '+' : '') + fmt.format(n); };
 
-    // ======== ホイールとボールのアニメーション ========
-    // ヨーロピアンルーレットのポケットの並び(時計回り、上から)
-    const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-    const TWO_PI = Math.PI * 2;
-    const SEG = TWO_PI / 37;
-    const WHEEL_SPEED = 0.7;      // 待ち時間中のホイールの回転(rad/秒・時計回り)
-    const BALL_SPEED = 8;         // 待ち時間中のボールの周回(rad/秒・反時計回り)
-    const MIN_SETTLE = 4.0;       // ボールが落ち着くまでの最短時間(秒)
+        let days = 30;
+        let data = null;      // サーバーから届いた集計
+        let selected = -1;    // タップ/ホバー中の日
+        let layout = null;    // 描画時に計算した座標(当たり判定用)
+        let seq = 0;          // 古い応答が新しい表示を上書きしないための番号
 
-    // ホイール上でのポケットの中心角(ホイールの回転角 0 のとき、上=-90度から時計回り)
-    function pocketOffset(idx) { return (idx + 0.5) * SEG - Math.PI / 2; }
+        function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+        function pnColor(n) { return n > 0 ? 'var(--green)' : (n < 0 ? 'var(--red)' : 'var(--text)'); }
+        function mmdd(d) { return d.slice(5).replace('-', '/'); }
 
-    // 結果(idx番目のポケット)が分かった時点から、ボールが減速して必ずそのポケットに収まるように計算する。
-    //  W0: 現在のホイール角 / A0: 現在のボール角 / w0: ホイールの角速度 / wb: ボールの角速度(反時計回りの大きさ)
-    //  ホイール: 角速度が w0 から 0 へ直線的に減る  θw(u) = W0 + w0*Ts*(u - u²/2)   (u = 経過/Ts, 0〜1)
-    //  ボール  : A(u) = Af + K*(1-u)²           (Af は最終角 = 止まったホイールのポケット中心)
-    //  → 初速が現在の周回速度(wb)と一致し、u=1 でちょうどポケットの位置に着く。
-    function computeSettle(W0, A0, w0, wb, idx) {
-        const off = pocketOffset(idx);
-        const C = A0 - W0 - off;
-        const m = Math.ceil((MIN_SETTLE * (wb + w0) / 2 - C) / TWO_PI);   // 何周ぶん余計に回すか
-        const Ts = 2 * (C + TWO_PI * m) / (wb + w0);
-        const wheelEnd = W0 + 0.5 * w0 * Ts;
-        const Af = wheelEnd + off;
-        const K = A0 - Af + TWO_PI * m;
-        return { Ts: Ts, Af: Af, K: K, wheelEnd: wheelEnd };
-    }
-
-    const canvas = document.getElementById('wheel');
-    const ctx = canvas.getContext('2d');
-    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let cssSize = 320;
-    let wheelAngle = 0;
-    let ballAngle = null;           // null = ボールなし
-    let ballRadius = 0;
-    let highlightIdx = -1;          // 最後に当たったポケット(強調表示)
-    let animMode = 'rest';          // 'rest' / 'idle'(回転中・結果待ち) / 'settle'(減速して収まる)
-    let pendingIdx = null;
-    let settle = null;
-    let settleDone = null;
-    let lastTs = 0;
-    let rafId = 0;
-
-    function setupCanvas() {
-        const dpr = window.devicePixelRatio || 1;
-        cssSize = Math.max(240, Math.round(canvas.getBoundingClientRect().width || 320));
-        canvas.width = Math.round(cssSize * dpr);
-        canvas.height = Math.round(cssSize * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-
-    function drawWheel() {
-        const S = cssSize, cx = S / 2, cy = S / 2, R = S / 2 - 2;
-        const rTrackOuter = R * 0.93, rPocketOuter = R * 0.71, rPocketInner = R * 0.47, rHub = R * 0.30;
-        const rBallOuter = R * 0.82, rBallRest = R * 0.60;
-        ctx.clearRect(0, 0, S, S);
-
-        // 外枠(木目調)
-        const wood = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R);
-        wood.addColorStop(0, '#7C4A1E'); wood.addColorStop(1, '#3B2210');
-        ctx.beginPath(); ctx.arc(cx, cy, R, 0, TWO_PI); ctx.fillStyle = wood; ctx.fill();
-        ctx.lineWidth = 2; ctx.strokeStyle = '#C9A227'; ctx.stroke();
-
-        // ボールが周回するトラック
-        ctx.beginPath(); ctx.arc(cx, cy, rTrackOuter, 0, TWO_PI);
-        ctx.fillStyle = '#1F2937'; ctx.fill();
-        ctx.beginPath(); ctx.arc(cx, cy, rPocketOuter + 2, 0, TWO_PI);
-        ctx.fillStyle = '#111827'; ctx.fill();
-
-        // ポケット(回転するホイール)
-        for (let i = 0; i < 37; i++) {
-            const n = WHEEL_ORDER[i];
-            const a0 = wheelAngle + i * SEG - Math.PI / 2;
-            const a1 = a0 + SEG;
-            ctx.beginPath();
-            ctx.arc(cx, cy, rPocketOuter, a0, a1);
-            ctx.arc(cx, cy, rPocketInner, a1, a0, true);
-            ctx.closePath();
-            ctx.fillStyle = colorOf(n) === 'red' ? '#DC2626' : (colorOf(n) === 'black' ? '#111827' : '#16A34A');
-            ctx.fill();
-            ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
-
-            // 数字(ホイールと一緒に回る・外向きに立てる)
-            const mid = a0 + SEG / 2;
-            ctx.save();
-            ctx.translate(cx + Math.cos(mid) * (rPocketOuter - R * 0.075), cy + Math.sin(mid) * (rPocketOuter - R * 0.075));
-            ctx.rotate(mid + Math.PI / 2);
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold ' + Math.max(8, Math.round(R * 0.058)) + 'px sans-serif';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(String(n), 0, 0);
-            ctx.restore();
+        // きれいな目盛り(1, 2, 5 × 10^n)を作る
+        function niceStep(range, count) {
+            const raw = range / count;
+            const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+            const f = raw / pow;
+            return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
         }
 
-        // 当たったポケットを金色で強調
-        if (highlightIdx >= 0) {
-            const a0 = wheelAngle + highlightIdx * SEG - Math.PI / 2;
-            ctx.beginPath();
-            ctx.arc(cx, cy, rPocketOuter, a0, a0 + SEG);
-            ctx.arc(cx, cy, rPocketInner, a0 + SEG, a0, true);
-            ctx.closePath();
-            ctx.lineWidth = 3; ctx.strokeStyle = '#FACC15'; ctx.stroke();
+        function renderSummary() {
+            const t = data.totals;
+            const rtp = t.bet > 0 ? (t.payout / t.bet * 100).toFixed(1) + '%' : '-';
+            const best = t.best_day, worst = t.worst_day;
+            const cards = [
+                ['期間の収支', '<span style="color:' + pnColor(t.net) + '">' + signed(t.net) + ' pt</span>', ''],
+                ['賭け総額', fmt.format(t.bet) + ' pt', ''],
+                ['還元率', rtp, '払戻 ' + fmt.format(t.payout) + ' pt'],
+                ['プレイ回数', fmt.format(t.spins) + ' 回', ''],
+                ['最高の日', best ? '<span style="color:' + pnColor(best.net) + '">' + signed(best.net) + ' pt</span>' : '-', best ? mmdd(best.date) : ''],
+                ['最悪の日', worst ? '<span style="color:' + pnColor(worst.net) + '">' + signed(worst.net) + ' pt</span>' : '-', worst ? mmdd(worst.date) : '']
+            ];
+            summaryEl.innerHTML = cards.map(function(c) {
+                return '<div class="summary-card"><div class="summary-label">' + c[0] + '</div>' +
+                       '<div class="summary-value">' + c[1] + '</div>' +
+                       '<div class="summary-sub">' + (c[2] || '&nbsp;') + '</div></div>';
+            }).join('');
         }
 
-        // 中央のハブ(ホイールと一緒に回る)
-        ctx.beginPath(); ctx.arc(cx, cy, rPocketInner - 1, 0, TWO_PI); ctx.fillStyle = '#4B2E16'; ctx.fill();
-        const hub = ctx.createRadialGradient(cx - rHub * 0.3, cy - rHub * 0.3, 2, cx, cy, rHub);
-        hub.addColorStop(0, '#FDE68A'); hub.addColorStop(1, '#B45309');
-        ctx.beginPath(); ctx.arc(cx, cy, rHub, 0, TWO_PI); ctx.fillStyle = hub; ctx.fill();
-        ctx.lineWidth = 3; ctx.strokeStyle = '#FDE68A';
-        for (let k = 0; k < 4; k++) {
-            const a = wheelAngle + k * Math.PI / 2;
-            ctx.beginPath();
-            ctx.moveTo(cx + Math.cos(a) * rHub * 0.3, cy + Math.sin(a) * rHub * 0.3);
-            ctx.lineTo(cx + Math.cos(a) * (rPocketInner - 4), cy + Math.sin(a) * (rPocketInner - 4));
-            ctx.stroke();
-        }
-        ctx.beginPath(); ctx.arc(cx, cy, rHub * 0.28, 0, TWO_PI); ctx.fillStyle = '#FEF3C7'; ctx.fill();
-
-        // ボール
-        if (ballAngle !== null) {
-            const br = Math.max(5, R * 0.045);
-            const bx = cx + Math.cos(ballAngle) * ballRadius;
-            const by = cy + Math.sin(ballAngle) * ballRadius;
-            ctx.beginPath(); ctx.arc(bx + 1.5, by + 2, br, 0, TWO_PI); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
-            const g = ctx.createRadialGradient(bx - br * 0.35, by - br * 0.35, 1, bx, by, br);
-            g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#CBD5E1');
-            ctx.beginPath(); ctx.arc(bx, by, br, 0, TWO_PI); ctx.fillStyle = g; ctx.fill();
-        }
-    }
-
-    function geom() {
-        const R = cssSize / 2 - 2;
-        return { Ro: R * 0.82, Rp: R * 0.60 };
-    }
-
-    function frame(now) {
-        const dt = Math.min(0.05, Math.max(0, (now - lastTs) / 1000));
-        lastTs = now;
-        const g = geom();
-
-        if (animMode === 'idle') {
-            wheelAngle += WHEEL_SPEED * dt;
-            if (ballAngle === null) { ballAngle = -Math.PI / 2; ballRadius = g.Rp; }
-            ballAngle -= BALL_SPEED * dt;
-            ballRadius += (g.Ro - ballRadius) * Math.min(1, dt * 7);    // ポケットから外側のトラックへ飛び出す
-            if (pendingIdx !== null) {
-                const idx = pendingIdx; pendingIdx = null;
-                const c = computeSettle(wheelAngle, ballAngle, WHEEL_SPEED, BALL_SPEED, idx);
-                settle = { t0: now, idx: idx, Ts: c.Ts, K: c.K, Af: c.Af, W0: wheelAngle, r0: ballRadius };
-                animMode = 'settle';
-            }
-        } else if (animMode === 'settle') {
-            const u = Math.min(1, (now - settle.t0) / 1000 / settle.Ts);
-            wheelAngle = settle.W0 + WHEEL_SPEED * settle.Ts * (u - u * u / 2);
-            ballAngle = settle.Af + settle.K * (1 - u) * (1 - u);
-            if (u < 0.55) {
-                ballRadius = settle.r0;
-            } else {
-                const v = (u - 0.55) / 0.45;                                     // 内側へ落ちていく
-                ballRadius = settle.r0 + (g.Rp - settle.r0) * (1 - Math.pow(1 - v, 3))
-                           + (1 - v) * Math.abs(Math.sin(v * 24)) * 7;          // ポケットの縁で小さく跳ねる
-            }
-            if (u >= 1) {
-                ballAngle = settle.Af;
-                ballRadius = g.Rp;
-                highlightIdx = settle.idx;
-                animMode = 'rest';
-                drawWheel();
-                const done = settleDone; settleDone = null;
-                if (done) done();
-                return;
-            }
-        } else {
-            drawWheel();
-            return;
-        }
-        drawWheel();
-        rafId = requestAnimationFrame(frame);
-    }
-
-    function startIdle() {
-        highlightIdx = -1;
-        animMode = 'idle';
-        lastTs = performance.now();
-        cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(frame);
-    }
-
-    // 結果の数字 n に向かって減速し、そのポケットに収まったら解決する Promise を返す
-    function settleTo(n) {
-        return new Promise(function(resolve) {
-            const idx = WHEEL_ORDER.indexOf(n);
-            if (reduceMotion) {            // 動きを減らす設定: アニメーションなしで結果だけ表示
-                cancelAnimationFrame(rafId);
-                animMode = 'rest';
-                ballAngle = wheelAngle + pocketOffset(idx);
-                ballRadius = geom().Rp;
-                highlightIdx = idx;
-                drawWheel();
-                resolve();
-                return;
-            }
-            settleDone = resolve;
-            pendingIdx = idx;
-        });
-    }
-
-    function stopAnimation() {              // 通信失敗など: ボールを消して静止する
-        cancelAnimationFrame(rafId);
-        animMode = 'rest';
-        pendingIdx = null;
-        ballAngle = null;
-        drawWheel();
-    }
-
-    // 初期表示: 前回の出目があれば、そのポケットにボールを置いておく
-    (function initWheel() {
-        setupCanvas();
-        const last = {{ (history[0].detail.number if (history and history[0].detail and history[0].detail.number is defined) else none) | tojson }};
-        if (last !== null && last !== undefined) {
-            const idx = WHEEL_ORDER.indexOf(last);
-            if (idx >= 0) {
-                ballAngle = wheelAngle + pocketOffset(idx);
-                ballRadius = geom().Rp;
-                highlightIdx = idx;
-            }
-        }
-        drawWheel();
-        window.addEventListener('resize', function() { setupCanvas(); drawWheel(); });
-    })();
-
-    const spinBtn = document.getElementById('spin-btn');
-    const betInput = document.getElementById('bet');
-    const balanceEl = document.getElementById('balance');
-    const msgEl = document.getElementById('result-msg');
-    const ballEl = document.getElementById('ball');
-    const boardEl = document.getElementById('number-board');
-    const pickedEl = document.getElementById('picked-note');
-    const chipsEl = document.getElementById('recent-chips');
-    const choiceBtns = Array.from(document.querySelectorAll('.choice-btn'));
-    const numBtns = Array.from(document.querySelectorAll('.num-btn'));
-
-    let choiceType = 'red';
-    let pickedNumber = null;
-    let spinning = false;
-
-    function colorOf(n) {
-        if (n === 0) return 'green';
-        return RED_NUMBERS.indexOf(n) >= 0 ? 'red' : 'black';
-    }
-    function setBall(n, landed) {
-        ballEl.textContent = String(n);
-        ballEl.className = 'roulette-ball ' + colorOf(n) + (landed ? ' landed' : '');
-    }
-    function setMsg(text, color) {
-        msgEl.textContent = text || '';
-        msgEl.style.color = color ? 'var(--' + color + ')' : '';
-    }
-    function refreshChoiceUI() {
-        choiceBtns.forEach(function(b) { b.classList.toggle('selected', b.getAttribute('data-type') === choiceType); });
-        boardEl.classList.toggle('show', choiceType === 'number');
-        numBtns.forEach(function(b) {
-            b.classList.toggle('selected', pickedNumber !== null && Number(b.getAttribute('data-n')) === pickedNumber);
-        });
-        if (choiceType === 'number') {
-            pickedEl.textContent = pickedNumber === null ? '賭ける数字を選んでください。' : '選んだ数字: ' + pickedNumber;
-        } else {
-            pickedEl.textContent = '';
-        }
-    }
-    function lockInputs(lock) {
-        spinBtn.disabled = lock;
-        betInput.disabled = lock;
-        choiceBtns.forEach(function(b) { b.disabled = lock; });
-        numBtns.forEach(function(b) { b.disabled = lock; });
-    }
-
-    choiceBtns.forEach(function(b) {
-        b.addEventListener('click', function() {
-            if (spinning) return;
-            choiceType = b.getAttribute('data-type');
-            refreshChoiceUI();
-        });
-    });
-    numBtns.forEach(function(b) {
-        b.addEventListener('click', function() {
-            if (spinning) return;
-            pickedNumber = Number(b.getAttribute('data-n'));
-            refreshChoiceUI();
-        });
-    });
-
-    function addChip(n) {
-        const chip = document.createElement('span');
-        chip.className = 'chip ' + colorOf(n);
-        chip.textContent = String(n);
-        chipsEl.insertBefore(chip, chipsEl.firstChild);
-        while (chipsEl.children.length > 12) chipsEl.removeChild(chipsEl.lastChild);
-    }
-
-    async function spin() {
-        if (spinning) return;
-        const bet = parseInt(betInput.value, 10);
-        if (!bet || bet < 1) { setMsg('賭け金を入力してください。', 'red'); return; }
-        if (choiceType === 'number' && pickedNumber === null) { setMsg('賭ける数字を選んでください。', 'red'); return; }
-
-        spinning = true;
-        lockInputs(true);
-        setMsg('', null);
-        const choice = choiceType === 'number' ? { type: 'number', number: pickedNumber } : { type: choiceType };
-        ballEl.textContent = '…';
-        ballEl.className = 'roulette-ball';
-        startIdle();      // 結果を待つ間も、ホイールとボールはもう回り始めている
-
-        try {
-            const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random();
-            const res = await fetch(API, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bet: bet, request_id: requestId, choice: choice })
+        function renderByGame() {
+            byGameEl.textContent = '';
+            data.by_game.slice().sort(function(a, b) { return b.net - a.net; }).forEach(function(g) {
+                const li = document.createElement('li');
+                const left = document.createElement('span');
+                left.textContent = g.label + ' ';
+                const sub = document.createElement('span');
+                sub.className = 'sub';
+                sub.textContent = '(' + fmt.format(g.spins) + '回 / 賭け ' + fmt.format(g.bet) + 'pt)';
+                left.appendChild(sub);
+                const right = document.createElement('strong');
+                right.textContent = signed(g.net) + ' pt';
+                right.style.color = pnColor(g.net);
+                li.appendChild(left); li.appendChild(right);
+                byGameEl.appendChild(li);
             });
-            const data = await res.json();
-
-            if (!data.success) {
-                stopAnimation();
-                setMsg(data.error || '失敗しました。', 'red');
-                if (typeof data.balance === 'number') balanceEl.textContent = data.balance;
-                spinning = false; lockInputs(false);
-                return;
-            }
-
-            // サーバーが決めた出目に向かって減速し、そのポケットにボールが収まってから結果を表示する
-            const n = data.detail.number;
-            await settleTo(n);
-            setBall(n, true);
-            addChip(n);
-            balanceEl.textContent = data.balance;
-            const label = COLOR_JP[data.detail.color] + ' ' + n;
-            if (data.payout > 0) {
-                setMsg('🎉 ' + label + ' 的中！ ' + data.payout + 'pt 獲得（純損益 +' + data.net + '）', 'green');
-            } else {
-                setMsg(label + ' でハズレ（-' + bet + 'pt）', 'red');
-            }
-            spinning = false; lockInputs(false);
-        } catch (e) {
-            stopAnimation();
-            setMsg('通信エラーが発生しました。', 'red');
-            spinning = false; lockInputs(false);
         }
-    }
 
-    spinBtn.addEventListener('click', spin);
-    refreshChoiceUI();
+        function draw() {
+            if (!data) return;
+            const dpr = window.devicePixelRatio || 1;
+            const W = Math.max(260, Math.round(canvas.getBoundingClientRect().width));
+            const H = 250;
+            canvas.width = Math.round(W * dpr);
+            canvas.height = Math.round(H * dpr);
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, W, H);
+
+            const rows = data.days;
+            const n = rows.length;
+            const green = cssVar('--green'), red = cssVar('--red'), primary = cssVar('--primary');
+            const muted = cssVar('--text-faint'), grid = cssVar('--card-border'), text = cssVar('--text-muted');
+
+            // 縦軸の範囲: 日ごとの収支と累計収支の両方が入るように(0 は必ず含める)
+            let lo = 0, hi = 0;
+            rows.forEach(function(r) { lo = Math.min(lo, r.net, r.cum); hi = Math.max(hi, r.net, r.cum); });
+            if (hi === lo) { hi = lo + 10; }
+            const step = niceStep(hi - lo, 5);
+            lo = Math.floor(lo / step) * step;
+            hi = Math.ceil(hi / step) * step;
+
+            ctx.font = '11px sans-serif';
+            const labelW = Math.max.apply(null, [lo, hi].map(function(v) { return ctx.measureText(fmt.format(v)).width; })) + 10;
+            const m = { l: Math.max(40, labelW), r: 12, t: 12, b: 26 };
+            const pw = W - m.l - m.r, ph = H - m.t - m.b;
+            const yOf = function(v) { return m.t + (hi - v) / (hi - lo) * ph; };
+            const slot = pw / n;
+            const xOf = function(i) { return m.l + slot * (i + 0.5); };
+            layout = { m: m, slot: slot, n: n, W: W };
+
+            // 横線と縦軸の数字
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            for (let v = lo; v <= hi + step / 2; v += step) {
+                const y = yOf(v);
+                ctx.strokeStyle = v === 0 ? muted : grid;
+                ctx.lineWidth = v === 0 ? 1.4 : 1;
+                ctx.beginPath(); ctx.moveTo(m.l, y); ctx.lineTo(W - m.r, y); ctx.stroke();
+                ctx.fillStyle = text;
+                ctx.fillText(fmt.format(Math.round(v)), m.l - 6, y);
+            }
+
+            // 選択中の日の帯
+            if (selected >= 0) {
+                ctx.fillStyle = grid;
+                ctx.globalAlpha = 0.5;
+                ctx.fillRect(m.l + slot * selected, m.t, slot, ph);
+                ctx.globalAlpha = 1;
+            }
+
+            // 日ごとの収支(棒)
+            const bw = Math.max(2, Math.min(22, slot * 0.6));
+            const y0 = yOf(0);
+            rows.forEach(function(r, i) {
+                if (!r.net) return;
+                const y = yOf(r.net);
+                ctx.fillStyle = r.net > 0 ? green : red;
+                ctx.globalAlpha = 0.75;
+                ctx.fillRect(xOf(i) - bw / 2, Math.min(y, y0), bw, Math.max(1, Math.abs(y - y0)));
+                ctx.globalAlpha = 1;
+            });
+
+            // 累計収支(線)
+            ctx.strokeStyle = primary; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            rows.forEach(function(r, i) { if (i === 0) ctx.moveTo(xOf(i), yOf(r.cum)); else ctx.lineTo(xOf(i), yOf(r.cum)); });
+            ctx.stroke();
+            if (n <= 45) {
+                ctx.fillStyle = primary;
+                rows.forEach(function(r, i) { ctx.beginPath(); ctx.arc(xOf(i), yOf(r.cum), selected === i ? 4.5 : 2.5, 0, Math.PI * 2); ctx.fill(); });
+            }
+
+            // 横軸の日付(混み合わないよう間引く)
+            ctx.fillStyle = text; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(pw / 62))));
+            rows.forEach(function(r, i) {
+                if (i % every === 0 || i === n - 1) ctx.fillText(mmdd(r.date), xOf(i), H - m.b + 8);
+            });
+        }
+
+        function showDetail(i) {
+            selected = i;
+            if (i < 0 || !data || !data.days[i]) {
+                detailEl.textContent = 'グラフを押す（なぞる）と、その日の内訳が表示されます。';
+            } else {
+                const r = data.days[i];
+                detailEl.innerHTML = '';
+                const strong = document.createElement('strong');
+                strong.style.color = 'var(--text)';
+                strong.textContent = mmdd(r.date);
+                detailEl.appendChild(strong);
+                detailEl.appendChild(document.createTextNode(
+                    r.spins ? '　収支 ' + signed(r.net) + 'pt（賭け ' + fmt.format(r.bet) + ' / 払戻 ' + fmt.format(r.payout) + ' / ' + r.spins + '回）　累計 ' + signed(r.cum) + 'pt'
+                            : '　プレイなし　累計 ' + signed(r.cum) + 'pt'));
+            }
+            draw();
+        }
+
+        function indexFromEvent(e) {
+            if (!layout) return -1;
+            const rect = canvas.getBoundingClientRect();
+            const x = (e.clientX - rect.left) * (layout.W / rect.width);
+            const i = Math.floor((x - layout.m.l) / layout.slot);
+            return (i >= 0 && i < layout.n) ? i : -1;
+        }
+        canvas.addEventListener('pointerdown', function(e) { showDetail(indexFromEvent(e)); });
+        canvas.addEventListener('pointermove', function(e) { if (e.pointerType === 'mouse' || e.buttons) showDetail(indexFromEvent(e)); });
+        window.addEventListener('resize', draw);
+        // ライト/ダーク切り替えのときも色を合わせて描き直す
+        new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+        async function load() {
+            const mySeq = ++seq;
+            const game = gameSel.value;
+            try {
+                const res = await fetch('/api/casino/stats?days=' + days + (game ? '&game=' + encodeURIComponent(game) : ''), { credentials: 'same-origin' });
+                const json = await res.json();
+                if (mySeq !== seq) return;             // 操作が重なった場合は新しい方だけ反映
+                if (!json.success) throw new Error(json.error || 'failed');
+                data = json;
+                selected = -1;
+                const hasData = data.totals.spins > 0;
+                emptyEl.style.display = hasData ? 'none' : 'block';
+                canvas.style.display = hasData ? 'block' : 'none';
+                renderSummary();
+                renderByGame();
+                if (hasData) { showDetail(data.days.length - 1); }   // 初期表示は最新の日の内訳
+            } catch (e) {
+                if (mySeq !== seq) return;
+                emptyEl.textContent = '収支を読み込めませんでした。時間をおいて開き直してください。';
+                emptyEl.style.display = 'block';
+                canvas.style.display = 'none';
+            }
+        }
+
+        rangeBtns.forEach(function(b) {
+            b.addEventListener('click', function() {
+                days = parseInt(b.getAttribute('data-days'), 10);
+                rangeBtns.forEach(function(x) { x.classList.toggle('active', x === b); });
+                load();
+            });
+        });
+        gameSel.addEventListener('change', load);
+        load();
+    })();
+    {% endif %}
     </script>
 </body>
 </html>
