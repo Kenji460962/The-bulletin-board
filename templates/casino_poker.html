@@ -22,6 +22,7 @@
             --primary: #2563EB; --primary-hover: #1D4ED8; --primary-soft: #EFF4FE;
             --green: #16A34A; --red: #DC2626; --amber: #B45309;
             --radius-lg: 6px; --radius-md: 5px; --radius-sm: 4px;
+            --gold: #F5B400;
         }
         html[data-theme="dark"] {
             --bg: #0F1115; --card-bg: #16181D; --card-border: #2A2D34;
@@ -55,40 +56,117 @@
             border: 1px solid var(--card-border); background: var(--card-bg);
             color: var(--text-muted); font-size: 12.5px; font-weight: 600;
             padding: 7px 12px; border-radius: var(--radius-sm);
-            cursor: pointer; text-decoration: none;
+            cursor: pointer; text-decoration: none; font-family: inherit;
         }
         .icon-btn:hover { border-color: var(--primary); color: var(--primary); }
         .glass-panel { border-bottom: 1px solid var(--card-border); padding: 16px 0; }
         .glass-panel:first-of-type { padding-top: 0; }
         .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
 
-        .poker-cards { display: flex; gap: 10px; justify-content: center; padding: 18px 0 6px; flex-wrap: nowrap; }
-        .poker-slot { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-        .poker-card {
-            width: 62px; height: 92px; padding: 0;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            font-family: inherit; font-weight: 800; font-size: 24px; line-height: 1.1;
-            background: #fff; color: #111827;
-            border: 2px solid var(--card-border); border-radius: var(--radius-md);
-            cursor: default; user-select: none; -webkit-tap-highlight-color: transparent;
-            transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+        /* ---- 筐体 ---- */
+        .machine {
+            max-width: 460px; margin: 4px auto 0; padding: 12px;
+            border-radius: 14px; background: linear-gradient(180deg, #3b3f4a, #20232a);
+            border: 2px solid #0b0c10;
+            box-shadow: 0 6px 18px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.12);
         }
-        .poker-card .suit { font-size: 22px; }
-        .poker-card.red { color: #DC2626; }
-        .poker-card.back {
-            background: repeating-linear-gradient(45deg, var(--primary-soft), var(--primary-soft) 6px, var(--card-bg) 6px, var(--card-bg) 12px);
-            color: var(--text-faint); font-size: 22px;
+        .vp-screen {
+            border-radius: 8px; padding: 10px 10px 12px; border: 3px solid #0b0c10;
+            background: radial-gradient(ellipse at 50% 0%, #1d4ed8 0%, #0b2a6b 55%, #06173d 100%);
+            box-shadow: inset 0 0 24px rgba(0,0,0,.55);
         }
-        .poker-card.selectable { cursor: pointer; }
-        .poker-card.held { transform: translateY(-10px); border-color: var(--primary); box-shadow: 0 6px 14px rgba(37,99,235,0.25); }
-        .poker-card.flip { animation: pokerFlip 0.35s ease; }
-        @keyframes pokerFlip { from { transform: rotateY(90deg); } to { transform: rotateY(0); } }
-        .hold-tag { font-size: 11px; font-weight: 700; color: var(--primary); min-height: 16px; letter-spacing: 0.05em; }
-        .poker-hint { text-align: center; font-size: 12.5px; color: var(--text-muted); min-height: 1.4em; margin-top: 4px; }
+        .paytable { width: 100%; border-collapse: collapse; font-size: 12px; line-height: 1.35; color: #e8efff; }
+        .paytable td { padding: 1px 8px; border-bottom: 1px solid rgba(255,255,255,.12); }
+        .paytable td:last-child { text-align: right; font-weight: 800; color: #ffe27a; font-variant-numeric: tabular-nums; }
+        .paytable tr:last-child td { border-bottom: none; }
+        .paytable tr.on td { background: var(--gold); color: #2b1d00; }
+        .paytable tr.on { animation: ptblink .4s steps(2, jump-none) 8; }
+        @keyframes ptblink { 0% { opacity: 1; } 100% { opacity: .45; } }
+
+        .hud {
+            display: flex; justify-content: space-between; margin: 8px 2px 8px;
+            font-size: 12px; font-weight: 800; letter-spacing: .1em; color: #9db8ff;
+        }
+        .hud b { color: #ffe27a; font-size: 14px; letter-spacing: 0; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+        .pcards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+        .pslot { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 0; }
+        .pcard {
+            position: relative; width: 100%; aspect-ratio: 5 / 7;
+            container-type: inline-size; perspective: 800px;
+            transition: transform .15s ease, filter .25s ease;
+            user-select: none; -webkit-tap-highlight-color: transparent;
+        }
+        .pcard.selectable { cursor: pointer; }
+        .pslot.held .pcard { transform: translateY(-8px); }
+        .pc-inner {
+            position: absolute; inset: 0; transform-style: preserve-3d;
+            transition: transform .45s cubic-bezier(.3,.7,.3,1);
+        }
+        .pcard.down .pc-inner { transform: rotateY(180deg); }
+        .pc-front, .pc-back {
+            position: absolute; inset: 0; border-radius: 7cqw;
+            backface-visibility: hidden; -webkit-backface-visibility: hidden;
+            box-shadow: 0 2px 6px rgba(0,0,0,.45);
+        }
+        .pc-front { background: #fff; color: #15171c; overflow: hidden; }
+        .pc-front.red { color: #d11a2a; }
+        .pc-back {
+            transform: rotateY(180deg); border: 4cqw solid #fff;
+            background:
+                repeating-linear-gradient(45deg, #1d4ed8 0 5cqw, #1e3a8a 5cqw 10cqw);
+        }
+        .pc-back::after {
+            content: ""; position: absolute; inset: 9cqw; border: 1.5cqw solid rgba(255,255,255,.55); border-radius: 3cqw;
+        }
+        .corner {
+            position: absolute; display: flex; flex-direction: column; align-items: center;
+            line-height: 1; font-weight: 800;
+        }
+        .corner b { font-size: 21cqw; font-weight: 800; letter-spacing: -0.04em; }
+        .corner i { font-style: normal; font-size: 18cqw; margin-top: 1cqw; }
+        .corner.tl { top: 5cqw; left: 6cqw; }
+        .corner.br { bottom: 5cqw; right: 6cqw; transform: rotate(180deg); }
+        .pips { position: absolute; left: 27cqw; right: 27cqw; top: 17cqw; bottom: 17cqw; }
+        .pip {
+            position: absolute; transform: translate(-50%, -50%);
+            font-size: 26cqw; line-height: 1;
+        }
+        .pip.flip { transform: translate(-50%, -50%) rotate(180deg); }
+        .ace {
+            position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+            font-size: 62cqw; line-height: 1;
+        }
+        .facebox {
+            position: absolute; left: 24cqw; right: 24cqw; top: 16cqw; bottom: 16cqw;
+            border: 1.2cqw solid currentColor; border-radius: 3cqw;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2cqw;
+            background: linear-gradient(135deg, rgba(0,0,0,.03), rgba(0,0,0,.08));
+        }
+        .facebox .fl { font-size: 44cqw; font-weight: 800; line-height: 1; font-family: Georgia, "Times New Roman", serif; }
+        .facebox .fs { font-size: 24cqw; line-height: 1; }
+
+        .pcard.deal-in { animation: dealin .38s cubic-bezier(.2,.8,.3,1) both; }
+        @keyframes dealin {
+            from { opacity: 0; transform: translateY(-46px) rotate(-7deg) scale(.9); }
+            to   { opacity: 1; transform: none; }
+        }
+        .pcard.win .pc-front { box-shadow: 0 0 0 2px var(--gold), 0 0 16px 3px rgba(245,180,0,.9); }
+        .pcard.win { animation: winpop .5s ease-in-out infinite alternate; }
+        @keyframes winpop { from { transform: translateY(0); } to { transform: translateY(-6px); } }
+        .pcard.dim { filter: brightness(.55); }
+
+        .hold-tag {
+            min-height: 17px; font-size: 11px; font-weight: 800; letter-spacing: .08em;
+            padding: 0 7px; border-radius: 3px; color: transparent;
+        }
+        .pslot.held .hold-tag { background: var(--gold); color: #2b1d00; box-shadow: 0 0 8px rgba(245,180,0,.7); }
+
+        .poker-hint { text-align: center; font-size: 12.5px; color: #c7d7ff; min-height: 1.4em; margin-top: 8px; }
 
         .slot-controls {
             display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-            padding: 8px 0 4px; justify-content: center;
+            padding: 16px 0 4px; justify-content: center;
         }
         .slot-controls label {
             display: flex; align-items: center; gap: 8px;
@@ -102,21 +180,31 @@
         }
         .slot-controls input[type="number"]:focus { outline: none; border-color: var(--primary); }
         .slot-controls input[type="number"]:disabled { opacity: 0.6; }
-        .slot-controls button {
-            background: var(--primary); color: #fff; border: none;
-            border-radius: var(--radius-sm); padding: 10px 24px;
-            font-family: inherit; font-weight: 700; font-size: 15px;
-            cursor: pointer; transition: background 0.15s ease;
+        .chips { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; padding-top: 8px; }
+        .chip {
+            border: 1px solid var(--card-border); background: var(--card-bg); color: var(--text-muted);
+            font-family: inherit; font-size: 12.5px; font-weight: 700;
+            padding: 5px 12px; border-radius: 999px; cursor: pointer;
         }
-        .slot-controls button:hover { background: var(--primary-hover); }
-        .slot-controls button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .chip:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .chip:disabled { opacity: .5; cursor: not-allowed; }
+        #action-btn {
+            background: linear-gradient(180deg, #f5b400, #c98a00); color: #2b1d00;
+            border: none; border-radius: 999px; padding: 12px 34px;
+            font-family: inherit; font-weight: 800; font-size: 16px; letter-spacing: .06em;
+            cursor: pointer; box-shadow: 0 4px 0 #805600, 0 6px 12px rgba(0,0,0,.25);
+            transition: transform .08s ease, box-shadow .08s ease;
+        }
+        #action-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #805600; }
+        #action-btn:disabled { opacity: .55; cursor: not-allowed; }
 
-        .slot-balance { text-align: center; font-size: 14px; color: var(--text-muted); }
+        .slot-balance { text-align: center; font-size: 14px; color: var(--text-muted); margin-top: 8px; }
         .slot-balance strong { color: var(--text); font-weight: 700; font-size: 16px; }
         .slot-result {
             text-align: center; min-height: 1.6em;
             font-weight: 700; font-size: 15px; margin-top: 6px;
         }
+        .keys-hint { text-align: center; font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
 
         .menu-list { list-style: none; margin: 0; padding: 0; }
         .menu-list-item { padding: 10px 2px; border-bottom: 1px solid var(--card-border); }
@@ -125,10 +213,31 @@
         .menu-list-desc { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
         .empty-state { color: var(--text-muted); font-size: 13px; text-align: center; padding: 20px 0; }
 
+        /* ---- ルール ---- */
         .rules-body { font-size: 14px; color: var(--text-muted); }
-        .rules-body ul { padding-left: 20px; margin: 0; }
-        .rules-body li { margin: 4px 0; }
-</style>
+        .rules-body ul, .rules-body ol { padding-left: 22px; margin: 0; }
+        .rules-body li { margin: 5px 0; }
+        .rules-body h3 { font-size: 14.5px; color: var(--text); margin: 18px 0 6px; padding-left: 8px; border-left: 3px solid var(--primary); }
+        .rules-body h3:first-child { margin-top: 0; }
+        .rules-body p { margin: 0 0 6px; }
+        .rules-body b { color: var(--text); }
+        .hand-row { padding: 9px 0; border-bottom: 1px solid var(--card-border); }
+        .hand-head { display: flex; justify-content: space-between; font-weight: 700; color: var(--text); font-size: 14px; }
+        .hand-head span:last-child { color: var(--amber); font-variant-numeric: tabular-nums; }
+        .hand-desc { font-size: 12.5px; margin-top: 4px; }
+        .mini { display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap; }
+        .mc {
+            display: inline-block; min-width: 34px; padding: 2px 5px; text-align: center;
+            background: #fff; color: #15171c; border: 1px solid #cbd5e1; border-radius: 4px;
+            font-weight: 800; font-size: 13px; line-height: 1.5;
+        }
+        .mc.red { color: #d11a2a; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .pcard.win, .paytable tr.on, .pcard.deal-in { animation: none; }
+            .pc-inner { transition-duration: .01s; }
+        }
+    </style>
 </head>
 <body>
     <div class="casino-shell">
@@ -136,6 +245,7 @@
             <a href="/casino" class="back-link">← カジノ</a>
             <h1 class="casino-title">{{ game.icon }} {{ game.label }}</h1>
             <span class="spacer"></span>
+            <button type="button" id="sound-btn" class="icon-btn">音: OFF</button>
             <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
         </div>
 
@@ -144,15 +254,34 @@
         </div>
 
         <div class="glass-panel">
-            <div class="poker-cards" id="cards">
-                {% for i in range(5) %}
-                <div class="poker-slot">
-                    <button type="button" class="poker-card back" id="card-{{ i }}" data-idx="{{ i }}" aria-label="カード{{ i + 1 }}">?</button>
-                    <div class="hold-tag" id="hold-{{ i }}"></div>
+            <div class="machine">
+                <div class="vp-screen">
+                    {% if game.paytable %}
+                    <table class="paytable" id="paytable">
+                        {% for p in game.paytable %}
+                        <tr data-rank="{{ p.key }}"><td>{{ p.label }}</td><td>×{{ p.mult }}</td></tr>
+                        {% endfor %}
+                    </table>
+                    {% endif %}
+
+                    <div class="hud">
+                        <span>WIN<b id="hud-win">0</b></span>
+                        <span>BET<b id="hud-bet">0</b></span>
+                    </div>
+
+                    <div class="pcards" id="cards">
+                        {% for i in range(5) %}
+                        <div class="pslot" id="slot-{{ i }}">
+                            <div class="pcard down" id="card-{{ i }}" data-idx="{{ i }}" role="button" aria-label="カード{{ i + 1 }}">
+                                <div class="pc-inner"><div class="pc-front"></div><div class="pc-back"></div></div>
+                            </div>
+                            <div class="hold-tag" id="hold-{{ i }}">HELD</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <div class="poker-hint" id="hint">賭け金を決めて「配る」を押してください。</div>
                 </div>
-                {% endfor %}
             </div>
-            <div class="poker-hint" id="hint">賭け金を決めて「配る」を押してください。</div>
 
             <div class="slot-controls">
                 <label>賭け金:
@@ -161,9 +290,16 @@
                 </label>
                 <button id="action-btn">配る</button>
             </div>
+            <div class="chips">
+                <button type="button" class="chip" data-bet="10">10</button>
+                <button type="button" class="chip" data-bet="100">100</button>
+                <button type="button" class="chip" data-bet="1000">1000</button>
+                <button type="button" class="chip" data-bet="max">MAX</button>
+            </div>
 
             <div class="slot-balance">残高: <strong id="balance">{{ balance }}</strong> pt</div>
             <div class="slot-result" id="result-msg"></div>
+            <div class="keys-hint">キーボード: 1〜5 でHOLD切り替え ／ スペースで「配る・交換する」</div>
         </div>
 
         <div class="glass-panel">
@@ -173,7 +309,7 @@
 
         <div class="glass-panel">
             <h2 class="panel-title">最近のプレイ</h2>
-            <ul class="menu-list">
+            <ul class="menu-list" id="history-list">
                 {% set rank_label = {11: 'J', 12: 'Q', 13: 'K', 14: 'A'} %}
                 {% for h in history %}
                 <li class="menu-list-item">
@@ -225,92 +361,210 @@
 
     // ---- ビデオポーカー ----
     const GAME_KEY = {{ game.key | tojson }};
+    const MIN_BET = {{ game.min_bet | tojson }};
+    const MAX_BET = {{ game.max_bet | tojson }};
     const API_START = '/api/casino/' + GAME_KEY + '/start';
     const API_RESOLVE = '/api/casino/' + GAME_KEY + '/resolve';
     const PENDING = {{ pending | tojson }};   // 配ったまま閉じた手(なければ null)
 
     const RANKS = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
     const SUITS = ['♠', '♥', '♦', '♣'];
+    // 数字カードの柄の並び: [列(0左/1中/2右), 行(0〜6)]。下半分は上下逆さまに描く
+    const PIPS = {
+        2: [[1,0],[1,6]],
+        3: [[1,0],[1,3],[1,6]],
+        4: [[0,0],[2,0],[0,6],[2,6]],
+        5: [[0,0],[2,0],[1,3],[0,6],[2,6]],
+        6: [[0,0],[2,0],[0,3],[2,3],[0,6],[2,6]],
+        7: [[0,0],[2,0],[1,1.5],[0,3],[2,3],[0,6],[2,6]],
+        8: [[0,0],[2,0],[1,1.5],[0,3],[2,3],[1,4.5],[0,6],[2,6]],
+        9: [[0,0],[2,0],[0,2],[2,2],[1,3],[0,4],[2,4],[0,6],[2,6]],
+        10: [[0,0],[2,0],[1,1],[0,2],[2,2],[0,4],[2,4],[1,5],[0,6],[2,6]]
+    };
+    const ERRORS = {
+        insufficient_balance: '残高が足りません。',
+        daily_limit: '1日の損失上限に達しました。',
+        cooldown: '少し待ってからもう一度押してください。',
+        invalid_bet: '賭け金が正しくありません。'
+    };
 
     const actionBtn = document.getElementById('action-btn');
     const betInput = document.getElementById('bet');
     const balanceEl = document.getElementById('balance');
     const msgEl = document.getElementById('result-msg');
     const hintEl = document.getElementById('hint');
-    const cardEls = [0, 1, 2, 3, 4].map(function(i) { return document.getElementById('card-' + i); });
-    const holdEls = [0, 1, 2, 3, 4].map(function(i) { return document.getElementById('hold-' + i); });
+    const hudWin = document.getElementById('hud-win');
+    const hudBet = document.getElementById('hud-bet');
+    const chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+    const idx5 = [0, 1, 2, 3, 4];
+    const cardEls = idx5.map(function(i) { return document.getElementById('card-' + i); });
+    const slotEls = idx5.map(function(i) { return document.getElementById('slot-' + i); });
+    const payRows = Array.prototype.slice.call(document.querySelectorAll('#paytable tr'));
 
     let phase = 'idle';          // 'idle'(賭ける前) / 'dealt'(配った・選択中)
     let sessionId = null;
     let hand = [];
     let holds = [false, false, false, false, false];
     let busy = false;
+    let animating = false;
+    let balance = Number(balanceEl.textContent) || 0;
+
+    const wait = function(ms) { return new Promise(function(r) { setTimeout(r, ms); }); };
+
+    // ---- 音(WebAudio。初期はOFF) ----
+    let soundOn = localStorage.getItem('talk_ch_poker_sound') === 'on';
+    let audioCtx = null;
+    const soundBtn = document.getElementById('sound-btn');
+    function soundLabel() { soundBtn.textContent = soundOn ? '音: ON' : '音: OFF'; }
+    soundLabel();
+    soundBtn.addEventListener('click', function() {
+        soundOn = !soundOn;
+        localStorage.setItem('talk_ch_poker_sound', soundOn ? 'on' : 'off');
+        soundLabel();
+    });
+    function beep(freq, dur, type, vol, when) {
+        if (!soundOn) return;
+        try {
+            audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+            const t0 = audioCtx.currentTime + (when || 0);
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type || 'square';
+            osc.frequency.value = freq;
+            g.gain.setValueAtTime(vol || 0.05, t0);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(t0); osc.stop(t0 + dur);
+        } catch (e) {}
+    }
+    function sfxFlip() { beep(520, 0.05, 'triangle', 0.05); }
+    function sfxHold() { beep(760, 0.06, 'square', 0.04); }
+    function sfxWin(big) {
+        const notes = big ? [523, 659, 784, 1047, 1319, 1568] : [523, 659, 784];
+        notes.forEach(function(f, i) { beep(f, 0.18, 'triangle', 0.06, i * 0.11); });
+    }
+    function sfxLose() { beep(196, 0.25, 'sawtooth', 0.04); }
 
     function setMsg(text, color) {
         msgEl.textContent = text || '';
         msgEl.style.color = color ? 'var(--' + color + ')' : '';
     }
 
-    function drawCard(i, card, opts) {
-        const el = cardEls[i];
-        opts = opts || {};
-        el.className = 'poker-card';
-        if (!card) {
-            el.classList.add('back');
-            el.textContent = '?';
-            return;
+    // ---- カードの描画 ----
+    function faceHTML(card) {
+        const r = card[0], sym = SUITS[card[1]];
+        const label = RANKS[r] || String(r);
+        const corner = '<b>' + label + '</b><i>' + sym + '</i>';
+        let center;
+        if (r === 14) {
+            center = '<div class="ace">' + sym + '</div>';
+        } else if (r >= 11) {
+            center = '<div class="facebox"><span class="fl">' + label + '</span><span class="fs">' + sym + '</span></div>';
+        } else {
+            center = '<div class="pips">' + PIPS[r].map(function(p) {
+                return '<span class="pip' + (p[1] > 3 ? ' flip' : '') + '" style="left:' + (p[0] * 50) +
+                    '%;top:' + (p[1] / 6 * 100) + '%">' + sym + '</span>';
+            }).join('') + '</div>';
         }
-        const rank = RANKS[card[0]] || String(card[0]);
-        const suit = SUITS[card[1]];
-        el.textContent = '';
-        const r = document.createElement('span');
-        r.textContent = rank;
-        const s = document.createElement('span');
-        s.className = 'suit';
-        s.textContent = suit;
-        el.appendChild(r);
-        el.appendChild(s);
-        if (card[1] === 1 || card[1] === 2) el.classList.add('red');
-        if (opts.selectable) el.classList.add('selectable');
-        if (opts.held) el.classList.add('held');
-        if (opts.flip) el.classList.add('flip');
+        return '<div class="corner tl">' + corner + '</div>' + center + '<div class="corner br">' + corner + '</div>';
+    }
+    function setFront(i, card) {
+        const f = cardEls[i].querySelector('.pc-front');
+        f.innerHTML = faceHTML(card);
+        f.classList.toggle('red', card[1] === 1 || card[1] === 2);
+    }
+    function renderHolds() {
+        for (let i = 0; i < 5; i++) slotEls[i].classList.toggle('held', !!holds[i]);
+    }
+    function setSelectable(on) {
+        cardEls.forEach(function(el) { el.classList.toggle('selectable', on); });
+    }
+    function clearResultFx() {
+        cardEls.forEach(function(el) { el.classList.remove('win', 'dim'); });
+        payRows.forEach(function(tr) { tr.classList.remove('on'); });
+        hudWin.textContent = '0';
     }
 
-    function renderDealt() {
-        for (let i = 0; i < 5; i++) {
-            drawCard(i, hand[i], { selectable: true, held: holds[i] });
-            holdEls[i].textContent = holds[i] ? 'HOLD' : '';
-        }
+    // 勝ちに絡んだカードの位置
+    function winningIdx(rank, cards) {
+        const cnt = {};
+        cards.forEach(function(c) { cnt[c[0]] = (cnt[c[0]] || 0) + 1; });
+        const need = { four: 4, three: 3, two_pair: 2, jacks_or_better: 2 }[rank];
+        if (!need) return [0, 1, 2, 3, 4];
+        const out = [];
+        cards.forEach(function(c, i) { if (cnt[c[0]] === need) out.push(i); });
+        return out;
     }
 
-    function enterDealt(session, bet, cards, balance, note) {
+    function setBalance(from, to) {
+        const t0 = performance.now(), dur = 600;
+        function step(now) {
+            const p = Math.min(1, (now - t0) / dur);
+            balanceEl.textContent = Math.round(from + (to - from) * p);
+            if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+    }
+
+    function setControls(locked) {
+        betInput.disabled = locked;
+        chips.forEach(function(c) { c.disabled = locked; });
+    }
+
+    // ---- 状態遷移 ----
+    async function enterDealt(session, bet, cards, newBalance, note) {
         phase = 'dealt';
         sessionId = session;
         hand = cards;
         holds = [false, false, false, false, false];
+        animating = true;
         betInput.value = bet;
-        betInput.disabled = true;
+        hudBet.textContent = bet;
+        setControls(true);
+        setSelectable(false);
+        renderHolds();
+        clearResultFx();
         actionBtn.textContent = '交換する';
-        hintEl.textContent = '残したいカードをタップ（HOLD）して、「交換する」を押してください。';
-        if (typeof balance === 'number') balanceEl.textContent = balance;
+        hintEl.textContent = '残したいカードをタップして HOLD にしてから「交換する」を押してください。';
+        if (typeof newBalance === 'number') { balance = newBalance; balanceEl.textContent = newBalance; }
         setMsg(note || '', null);
-        renderDealt();
+
+        // いったん全部伏せてから、新しい5枚を左から順にめくる
+        cardEls.forEach(function(el) { el.classList.add('down'); });
+        await wait(300);
+        for (let i = 0; i < 5; i++) {
+            setFront(i, hand[i]);
+            cardEls[i].classList.add('deal-in');
+            cardEls[i].style.animationDelay = (i * 60) + 'ms';
+        }
+        await wait(380);
+        for (let i = 0; i < 5; i++) {
+            cardEls[i].classList.remove('down');
+            sfxFlip();
+            await wait(120);
+        }
+        await wait(300);
+        cardEls.forEach(function(el) { el.classList.remove('deal-in'); el.style.animationDelay = ''; });
+        animating = false;
+        setSelectable(true);
     }
 
     function enterIdle() {
         phase = 'idle';
         sessionId = null;
-        betInput.disabled = false;
+        setControls(false);
+        setSelectable(false);
         actionBtn.textContent = '配る';
+        hintEl.textContent = '賭け金を決めて「配る」を押してください。';
     }
 
-    cardEls.forEach(function(el, i) {
-        el.addEventListener('click', function() {
-            if (phase !== 'dealt' || busy) return;
-            holds[i] = !holds[i];
-            renderDealt();
-        });
-    });
+    function toggleHold(i) {
+        if (phase !== 'dealt' || busy || animating) return;
+        holds[i] = !holds[i];
+        sfxHold();
+        renderHolds();
+    }
+    cardEls.forEach(function(el, i) { el.addEventListener('click', function() { toggleHold(i); }); });
 
     function newRequestId() {
         return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random();
@@ -324,51 +578,119 @@
         });
         return res.json();
     }
+    function errText(data) {
+        return ERRORS[data.code] || ERRORS[data.error] || data.error || '失敗しました。';
+    }
 
     async function deal() {
         const bet = parseInt(betInput.value, 10);
-        if (!bet || bet < 1) { setMsg('賭け金を入力してください。', 'red'); return; }
+        if (!bet || bet < MIN_BET || bet > MAX_BET) {
+            setMsg('賭け金は ' + MIN_BET + '〜' + MAX_BET + 'pt で入力してください。', 'red');
+            return;
+        }
         setMsg('', null);
         const data = await postJson(API_START, { bet: bet, request_id: newRequestId() });
         if (data.success) {
-            enterDealt(data.session_id, data.bet, data.view.hand, data.balance, '');
+            await enterDealt(data.session_id, data.bet, data.view.hand, data.balance, '');
             return;
         }
         // 前回の続きがある場合は、その手を再開する
         if (data.code === 'pending_session' && data.view && data.view.hand) {
-            enterDealt(data.session_id, data.bet, data.view.hand, data.balance, '前回の続きから再開します。');
+            await enterDealt(data.session_id, data.bet, data.view.hand, data.balance, '前回の続きから再開します。');
             return;
         }
-        setMsg(data.error || '失敗しました。', 'red');
-        if (typeof data.balance === 'number') balanceEl.textContent = data.balance;
+        setMsg(errText(data), 'red');
+        if (typeof data.balance === 'number') { balance = data.balance; balanceEl.textContent = data.balance; }
+    }
+
+    function addHistory(detail, bet, payout, net) {
+        const list = document.getElementById('history-list');
+        const empty = list.querySelector('.empty-state');
+        if (empty) empty.remove();
+        const li = document.createElement('li');
+        li.className = 'menu-list-item';
+        li.innerHTML = '<div class="menu-list-title"></div><div class="menu-list-desc"></div>';
+        li.firstChild.textContent = detail.hand.map(function(c) {
+            return (RANKS[c[0]] || c[0]) + SUITS[c[1]];
+        }).join(' ') + ' — ' + detail.rank_label;
+        const color = net >= 0 ? 'var(--green)' : 'var(--red)';
+        li.lastChild.innerHTML = '賭け ' + bet + 'pt → 払戻 ' + payout + 'pt（<span style="color:' + color + ';">' +
+            (net >= 0 ? '+' : '') + net + 'pt</span>） / たった今';
+        list.insertBefore(li, list.firstChild);
+        while (list.children.length > 20) list.removeChild(list.lastChild);
     }
 
     async function draw() {
-        const data = await postJson(API_RESOLVE, { session_id: sessionId, action: { holds: holds } });
+        const heldNow = holds.slice();
+        const replaceIdx = idx5.filter(function(i) { return !heldNow[i]; });
+        // 交換するカードをすぐ伏せる(サーバーの返事を待つ間の演出)
+        replaceIdx.forEach(function(i) { cardEls[i].classList.add('down'); sfxFlip(); });
+        setSelectable(false);
+
+        let data;
+        try {
+            const results = await Promise.all([
+                postJson(API_RESOLVE, { session_id: sessionId, action: { holds: heldNow } }),
+                wait(450)
+            ]);
+            data = results[0];
+        } catch (e) {
+            replaceIdx.forEach(function(i) { cardEls[i].classList.remove('down'); });
+            setSelectable(true);
+            throw e;
+        }
         if (!data.success) {
-            setMsg(data.error || '失敗しました。', 'red');
-            if (typeof data.balance === 'number') balanceEl.textContent = data.balance;
-            if (data.code === 'no_session') { enterIdle(); }
+            replaceIdx.forEach(function(i) { cardEls[i].classList.remove('down'); });
+            setMsg(errText(data), 'red');
+            if (typeof data.balance === 'number') { balance = data.balance; balanceEl.textContent = data.balance; }
+            if (data.code === 'no_session') { enterIdle(); } else { setSelectable(true); }
             return;
         }
-        const finalHand = data.detail.hand;
-        const held = data.detail.held;
-        for (let i = 0; i < 5; i++) {
-            drawCard(i, finalHand[i], { held: held[i], flip: !held[i] });
-            holdEls[i].textContent = held[i] ? 'HOLD' : '';
+
+        const detail = data.detail;
+        const finalHand = detail.hand;
+        animating = true;
+        for (let k = 0; k < replaceIdx.length; k++) {
+            const i = replaceIdx[k];
+            setFront(i, finalHand[i]);
+            cardEls[i].classList.remove('down');
+            sfxFlip();
+            await wait(160);
         }
-        balanceEl.textContent = data.balance;
-        if (data.payout > 0) {
-            setMsg('🎉 ' + data.detail.rank_label + '！ ' + data.payout + 'pt 獲得（純損益 +' + data.net + '）', 'green');
+        await wait(300);
+        animating = false;
+
+        // 結果
+        const bet = data.bet;
+        setBalance(balance, data.balance);
+        balance = data.balance;
+        if (detail.rank) {
+            const win = winningIdx(detail.rank, finalHand);
+            cardEls.forEach(function(el, i) {
+                el.classList.add(win.indexOf(i) >= 0 ? 'win' : 'dim');
+            });
+            payRows.forEach(function(tr) {
+                if (tr.getAttribute('data-rank') === detail.rank) tr.classList.add('on');
+            });
+            hudWin.textContent = data.payout;
+            const big = data.payout >= bet * 25;
+            if (data.net > 0) {
+                setMsg((big ? '🎊 ' : '🎉 ') + detail.rank_label + '！ ' + data.payout + 'pt 獲得（純損益 +' + data.net + '）', 'green');
+                sfxWin(big);
+            } else {
+                setMsg(detail.rank_label + '：賭け金が戻りました（±0）', null);
+                sfxFlip();
+            }
         } else {
-            setMsg('ハズレ（-' + data.bet + 'pt）', 'red');
+            setMsg('ハズレ（-' + bet + 'pt）', 'red');
+            sfxLose();
         }
-        hintEl.textContent = '賭け金を決めて「配る」を押してください。';
+        addHistory(detail, bet, data.payout, data.net);
         enterIdle();
     }
 
-    actionBtn.addEventListener('click', async function() {
-        if (busy) return;
+    async function onAction() {
+        if (busy || animating) return;
         busy = true;
         actionBtn.disabled = true;
         try {
@@ -379,6 +701,21 @@
             busy = false;
             actionBtn.disabled = false;
         }
+    }
+    actionBtn.addEventListener('click', onAction);
+
+    chips.forEach(function(c) {
+        c.addEventListener('click', function() {
+            const v = c.getAttribute('data-bet');
+            betInput.value = v === 'max' ? Math.max(MIN_BET, Math.min(MAX_BET, balance)) : v;
+        });
+    });
+
+    document.addEventListener('keydown', function(e) {
+        const tag = (e.target && e.target.tagName) || '';
+        if (tag === 'INPUT' || tag === 'BUTTON' || tag === 'TEXTAREA') return;
+        if (e.code === 'Space') { e.preventDefault(); onAction(); return; }
+        if (e.key >= '1' && e.key <= '5') toggleHold(parseInt(e.key, 10) - 1);
     });
 
     // ページを開いたとき、進行中の手があれば続きから
