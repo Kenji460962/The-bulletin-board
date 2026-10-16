@@ -62,7 +62,40 @@
         .glass-panel:first-of-type { padding-top: 0; }
         .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
 
-        .roulette-ball-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0 8px; }
+        .wheel-row { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; }
+        .roulette-ball-wrap { flex: 1 1 320px; max-width: 560px; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0 8px; }
+
+        /* ベット額に応じたチップ表示 */
+        .bet-chips { flex: 0 0 150px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .bet-chips-title { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+        .bet-chips-total { font-size: 20px; font-weight: 800; }
+        .bet-chips-total small { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-left: 2px; }
+        .chip-stacks { display: flex; gap: 10px; align-items: flex-end; justify-content: center; flex-wrap: wrap; min-height: 56px; }
+        .chip-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .chip-stack-chips { display: flex; flex-direction: column-reverse; align-items: center; }
+        .chip-stack-label { font-size: 11px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
+        .bet-chip {
+            width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10.5px; font-weight: 800; color: #fff; letter-spacing: -0.2px;
+            background: var(--chip-color, #6B7280);
+            border: 3px dashed rgba(255,255,255,0.85);
+            box-shadow: inset 0 0 0 2px var(--chip-color, #6B7280), 0 2px 0 rgba(0,0,0,0.35);
+            user-select: none;
+        }
+        .bet-chip + .bet-chip { margin-bottom: -30px; }
+        .bet-chip.c1 { --chip-color: #9CA3AF; color: #111827; border-color: rgba(17,24,39,0.55); }
+        .bet-chip.c5 { --chip-color: #DC2626; }
+        .bet-chip.c10 { --chip-color: #2563EB; }
+        .bet-chip.c50 { --chip-color: #EA580C; }
+        .bet-chip.c100 { --chip-color: #111827; }
+        .bet-chip.c500 { --chip-color: #7C3AED; }
+        .bet-chip.c1000 { --chip-color: #CA8A04; }
+        .bet-chip.c5000 { --chip-color: #15803D; }
+        html[data-theme="dark"] .bet-chip.c100 { --chip-color: #374151; }
+        @keyframes chip-pop { from { transform: translateY(-6px); opacity: 0.4; } to { transform: none; opacity: 1; } }
+        .chip-stack.pop .bet-chip:last-child { animation: chip-pop 0.18s ease-out; }
+        @media (prefers-reduced-motion: reduce) { .chip-stack.pop .bet-chip:last-child { animation: none; } }
         .wheel3d {
             position: relative; width: 100%; max-width: 560px; aspect-ratio: 1 / 1;
             border-radius: 14px; overflow: hidden; cursor: grab; touch-action: pan-y;
@@ -183,12 +216,19 @@
         </div>
 
         <div class="glass-panel">
-            <div class="roulette-ball-wrap">
-                <div class="wheel3d" id="wheel3d">
-                    <canvas id="wheel-canvas" role="img" aria-label="3Dルーレットのホイール"></canvas>
-                    <div class="wheel3d-hint">ドラッグで視点を回転 / ダブルクリックでリセット</div>
+            <div class="wheel-row">
+                <div class="roulette-ball-wrap">
+                    <div class="wheel3d" id="wheel3d">
+                        <canvas id="wheel-canvas" role="img" aria-label="3Dルーレットのホイール"></canvas>
+                        <div class="wheel3d-hint">ドラッグで視点を回転 / ダブルクリックでリセット</div>
+                    </div>
+                    <div class="roulette-ball" id="ball">?</div>
                 </div>
-                <div class="roulette-ball" id="ball">?</div>
+                <div class="bet-chips" aria-live="polite">
+                    <div class="bet-chips-title">ベット</div>
+                    <div class="chip-stacks" id="chip-stacks"></div>
+                    <div class="bet-chips-total"><span id="bet-total">0</span><small>pt</small></div>
+                </div>
             </div>
             <div class="recent-chips" id="recent-chips">
                 {% for h in history[:12] %}{% if h.detail and h.detail.number is defined %}
@@ -942,8 +982,58 @@
         }
     }
 
+    // ---- ベット額に応じたチップ表示 ----
+    const CHIP_DENOMS = [5000, 1000, 500, 100, 50, 10, 5, 1];   // 大きい額から順に割り当てる
+    const MAX_CHIPS_PER_STACK = 8;
+    const chipStacksEl = document.getElementById('chip-stacks');
+    const betTotalEl = document.getElementById('bet-total');
+    let lastChipKey = '';
+
+    function renderBetChips() {
+        const bet = parseInt(betInput.value, 10);
+        const valid = Number.isFinite(bet) && bet >= 1;
+        betTotalEl.textContent = valid ? String(bet) : '0';
+
+        const counts = [];
+        let rest = valid ? bet : 0;
+        CHIP_DENOMS.forEach(function(v) {
+            const c = Math.floor(rest / v);
+            rest -= c * v;
+            if (c > 0) counts.push({ v: v, c: c });
+        });
+
+        const key = counts.map(function(x) { return x.v + 'x' + x.c; }).join(',');
+        if (key === lastChipKey) return;
+        const prev = {};
+        lastChipKey.split(',').forEach(function(s) { const p = s.split('x'); if (p[0]) prev[p[0]] = Number(p[1]); });
+        lastChipKey = key;
+
+        chipStacksEl.textContent = '';
+        counts.forEach(function(x) {
+            const stack = document.createElement('div');
+            stack.className = 'chip-stack' + (prev[x.v] !== x.c ? ' pop' : '');
+            const col = document.createElement('div');
+            col.className = 'chip-stack-chips';
+            const shown = Math.min(x.c, MAX_CHIPS_PER_STACK);
+            for (let i = 0; i < shown; i++) {
+                const chip = document.createElement('div');
+                chip.className = 'bet-chip c' + x.v;
+                chip.textContent = String(x.v);
+                col.appendChild(chip);
+            }
+            const label = document.createElement('div');
+            label.className = 'chip-stack-label';
+            label.textContent = x.v + ' ×' + x.c;
+            stack.appendChild(col);
+            stack.appendChild(label);
+            chipStacksEl.appendChild(stack);
+        });
+    }
+    betInput.addEventListener('input', renderBetChips);
+
     spinBtn.addEventListener('click', spin);
     refreshChoiceUI();
+    renderBetChips();
     </script>
 </body>
 </html>
