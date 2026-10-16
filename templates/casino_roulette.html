@@ -62,41 +62,20 @@
         .glass-panel:first-of-type { padding-top: 0; }
         .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
 
-        .wheel-row { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; }
-        .roulette-ball-wrap { flex: 1 1 260px; max-width: 340px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0 8px; }
-
-        /* ベット額に応じたチップ表示 */
-        .bet-chips { flex: 0 0 150px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-        .bet-chips-title { font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
-        .bet-chips-total { font-size: 20px; font-weight: 800; }
-        .bet-chips-total small { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-left: 2px; }
-        .chip-stacks { display: flex; gap: 10px; align-items: flex-end; justify-content: center; flex-wrap: wrap; min-height: 56px; }
-        .chip-stack { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-        .chip-stack-chips { display: flex; flex-direction: column-reverse; align-items: center; }
-        .chip-stack-label { font-size: 11px; font-weight: 700; color: var(--text-muted); white-space: nowrap; }
-        .bet-chip {
-            width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 10.5px; font-weight: 800; color: #fff; letter-spacing: -0.2px;
-            background: var(--chip-color, #6B7280);
-            border: 3px dashed rgba(255,255,255,0.85);
-            box-shadow: inset 0 0 0 2px var(--chip-color, #6B7280), 0 2px 0 rgba(0,0,0,0.35);
-            user-select: none;
+        .roulette-ball-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0 8px; }
+        .wheel3d {
+            position: relative; width: 100%; max-width: 560px; aspect-ratio: 1 / 1;
+            border-radius: 14px; overflow: hidden; cursor: grab; touch-action: pan-y;
+            background: radial-gradient(circle at 50% 42%, #1f5a43 0%, #0f3326 55%, #07140f 100%);
+            box-shadow: inset 0 0 60px rgba(0,0,0,0.55), 0 6px 24px rgba(0,0,0,0.25);
         }
-        .bet-chip + .bet-chip { margin-bottom: -30px; }
-        .bet-chip.c1 { --chip-color: #9CA3AF; color: #111827; border-color: rgba(17,24,39,0.55); }
-        .bet-chip.c5 { --chip-color: #DC2626; }
-        .bet-chip.c10 { --chip-color: #2563EB; }
-        .bet-chip.c50 { --chip-color: #EA580C; }
-        .bet-chip.c100 { --chip-color: #111827; }
-        .bet-chip.c500 { --chip-color: #7C3AED; }
-        .bet-chip.c1000 { --chip-color: #CA8A04; }
-        .bet-chip.c5000 { --chip-color: #15803D; }
-        html[data-theme="dark"] .bet-chip.c100 { --chip-color: #374151; }
-        @keyframes chip-pop { from { transform: translateY(-6px); opacity: 0.4; } to { transform: none; opacity: 1; } }
-        .chip-stack.pop .bet-chip:last-child { animation: chip-pop 0.18s ease-out; }
-        @media (prefers-reduced-motion: reduce) { .chip-stack.pop .bet-chip:last-child { animation: none; } }
-        .wheel-canvas { width: 100%; max-width: 340px; aspect-ratio: 1 / 1; display: block; touch-action: manipulation; }
+        .wheel3d.dragging { cursor: grabbing; }
+        .wheel3d canvas { width: 100%; height: 100%; display: block; }
+        .wheel3d-hint {
+            position: absolute; left: 12px; bottom: 8px; font-size: 11px;
+            color: rgba(255,255,255,0.55); pointer-events: none; user-select: none;
+        }
+        .wheel3d-fallback { color: rgba(255,255,255,0.8); font-size: 13px; text-align: center; padding: 40% 16px 0; }
         .roulette-ball {
             width: 64px; height: 64px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
@@ -204,16 +183,12 @@
         </div>
 
         <div class="glass-panel">
-            <div class="wheel-row">
-                <div class="roulette-ball-wrap">
-                    <canvas class="wheel-canvas" id="wheel" role="img" aria-label="ルーレットのホイール"></canvas>
-                    <div class="roulette-ball" id="ball">?</div>
+            <div class="roulette-ball-wrap">
+                <div class="wheel3d" id="wheel3d">
+                    <canvas id="wheel-canvas" role="img" aria-label="3Dルーレットのホイール"></canvas>
+                    <div class="wheel3d-hint">ドラッグで視点を回転 / ダブルクリックでリセット</div>
                 </div>
-                <div class="bet-chips" aria-live="polite">
-                    <div class="bet-chips-title">ベット</div>
-                    <div class="chip-stacks" id="chip-stacks"></div>
-                    <div class="bet-chips-total"><span id="bet-total">0</span><small>pt</small></div>
-                </div>
+                <div class="roulette-ball" id="ball">?</div>
             </div>
             <div class="recent-chips" id="recent-chips">
                 {% for h in history[:12] %}{% if h.detail and h.detail.number is defined %}
@@ -279,6 +254,7 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
     // ---- テーマ切り替え ----
     (function() {
@@ -309,236 +285,541 @@
     const RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
     const COLOR_JP = { red: '赤', black: '黒', green: '緑' };
 
-    // ======== ホイールとボールのアニメーション ========
+    // ======== 3Dホイールとボール(three.js) ========
     // ヨーロピアンルーレットのポケットの並び(時計回り、上から)
     const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
     const TWO_PI = Math.PI * 2;
     const SEG = TWO_PI / 37;
-    const WHEEL_SPEED = 0.7;      // 待ち時間中のホイールの回転(rad/秒・時計回り)
-    const BALL_SPEED = 8;         // 待ち時間中のボールの周回(rad/秒・反時計回り)
-    const MIN_SETTLE = 4.0;       // ボールが落ち着くまでの最短時間(秒)
-
-    // ホイール上でのポケットの中心角(ホイールの回転角 0 のとき、上=-90度から時計回り)
-    function pocketOffset(idx) { return (idx + 0.5) * SEG - Math.PI / 2; }
-
-    // 結果(idx番目のポケット)が分かった時点から、ボールが減速して必ずそのポケットに収まるように計算する。
-    //  W0: 現在のホイール角 / A0: 現在のボール角 / w0: ホイールの角速度 / wb: ボールの角速度(反時計回りの大きさ)
-    //  ホイール: 角速度が w0 から 0 へ直線的に減る  θw(u) = W0 + w0*Ts*(u - u²/2)   (u = 経過/Ts, 0〜1)
-    //  ボール  : A(u) = Af + K*(1-u)²           (Af は最終角 = 止まったホイールのポケット中心)
-    //  → 初速が現在の周回速度(wb)と一致し、u=1 でちょうどポケットの位置に着く。
-    function computeSettle(W0, A0, w0, wb, idx) {
-        const off = pocketOffset(idx);
-        const C = A0 - W0 - off;
-        const m = Math.ceil((MIN_SETTLE * (wb + w0) / 2 - C) / TWO_PI);   // 何周ぶん余計に回すか
-        const Ts = 2 * (C + TWO_PI * m) / (wb + w0);
-        const wheelEnd = W0 + 0.5 * w0 * Ts;
-        const Af = wheelEnd + off;
-        const K = A0 - Af + TWO_PI * m;
-        return { Ts: Ts, Af: Af, K: K, wheelEnd: wheelEnd };
-    }
-
-    const canvas = document.getElementById('wheel');
-    const ctx = canvas.getContext('2d');
     const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let cssSize = 320;
-    let wheelAngle = 0;
-    let ballAngle = null;           // null = ボールなし
-    let ballRadius = 0;
-    let highlightIdx = -1;          // 最後に当たったポケット(強調表示)
-    let animMode = 'rest';          // 'rest' / 'idle'(回転中・結果待ち) / 'settle'(減速して収まる)
-    let pendingIdx = null;
-    let settle = null;
-    let settleDone = null;
-    let lastTs = 0;
-    let rafId = 0;
 
-    function setupCanvas() {
-        const dpr = window.devicePixelRatio || 1;
-        cssSize = Math.max(240, Math.round(canvas.getBoundingClientRect().width || 320));
-        canvas.width = Math.round(cssSize * dpr);
-        canvas.height = Math.round(cssSize * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
+    // 結果の流れ(サーバーが出目を決める → 演出がその出目に必ず着地する)
+    //  idle : ボールをトラックに投げ入れ、減速しながら周回(結果待ちの間もここ)
+    //  drop : 速度が落ちたらデフレクターに当たってホイールへ落下。フレットを跳ねてポケットに収まる
+    //  rest : ボールはポケットに入ったままホイールと一緒にゆっくり止まっていく
+    const Wheel3D = (function() {
+        const host = document.getElementById('wheel3d');
+        const canvas = document.getElementById('wheel-canvas');
+        if (!host || !canvas || typeof THREE === 'undefined') return null;
+        try { return buildWheel(host, canvas); }
+        catch (e) { console.error('3D wheel init failed', e); return null; }
+    })();
 
-    function drawWheel() {
-        const S = cssSize, cx = S / 2, cy = S / 2, R = S / 2 - 2;
-        const rTrackOuter = R * 0.93, rPocketOuter = R * 0.71, rPocketInner = R * 0.47, rHub = R * 0.30;
-        const rBallOuter = R * 0.82, rBallRest = R * 0.60;
-        ctx.clearRect(0, 0, S, S);
+    function buildWheel(host, canvas) {
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.15;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.setClearColor(0x000000, 0);
 
-        // 外枠(木目調)
-        const wood = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R);
-        wood.addColorStop(0, '#7C4A1E'); wood.addColorStop(1, '#3B2210');
-        ctx.beginPath(); ctx.arc(cx, cy, R, 0, TWO_PI); ctx.fillStyle = wood; ctx.fill();
-        ctx.lineWidth = 2; ctx.strokeStyle = '#C9A227'; ctx.stroke();
+        const clamp = function(x, a, b) { return Math.min(b, Math.max(a, x)); };
+        const sstep = function(e0, e1, x) { const t = clamp((x - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+        const wrap2pi = function(x) { x = x % TWO_PI; return x < 0 ? x + TWO_PI : x; };
+        const hash = function(k) { const x = Math.sin(k * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
 
-        // ボールが周回するトラック
-        ctx.beginPath(); ctx.arc(cx, cy, rTrackOuter, 0, TWO_PI);
-        ctx.fillStyle = '#1F2937'; ctx.fill();
-        ctx.beginPath(); ctx.arc(cx, cy, rPocketOuter + 2, 0, TWO_PI);
-        ctx.fillStyle = '#111827'; ctx.fill();
+        // ---- 寸法(ワールド単位) ----
+        const BALL_R = 0.28;
+        const R_POCKET = 5.5;                  // ボールが収まる半径
+        const R_HIGH = 8.85, R_LOW = 7.62;     // トラック上の最大/最小周回半径
+        const W_SPIN = 1.7, W_REST = 0.22;     // ホイールの回転速度(rad/s)
+        const BALL_W0 = 14, BALL_K = 0.30;     // ボールの初速と減衰
+        const BALL_DROP = 5.6;                 // この速度まで落ちたらホイールへ落下
+        const LAUNCH_T = 0.55;                 // ボールを投げ入れる時間
+        const TS_MIN = 2.3;                    // 落下してから止まるまでの最短時間
+        const FRET_H = 0.27;
+        const TEX_R = 7.5;
 
-        // ポケット(回転するホイール)
-        for (let i = 0; i < 37; i++) {
-            const n = WHEEL_ORDER[i];
-            const a0 = wheelAngle + i * SEG - Math.PI / 2;
-            const a1 = a0 + SEG;
-            ctx.beginPath();
-            ctx.arc(cx, cy, rPocketOuter, a0, a1);
-            ctx.arc(cx, cy, rPocketInner, a1, a0, true);
-            ctx.closePath();
-            ctx.fillStyle = colorOf(n) === 'red' ? '#DC2626' : (colorOf(n) === 'black' ? '#111827' : '#16A34A');
-            ctx.fill();
-            ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
-
-            // 数字(ホイールと一緒に回る・外向きに立てる)
-            const mid = a0 + SEG / 2;
-            ctx.save();
-            ctx.translate(cx + Math.cos(mid) * (rPocketOuter - R * 0.075), cy + Math.sin(mid) * (rPocketOuter - R * 0.075));
-            ctx.rotate(mid + Math.PI / 2);
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold ' + Math.max(8, Math.round(R * 0.058)) + 'px sans-serif';
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-            ctx.fillText(String(n), 0, 0);
-            ctx.restore();
-        }
-
-        // 当たったポケットを金色で強調
-        if (highlightIdx >= 0) {
-            const a0 = wheelAngle + highlightIdx * SEG - Math.PI / 2;
-            ctx.beginPath();
-            ctx.arc(cx, cy, rPocketOuter, a0, a0 + SEG);
-            ctx.arc(cx, cy, rPocketInner, a0 + SEG, a0, true);
-            ctx.closePath();
-            ctx.lineWidth = 3; ctx.strokeStyle = '#FACC15'; ctx.stroke();
-        }
-
-        // 中央のハブ(ホイールと一緒に回る)
-        ctx.beginPath(); ctx.arc(cx, cy, rPocketInner - 1, 0, TWO_PI); ctx.fillStyle = '#4B2E16'; ctx.fill();
-        const hub = ctx.createRadialGradient(cx - rHub * 0.3, cy - rHub * 0.3, 2, cx, cy, rHub);
-        hub.addColorStop(0, '#FDE68A'); hub.addColorStop(1, '#B45309');
-        ctx.beginPath(); ctx.arc(cx, cy, rHub, 0, TWO_PI); ctx.fillStyle = hub; ctx.fill();
-        ctx.lineWidth = 3; ctx.strokeStyle = '#FDE68A';
-        for (let k = 0; k < 4; k++) {
-            const a = wheelAngle + k * Math.PI / 2;
-            ctx.beginPath();
-            ctx.moveTo(cx + Math.cos(a) * rHub * 0.3, cy + Math.sin(a) * rHub * 0.3);
-            ctx.lineTo(cx + Math.cos(a) * (rPocketInner - 4), cy + Math.sin(a) * (rPocketInner - 4));
-            ctx.stroke();
-        }
-        ctx.beginPath(); ctx.arc(cx, cy, rHub * 0.28, 0, TWO_PI); ctx.fillStyle = '#FEF3C7'; ctx.fill();
-
-        // ボール
-        if (ballAngle !== null) {
-            const br = Math.max(5, R * 0.045);
-            const bx = cx + Math.cos(ballAngle) * ballRadius;
-            const by = cy + Math.sin(ballAngle) * ballRadius;
-            ctx.beginPath(); ctx.arc(bx + 1.5, by + 2, br, 0, TWO_PI); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
-            const g = ctx.createRadialGradient(bx - br * 0.35, by - br * 0.35, 1, bx, by, br);
-            g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#CBD5E1');
-            ctx.beginPath(); ctx.arc(bx, by, br, 0, TWO_PI); ctx.fillStyle = g; ctx.fill();
-        }
-    }
-
-    function geom() {
-        const R = cssSize / 2 - 2;
-        return { Ro: R * 0.82, Rp: R * 0.60 };
-    }
-
-    function frame(now) {
-        const dt = Math.min(0.05, Math.max(0, (now - lastTs) / 1000));
-        lastTs = now;
-        const g = geom();
-
-        if (animMode === 'idle') {
-            wheelAngle += WHEEL_SPEED * dt;
-            if (ballAngle === null) { ballAngle = -Math.PI / 2; ballRadius = g.Rp; }
-            ballAngle -= BALL_SPEED * dt;
-            ballRadius += (g.Ro - ballRadius) * Math.min(1, dt * 7);    // ポケットから外側のトラックへ飛び出す
-            if (pendingIdx !== null) {
-                const idx = pendingIdx; pendingIdx = null;
-                const c = computeSettle(wheelAngle, ballAngle, WHEEL_SPEED, BALL_SPEED, idx);
-                settle = { t0: now, idx: idx, Ts: c.Ts, K: c.K, Af: c.Af, W0: wheelAngle, r0: ballRadius };
-                animMode = 'settle';
+        // ホイール(回る部分)の断面。外→内の順。 [半径, 高さ]
+        const ROTOR_PROFILE = [[7.45, 0.80], [7.1, 0.77], [6.75, 0.70], [6.45, 0.55], [6.2, 0.44], [5.0, 0.34], [4.75, 0.33], [4.55, 0.36]];
+        function rotorY(r) {
+            const P = ROTOR_PROFILE;
+            if (r >= P[0][0]) return P[0][1];
+            for (let i = 0; i < P.length - 1; i++) {
+                if (r <= P[i][0] && r >= P[i + 1][0]) {
+                    const t = (P[i][0] - r) / (P[i][0] - P[i + 1][0]);
+                    return P[i][1] + (P[i + 1][1] - P[i][1]) * t;
+                }
             }
-        } else if (animMode === 'settle') {
-            const u = Math.min(1, (now - settle.t0) / 1000 / settle.Ts);
-            wheelAngle = settle.W0 + WHEEL_SPEED * settle.Ts * (u - u * u / 2);
-            ballAngle = settle.Af + settle.K * (1 - u) * (1 - u);
-            if (u < 0.55) {
-                ballRadius = settle.r0;
-            } else {
-                const v = (u - 0.55) / 0.45;                                     // 内側へ落ちていく
-                ballRadius = settle.r0 + (g.Rp - settle.r0) * (1 - Math.pow(1 - v, 3))
-                           + (1 - v) * Math.abs(Math.sin(v * 24)) * 7;          // ポケットの縁で小さく跳ねる
-            }
-            if (u >= 1) {
-                ballAngle = settle.Af;
-                ballRadius = g.Rp;
-                highlightIdx = settle.idx;
-                animMode = 'rest';
-                drawWheel();
-                const done = settleDone; settleDone = null;
-                if (done) done();
-                return;
-            }
-        } else {
-            drawWheel();
-            return;
+            return P[P.length - 1][1];
         }
-        drawWheel();
-        rafId = requestAnimationFrame(frame);
-    }
+        function trackY(r) { return 0.80 + 1.05 * Math.pow(clamp((r - 7.45) / 1.75, 0, 1.2), 1.8); }
+        function surfY(r) { return r >= 7.45 ? trackY(r) : rotorY(r); }
+        function localAngle(idx) { return (idx + 0.5) * SEG - Math.PI / 2; }   // ホイール上でのポケット中心角
 
-    function startIdle() {
-        highlightIdx = -1;
-        animMode = 'idle';
-        lastTs = performance.now();
-        cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(frame);
-    }
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(36, 1, 1, 200);
+        const maxAniso = renderer.capabilities.getMaxAnisotropy();
 
-    // 結果の数字 n に向かって減速し、そのポケットに収まったら解決する Promise を返す
-    function settleTo(n) {
-        return new Promise(function(resolve) {
-            const idx = WHEEL_ORDER.indexOf(n);
-            if (reduceMotion) {            // 動きを減らす設定: アニメーションなしで結果だけ表示
-                cancelAnimationFrame(rafId);
-                animMode = 'rest';
-                ballAngle = wheelAngle + pocketOffset(idx);
-                ballRadius = geom().Rp;
-                highlightIdx = idx;
-                drawWheel();
-                resolve();
-                return;
+        // ---- 環境マップ(金属・ボールの映り込み用) ----
+        function makeEnvMap() {
+            const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+            const g = c.getContext('2d');
+            const grad = g.createLinearGradient(0, 0, 0, 512);
+            grad.addColorStop(0, '#6f7a90'); grad.addColorStop(0.45, '#262b36');
+            grad.addColorStop(0.5, '#14161c'); grad.addColorStop(1, '#050506');
+            g.fillStyle = grad; g.fillRect(0, 0, 1024, 512);
+            g.shadowColor = '#fff3d6'; g.shadowBlur = 50; g.fillStyle = '#fff8e8';
+            [[120, 70, 150, 46], [420, 50, 200, 40], [700, 80, 170, 50], [930, 60, 110, 40], [560, 150, 90, 26]].forEach(function(r) {
+                g.fillRect(r[0], r[1], r[2], r[3]);
+            });
+            const tex = new THREE.CanvasTexture(c);
+            tex.mapping = THREE.EquirectangularReflectionMapping;
+            tex.encoding = THREE.sRGBEncoding;
+            const pmrem = new THREE.PMREMGenerator(renderer);
+            const rt = pmrem.fromEquirectangular(tex);
+            tex.dispose(); pmrem.dispose();
+            return rt.texture;
+        }
+        const envMap = makeEnvMap();
+
+        // ---- テクスチャ ----
+        // 真上から見た平面投影で貼る(色つきポケットと数字)。キャンバスの(x,y) = ワールドの(x,z)。
+        function makeWheelTexture() {
+            const W = 2048, c = document.createElement('canvas'); c.width = c.height = W;
+            const g = c.getContext('2d');
+            const cx = W / 2, k = W / (2 * TEX_R);
+            g.fillStyle = '#0b0b0d'; g.fillRect(0, 0, W, W);
+            for (let i = 0; i < 37; i++) {
+                const col = colorOf(WHEEL_ORDER[i]);
+                const a0 = i * SEG - Math.PI / 2, a1 = a0 + SEG;
+                g.beginPath();
+                g.arc(cx, cx, 7.5 * k, a0, a1);
+                g.arc(cx, cx, 4.5 * k, a1, a0, true);
+                g.closePath();
+                const fill = col === 'red' ? '#b3121a' : (col === 'black' ? '#0c0c0e' : '#0b7a35');
+                g.fillStyle = fill; g.fill();
+                g.lineWidth = 2; g.strokeStyle = fill; g.stroke();
             }
-            settleDone = resolve;
-            pendingIdx = idx;
+            g.strokeStyle = 'rgba(232,200,110,0.9)'; g.lineWidth = 5;
+            [6.52, 4.58].forEach(function(r) { g.beginPath(); g.arc(cx, cx, r * k, 0, TWO_PI); g.stroke(); });
+            g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.font = 'bold 66px Inter, "Hiragino Kaku Gothic ProN", Arial, sans-serif';
+            for (let i = 0; i < 37; i++) {
+                const a = localAngle(i);
+                g.save();
+                g.translate(cx + Math.cos(a) * 6.85 * k, cx + Math.sin(a) * 6.85 * k);
+                g.rotate(a - Math.PI / 2);                 // 数字の上が中心を向く
+                g.fillText(String(WHEEL_ORDER[i]), 0, 0);
+                g.restore();
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.encoding = THREE.sRGBEncoding;
+            tex.anisotropy = maxAniso;
+            return tex;
+        }
+        function makeWoodTexture() {
+            const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
+            const g = c.getContext('2d');
+            const grad = g.createLinearGradient(0, 0, 0, S);
+            grad.addColorStop(0, '#6e3c1b'); grad.addColorStop(1, '#4b2610');
+            g.fillStyle = grad; g.fillRect(0, 0, S, S);
+            for (let i = 0; i < 260; i++) {
+                const y = Math.random() * S, amp = Math.random() * 6 + 1;
+                const f = Math.floor(Math.random() * 3) + 1, ph = Math.random() * TWO_PI;
+                g.strokeStyle = Math.random() < 0.6
+                    ? 'rgba(30,12,4,' + (0.05 + Math.random() * 0.14) + ')'
+                    : 'rgba(170,105,50,' + (0.04 + Math.random() * 0.09) + ')';
+                g.lineWidth = Math.random() * 2 + 0.5;
+                g.beginPath();
+                for (let x = 0; x <= S; x += 8) {
+                    const yy = y + Math.sin(TWO_PI * f * x / S + ph) * amp;
+                    if (x === 0) g.moveTo(x, yy); else g.lineTo(x, yy);
+                }
+                g.stroke();
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(5, 1);
+            tex.encoding = THREE.sRGBEncoding;
+            tex.anisotropy = maxAniso;
+            return tex;
+        }
+        const wheelTex = makeWheelTexture();
+        const woodTex = makeWoodTexture();
+
+        // ---- マテリアル ----
+        const woodMat = new THREE.MeshPhysicalMaterial({ map: woodTex, roughness: 0.42, metalness: 0.0, clearcoat: 0.7, clearcoatRoughness: 0.25, envMap: envMap, envMapIntensity: 0.8 });
+        const trackMat = new THREE.MeshPhysicalMaterial({ color: 0x2a1a10, roughness: 0.28, metalness: 0.0, clearcoat: 1.0, clearcoatRoughness: 0.12, envMap: envMap, envMapIntensity: 0.9 });
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xd9b44a, metalness: 1.0, roughness: 0.3, envMap: envMap, envMapIntensity: 1.4 });
+        const faceMat = new THREE.MeshStandardMaterial({ map: wheelTex, roughness: 0.38, metalness: 0.05, envMap: envMap, envMapIntensity: 0.6 });
+        const ballMat = new THREE.MeshStandardMaterial({ color: 0xf4f4f6, metalness: 0.95, roughness: 0.06, envMap: envMap, envMapIntensity: 1.6 });
+
+        // ---- 固定ボウル(外枠 + ボールトラック) ----
+        const bowlGroup = new THREE.Group();
+        scene.add(bowlGroup);
+        const outerPts = [[0, -0.6], [10.6, -0.6], [10.6, -0.35], [10.0, -0.2], [10.0, 1.0], [10.15, 1.5], [9.95, 1.98], [9.6, 2.05], [9.35, 1.98], [9.2, 1.85]]
+            .map(function(p) { return new THREE.Vector2(p[0], p[1]); });
+        const outer = new THREE.Mesh(new THREE.LatheGeometry(outerPts, 128), woodMat);
+        outer.castShadow = true; outer.receiveShadow = true;
+        bowlGroup.add(outer);
+
+        const trackPts = [];
+        for (let i = 0; i <= 16; i++) { const r = 9.2 - (9.2 - 7.45) * i / 16; trackPts.push(new THREE.Vector2(r, trackY(r))); }
+        trackPts.push(new THREE.Vector2(7.42, 0.80), new THREE.Vector2(7.42, 0.2), new THREE.Vector2(0.01, 0.2));
+        const track = new THREE.Mesh(new THREE.LatheGeometry(trackPts, 128), trackMat);
+        track.receiveShadow = true;
+        bowlGroup.add(track);
+
+        const rimRing = new THREE.Mesh(new THREE.TorusGeometry(9.22, 0.07, 10, 128), goldMat);
+        rimRing.rotation.x = Math.PI / 2; rimRing.position.y = 1.87;
+        bowlGroup.add(rimRing);
+
+        // デフレクター(トラックに並ぶ金色のひし形)
+        const deflGeo = new THREE.OctahedronGeometry(0.3, 0);
+        for (let i = 0; i < 8; i++) {
+            const a = i * Math.PI / 4 + 0.2;
+            const m = new THREE.Mesh(deflGeo, goldMat);
+            m.scale.set(1.2, 0.55, 0.7);
+            const r = 8.15;
+            m.position.set(Math.cos(a) * r, trackY(r) + 0.08, Math.sin(a) * r);
+            m.rotation.y = -a;
+            m.castShadow = true;
+            bowlGroup.add(m);
+        }
+
+        // 影を受ける床
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(44, 44), new THREE.ShadowMaterial({ opacity: 0.5 }));
+        floor.rotation.x = -Math.PI / 2; floor.position.y = -0.61; floor.receiveShadow = true;
+        scene.add(floor);
+
+        // ---- 回転するホイール ----
+        const rotor = new THREE.Group();
+        scene.add(rotor);
+
+        const faceGeo = new THREE.LatheGeometry(ROTOR_PROFILE.map(function(p) { return new THREE.Vector2(p[0], p[1]); }), 148);
+        (function projectUV() {                       // 真上からの平面投影のUVに差し替える
+            const pos = faceGeo.attributes.position, uv = faceGeo.attributes.uv;
+            for (let i = 0; i < pos.count; i++) {
+                uv.setXY(i, 0.5 + pos.getX(i) / (2 * TEX_R), 0.5 - pos.getZ(i) / (2 * TEX_R));
+            }
+            uv.needsUpdate = true;
+        })();
+        const face = new THREE.Mesh(faceGeo, faceMat);
+        face.receiveShadow = true; face.castShadow = true;
+        rotor.add(face);
+
+        // 外周と内周の金リング
+        [[7.45, 0.80, 0.07], [4.56, 0.36, 0.05]].forEach(function(v) {
+            const t = new THREE.Mesh(new THREE.TorusGeometry(v[0], v[2], 10, 148), goldMat);
+            t.rotation.x = Math.PI / 2; t.position.y = v[1];
+            rotor.add(t);
         });
-    }
 
-    function stopAnimation() {              // 通信失敗など: ボールを消して静止する
-        cancelAnimationFrame(rafId);
-        animMode = 'rest';
-        pendingIdx = null;
-        ballAngle = null;
-        drawWheel();
-    }
+        // フレット(ポケットの仕切り)
+        const FRET_R0 = 4.78, FRET_R1 = 6.3, FRET_LEN = FRET_R1 - FRET_R0;
+        const fretGeo = new THREE.BoxGeometry(FRET_LEN, 0.30, 0.05);
+        const fretTilt = Math.atan2(rotorY(FRET_R1) - rotorY(FRET_R0), FRET_LEN);
+        const fretMid = (FRET_R0 + FRET_R1) / 2;
+        for (let i = 0; i < 37; i++) {
+            const pivot = new THREE.Object3D();
+            pivot.rotation.y = -(i * SEG - Math.PI / 2);
+            const m = new THREE.Mesh(fretGeo, goldMat);
+            m.position.set(fretMid, rotorY(fretMid) + 0.12, 0);
+            m.rotation.z = fretTilt;
+            m.castShadow = true; m.receiveShadow = true;
+            pivot.add(m);
+            rotor.add(pivot);
+        }
 
-    // 初期表示: 前回の出目があれば、そのポケットにボールを置いておく
-    (function initWheel() {
-        setupCanvas();
-        const last = {{ (history[0].detail.number if (history and history[0].detail and history[0].detail.number is defined) else none) | tojson }};
-        if (last !== null && last !== undefined) {
-            const idx = WHEEL_ORDER.indexOf(last);
-            if (idx >= 0) {
-                ballAngle = wheelAngle + pocketOffset(idx);
-                ballRadius = geom().Rp;
-                highlightIdx = idx;
+        // 中央のコーン
+        const conePts = [[4.55, 0.36], [4.3, 0.6], [3.7, 0.98], [2.9, 1.35], [2.1, 1.68], [1.4, 1.95], [0.8, 2.12], [0.0, 2.2]]
+            .map(function(p) { return new THREE.Vector2(p[0], p[1]); });
+        const cone = new THREE.Mesh(new THREE.LatheGeometry(conePts, 96), woodMat);
+        cone.castShadow = true; cone.receiveShadow = true;
+        rotor.add(cone);
+
+        // ターレット(中央の金色の軸)と取っ手
+        const turretPts = [[0.0, 2.0], [0.75, 2.0], [0.62, 2.25], [0.38, 2.5], [0.30, 2.9], [0.46, 3.0], [0.2, 3.2], [0.0, 3.25]]
+            .map(function(p) { return new THREE.Vector2(p[0], p[1]); });
+        const turret = new THREE.Mesh(new THREE.LatheGeometry(turretPts, 48), goldMat);
+        turret.castShadow = true;
+        rotor.add(turret);
+        const rodGeo = new THREE.CylinderGeometry(0.07, 0.07, 2.4, 12);
+        const knobGeo = new THREE.SphereGeometry(0.2, 20, 14);
+        [0, Math.PI / 2].forEach(function(rz) {
+            const rod = new THREE.Mesh(rodGeo, goldMat);
+            rod.position.y = 2.75;
+            if (rz === 0) rod.rotation.z = Math.PI / 2; else rod.rotation.x = Math.PI / 2;
+            rod.castShadow = true;
+            rotor.add(rod);
+        });
+        [[1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]].forEach(function(p) {
+            const kn = new THREE.Mesh(knobGeo, goldMat);
+            kn.position.set(p[0], 2.75, p[1]);
+            kn.castShadow = true;
+            rotor.add(kn);
+        });
+
+        // 当たったポケットの光(ホイールに追従する)
+        const glowGeo = (function() {
+            const NR = 8, NA = 6, pos = [], idx = [];
+            for (let i = 0; i <= NR; i++) {
+                const r = 4.85 + (6.95 - 4.85) * i / NR;
+                for (let j = 0; j <= NA; j++) {
+                    const a = (-0.5 + j / NA) * SEG * 0.94;
+                    pos.push(r * Math.cos(a), rotorY(r) + 0.05, r * Math.sin(a));
+                }
+            }
+            for (let i = 0; i < NR; i++) for (let j = 0; j < NA; j++) {
+                const a = i * (NA + 1) + j, b = a + 1, c = a + NA + 1, d = c + 1;
+                idx.push(a, c, b, b, c, d);
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+            geo.setIndex(idx);
+            return geo;
+        })();
+        const glowMat = new THREE.MeshBasicMaterial({ color: 0xffd34d, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+        const glow = new THREE.Mesh(glowGeo, glowMat);
+        glow.visible = false;
+        const glowLight = new THREE.PointLight(0xffd36b, 0, 8);
+        glowLight.position.set(5.8, 1.8, 0);
+        glow.add(glowLight);
+        rotor.add(glow);
+
+        // ---- ボール ----
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 40, 28), ballMat);
+        ball.castShadow = true;
+        ball.visible = false;
+        scene.add(ball);
+        function placeBall(rs, a, ex) {                 // rs: ボールが接している面の半径
+            const y = surfY(rs);
+            const s = (surfY(rs + 0.02) - surfY(rs - 0.02)) / 0.04;
+            const inv = 1 / Math.sqrt(1 + s * s);
+            const rc = rs - BALL_R * s * inv;
+            ball.position.set(rc * Math.cos(a), y + BALL_R * inv + ex, rc * Math.sin(a));
+        }
+
+        // ---- ライト ----
+        scene.add(new THREE.HemisphereLight(0xbfd0ff, 0x3a2410, 0.6));
+        const key = new THREE.DirectionalLight(0xfff1dc, 1.5);
+        key.position.set(-7, 17, 10);
+        key.castShadow = true;
+        key.shadow.mapSize.set(2048, 2048);
+        key.shadow.camera.left = -13; key.shadow.camera.right = 13;
+        key.shadow.camera.top = 13; key.shadow.camera.bottom = -13;
+        key.shadow.camera.near = 1; key.shadow.camera.far = 50;
+        key.shadow.bias = -0.0004; key.shadow.normalBias = 0.03;
+        scene.add(key);
+        const fill = new THREE.DirectionalLight(0x9db8ff, 0.5);
+        fill.position.set(10, 8, -8);
+        scene.add(fill);
+
+        // ---- カメラ(ドラッグで回せる) ----
+        const DEF_YAW = 0, DEF_PITCH = 0.95;
+        let yaw = DEF_YAW, pitch = DEF_PITCH, tYaw = DEF_YAW, tPitch = DEF_PITCH, baseDist = 34;
+        function placeCamera() {
+            yaw += (tYaw - yaw) * 0.18; pitch += (tPitch - pitch) * 0.18;
+            camera.position.set(baseDist * Math.sin(yaw) * Math.cos(pitch), baseDist * Math.sin(pitch) + 0.6, baseDist * Math.cos(yaw) * Math.cos(pitch));
+            camera.lookAt(0, 0.6, 0);
+        }
+        let dragging = false, lastX = 0, lastY = 0;
+        canvas.addEventListener('pointerdown', function(e) {
+            dragging = true; lastX = e.clientX; lastY = e.clientY;
+            host.classList.add('dragging');
+            try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+        canvas.addEventListener('pointermove', function(e) {
+            if (!dragging) return;
+            tYaw -= (e.clientX - lastX) * 0.008;
+            if (e.pointerType === 'mouse') tPitch = clamp(tPitch + (e.clientY - lastY) * 0.006, 0.5, 1.4);
+            lastX = e.clientX; lastY = e.clientY;
+        });
+        function endDrag() { dragging = false; host.classList.remove('dragging'); }
+        canvas.addEventListener('pointerup', endDrag);
+        canvas.addEventListener('pointercancel', endDrag);
+        canvas.addEventListener('dblclick', function() { tYaw = DEF_YAW; tPitch = DEF_PITCH; });
+
+        function resize() {
+            const w = Math.max(240, host.clientWidth), h = Math.max(240, host.clientHeight || w);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.setSize(w, h, false);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            baseDist = 34 / Math.min(1, camera.aspect);
+        }
+        if (window.ResizeObserver) new ResizeObserver(resize).observe(host);
+        window.addEventListener('resize', resize);
+        resize();
+
+        // ---- 動きの状態 ----
+        const st = {
+            mode: 'rest', t: 0,
+            wheelA: 0, wheelW: W_REST,
+            ball: { on: false, a: 0, rs: R_POCKET, ex: 0 },
+            rel: 0,                 // rest 中: ホイール上でのボールの角度
+            va: 0,                  // ボールの(ワールド上の)角速度。負 = 反時計回り
+            pending: null, done: null,
+            launch: null, drop: null, glowOn: false
+        };
+
+        function showGlow(idx) {
+            glow.rotation.y = -localAngle(idx);
+            glow.visible = true; st.glowOn = true;
+        }
+        function hideGlow() { glow.visible = false; st.glowOn = false; glowMat.opacity = 0; glowLight.intensity = 0; }
+
+        function startDrop() {
+            const idx = st.pending; st.pending = null;
+            const relStar = localAngle(idx);
+            const rel1 = st.ball.a - st.wheelA;
+            const vrel = -st.va + st.wheelW;                       // ホイールに対するボールの速さ
+            const K0 = wrap2pi(rel1 - relStar);
+            const Kmin = vrel * TS_MIN / 2;
+            const m = Math.max(0, Math.ceil((Kmin - K0) / TWO_PI));  // 何周ぶん余計に回すか
+            const K = K0 + TWO_PI * m;
+            // ホイール上の角度  rel(u) = relStar + K(1-u)^2  (初速 = 今の相対速度、u=1 で必ずそのポケット)
+            st.drop = { t: 0, Ts: 2 * K / vrel, K: K, relStar: relStar, idx: idx, r1: st.ball.rs, W: st.wheelW, seed: Math.random() * 100 };
+            st.mode = 'drop';
+        }
+
+        function step(dt) {
+            if (st.mode === 'rest') {
+                st.wheelW += (W_REST - st.wheelW) * (1 - Math.exp(-dt * 0.8));
+                st.wheelA += st.wheelW * dt;
+                if (st.ball.on) { st.ball.a = st.wheelA + st.rel; st.ball.rs = R_POCKET; st.ball.ex = 0; }
+            } else if (st.mode === 'idle') {
+                st.t += dt;
+                st.wheelW += (W_SPIN - st.wheelW) * (1 - Math.exp(-dt * 2.5));
+                st.wheelA += st.wheelW * dt;
+                const L = st.launch;
+                let reached = false;
+                if (st.t < LAUNCH_T) {                              // 投げ入れ
+                    const u = st.t / LAUNCH_T, e = sstep(0, 1, u);
+                    st.va = L.va0 * (1 - e) - BALL_W0 * e;
+                    st.ball.rs = L.rs0 + (R_HIGH - L.rs0) * e;
+                    st.ball.ex = L.ex0 * (1 - e) + 0.9 * Math.pow(Math.sin(Math.PI * u), 0.6);
+                } else {                                            // 減速しながら周回
+                    const w = BALL_W0 * Math.exp(-BALL_K * (st.t - LAUNCH_T));
+                    reached = w <= BALL_DROP;
+                    const wb = Math.max(BALL_DROP, w);
+                    st.va = -wb;
+                    st.ball.rs = R_LOW + (R_HIGH - R_LOW) * Math.pow(clamp((wb - BALL_DROP) / (BALL_W0 - BALL_DROP), 0, 1), 0.75);
+                    st.ball.ex = 0;
+                }
+                st.ball.a += st.va * dt;
+                if (reached && st.pending !== null) startDrop();    // 結果が届いていれば落下開始(未着なら周回を続ける)
+            } else if (st.mode === 'drop') {
+                const d = st.drop;
+                d.t += dt;
+                const u = Math.min(1, d.t / d.Ts);
+                st.wheelA += d.W * dt;
+                const sf = 1 - u;                                   // 速度の残り
+                const wob = SEG * 1.1 * sf * sf * sstep(0.55, 0.85, u) * Math.sin(u * 46);   // 最後に隣へ揺り戻される
+                const rel = d.relStar + d.K * sf * sf + wob;
+                st.ball.a = st.wheelA + rel;
+
+                let rs = d.r1 + (R_POCKET - d.r1) * sstep(0.04, 0.72, u);
+                rs += 0.10 * sf * sf * Math.sin(u * 38) * sstep(0.35, 0.6, u);
+                let ex = 0;
+                const jh = (u - 0.02) / 0.12;                        // デフレクターに当たって跳ねる
+                if (jh > 0 && jh < 1) { ex += 0.85 * Math.sin(Math.PI * jh); rs -= 0.25 * Math.sin(Math.PI * jh); }
+                const s = (rel + Math.PI / 2) / SEG;                 // ポケット境界が整数になる位置
+                const fr = clamp((6.55 - rs) / 0.5, 0, 1);           // フレットのある範囲にいる度合い
+                ex += fr * FRET_H * sstep(0.06, 0.45, sf) * (0.72 + 0.28 * Math.cos(TWO_PI * s));   // 速いうちはフレットの上を滑る
+                const kk = Math.floor(s);
+                ex += fr * 0.42 * Math.pow(sf, 1.3) * hash(kk + d.seed) * Math.sin(Math.PI * (s - kk));   // 遅くなるほど小さく跳ねる
+                st.ball.rs = rs; st.ball.ex = ex;
+
+                if (u >= 1) {                                        // 着地
+                    st.mode = 'rest';
+                    st.wheelW = d.W;
+                    st.rel = d.relStar;
+                    st.ball.a = st.wheelA + st.rel; st.ball.rs = R_POCKET; st.ball.ex = 0;
+                    showGlow(d.idx);
+                    const done = st.done; st.done = null;
+                    if (done) done();
+                }
             }
         }
-        drawWheel();
-        window.addEventListener('resize', function() { setupCanvas(); drawWheel(); });
+
+        function apply(now) {
+            rotor.rotation.y = -st.wheelA;
+            ball.visible = st.ball.on;
+            if (st.ball.on) placeBall(st.ball.rs, st.ball.a, st.ball.ex);
+            if (st.glowOn) {
+                const p = 0.5 + 0.5 * Math.sin(now / 170);
+                glowMat.opacity = 0.18 + 0.32 * p;
+                glowLight.intensity = 0.6 + 1.4 * p;
+            }
+        }
+
+        let last = performance.now(), onScreen = true;
+        if ('IntersectionObserver' in window) {
+            new IntersectionObserver(function(es) { onScreen = es[0].isIntersecting; }).observe(host);
+        }
+        function loop(now) {
+            const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+            last = now;
+            step(dt);
+            if (onScreen) {
+                apply(now);
+                placeCamera();
+                renderer.render(scene, camera);
+            }
+            requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+
+        // ---- 外から使うAPI ----
+        function startIdle() {
+            hideGlow();
+            st.pending = null; st.done = null;
+            st.t = 0; st.mode = 'idle';
+            if (!st.ball.on) {                                       // 初回: 上からボールを投げ入れる
+                st.ball.on = true; st.ball.a = Math.PI / 2;
+                st.launch = { rs0: R_HIGH, ex0: 2.2, va0: 0 };
+                st.ball.rs = R_HIGH; st.ball.ex = 2.2;
+            } else {                                                 // ポケットのボールを拾って投げ入れる
+                st.launch = { rs0: st.ball.rs, ex0: 0, va0: st.wheelW };
+            }
+            st.va = st.launch.va0;
+        }
+        // 結果の数字 n に向かって減速し、そのポケットに収まったら解決する Promise を返す
+        function settleTo(n) {
+            return new Promise(function(resolve) {
+                const idx = WHEEL_ORDER.indexOf(n);
+                if (reduceMotion) {                                  // 動きを減らす設定: アニメーションなしで結果だけ表示
+                    st.mode = 'rest'; st.ball.on = true; st.rel = localAngle(idx);
+                    st.ball.a = st.wheelA + st.rel; st.ball.rs = R_POCKET; st.ball.ex = 0;
+                    showGlow(idx);
+                    resolve();
+                    return;
+                }
+                st.done = resolve;
+                st.pending = idx;
+            });
+        }
+        function stopAnimation() {                                   // 通信失敗など: ボールを片づけて静かな状態に戻す
+            st.pending = null; st.done = null;
+            st.mode = 'rest'; st.ball.on = false;
+            hideGlow();
+        }
+        function showLast(n) {                                       // ページを開いた時: 前回の出目のポケットにボールを置く
+            const idx = WHEEL_ORDER.indexOf(n);
+            if (idx < 0) return;
+            st.ball.on = true; st.rel = localAngle(idx);
+            st.ball.a = st.wheelA + st.rel; st.ball.rs = R_POCKET; st.ball.ex = 0;
+            showGlow(idx);
+        }
+        return { startIdle: startIdle, settleTo: settleTo, stopAnimation: stopAnimation, showLast: showLast };
+    }
+
+    // three.js が読み込めない / WebGL が使えない環境でも、賭けは普通に遊べるようにする
+    const wheel = Wheel3D || {
+        startIdle: function() {},
+        settleTo: function() { return new Promise(function(r) { setTimeout(r, 1200); }); },
+        stopAnimation: function() {},
+        showLast: function() {}
+    };
+    if (!Wheel3D) {
+        const h = document.getElementById('wheel3d');
+        if (h) h.innerHTML = '<div class="wheel3d-fallback">3D表示を利用できない環境です(結果は下に表示されます)</div>';
+    }
+    (function initLast() {
+        const last = {{ (history[0].detail.number if (history and history[0].detail and history[0].detail.number is defined) else none) | tojson }};
+        if (last !== null && last !== undefined) wheel.showLast(last);
     })();
 
     const spinBtn = document.getElementById('spin-btn');
@@ -622,7 +903,7 @@
         const choice = choiceType === 'number' ? { type: 'number', number: pickedNumber } : { type: choiceType };
         ballEl.textContent = '…';
         ballEl.className = 'roulette-ball';
-        startIdle();      // 結果を待つ間も、ホイールとボールはもう回り始めている
+        wheel.startIdle();      // 結果を待つ間も、ホイールとボールはもう回り始めている
 
         try {
             const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random();
@@ -634,7 +915,7 @@
             const data = await res.json();
 
             if (!data.success) {
-                stopAnimation();
+                wheel.stopAnimation();
                 setMsg(data.error || '失敗しました。', 'red');
                 if (typeof data.balance === 'number') balanceEl.textContent = data.balance;
                 spinning = false; lockInputs(false);
@@ -643,7 +924,7 @@
 
             // サーバーが決めた出目に向かって減速し、そのポケットにボールが収まってから結果を表示する
             const n = data.detail.number;
-            await settleTo(n);
+            await wheel.settleTo(n);
             setBall(n, true);
             addChip(n);
             balanceEl.textContent = data.balance;
@@ -655,64 +936,14 @@
             }
             spinning = false; lockInputs(false);
         } catch (e) {
-            stopAnimation();
+            wheel.stopAnimation();
             setMsg('通信エラーが発生しました。', 'red');
             spinning = false; lockInputs(false);
         }
     }
 
-    // ---- ベット額に応じたチップ表示 ----
-    const CHIP_DENOMS = [5000, 1000, 500, 100, 50, 10, 5, 1];   // 大きい額から順に割り当てる
-    const MAX_CHIPS_PER_STACK = 8;
-    const chipStacksEl = document.getElementById('chip-stacks');
-    const betTotalEl = document.getElementById('bet-total');
-    let lastChipKey = '';
-
-    function renderBetChips() {
-        const bet = parseInt(betInput.value, 10);
-        const valid = Number.isFinite(bet) && bet >= 1;
-        betTotalEl.textContent = valid ? String(bet) : '0';
-
-        const counts = [];
-        let rest = valid ? bet : 0;
-        CHIP_DENOMS.forEach(function(v) {
-            const c = Math.floor(rest / v);
-            rest -= c * v;
-            if (c > 0) counts.push({ v: v, c: c });
-        });
-
-        const key = counts.map(function(x) { return x.v + 'x' + x.c; }).join(',');
-        if (key === lastChipKey) return;
-        const prev = {};
-        lastChipKey.split(',').forEach(function(s) { const p = s.split('x'); if (p[0]) prev[p[0]] = Number(p[1]); });
-        lastChipKey = key;
-
-        chipStacksEl.textContent = '';
-        counts.forEach(function(x) {
-            const stack = document.createElement('div');
-            stack.className = 'chip-stack' + (prev[x.v] !== x.c ? ' pop' : '');
-            const col = document.createElement('div');
-            col.className = 'chip-stack-chips';
-            const shown = Math.min(x.c, MAX_CHIPS_PER_STACK);
-            for (let i = 0; i < shown; i++) {
-                const chip = document.createElement('div');
-                chip.className = 'bet-chip c' + x.v;
-                chip.textContent = String(x.v);
-                col.appendChild(chip);
-            }
-            const label = document.createElement('div');
-            label.className = 'chip-stack-label';
-            label.textContent = x.v + ' ×' + x.c;
-            stack.appendChild(col);
-            stack.appendChild(label);
-            chipStacksEl.appendChild(stack);
-        });
-    }
-    betInput.addEventListener('input', renderBetChips);
-
     spinBtn.addEventListener('click', spin);
     refreshChoiceUI();
-    renderBetChips();
     </script>
 </body>
 </html>
