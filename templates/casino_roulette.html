@@ -274,9 +274,9 @@
     const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
     const TWO_PI = Math.PI * 2;
     const SEG = TWO_PI / 37;
-    const WHEEL_SPEED = 1.1;      // 待ち時間中のホイールの回転(rad/秒・時計回り)
-    const BALL_SPEED = 13;        // 待ち時間中のボールの周回(rad/秒・反時計回り)
-    const MIN_SETTLE = 2.8;       // ボールが落ち着くまでの最短時間(秒)
+    const WHEEL_SPEED = 0.7;      // 待ち時間中のホイールの回転(rad/秒・時計回り)
+    const BALL_SPEED = 8;         // 待ち時間中のボールの周回(rad/秒・反時計回り)
+    const MIN_SETTLE = 4.0;       // ボールが落ち着くまでの最短時間(秒)
 
     // ホイール上でのポケットの中心角(ホイールの回転角 0 のとき、上=-90度から時計回り)
     function pocketOffset(idx) { return (idx + 0.5) * SEG - Math.PI / 2; }
