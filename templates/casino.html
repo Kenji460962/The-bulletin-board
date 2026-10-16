@@ -172,8 +172,6 @@
         </div>
 
         {% if current_member %}
-        {% set nh_ok = (net_history is defined and net_history) %}
-        {% set nh_days = net_history.days if nh_ok else [] %}
         <div class="glass-panel net-section">
             <div class="net-head">
                 <h2 class="panel-title" style="margin: 0;">収支グラフ</h2>
@@ -219,8 +217,8 @@
     // ---- 収支グラフ ----
     {% if current_member %}
     (function() {
-        const ALL_DAYS = {{ nh_days | tojson }};
-        const HAS_DATA = {{ 'true' if nh_ok else 'false' }};
+        let ALL_DAYS = [];
+        let loadState = 'loading';     // 'loading' / 'ok' / 'error'
         const wrap = document.getElementById('net-chart-wrap');
         if (!wrap) return;
         const host = document.getElementById('net-svg-host');
@@ -398,12 +396,10 @@
             const spins = view.reduce(function(a, d) { return a + d.spins; }, 0);
             if (!view.length || spins === 0) {
                 wrap.hidden = true; summaryEl.hidden = true; emptyEl.hidden = false;
-                if (!HAS_DATA) {
-                    console.warn('net_history がテンプレートに渡されていません(ルートで net_history を渡してください)');
-                    emptyEl.textContent = 'グラフのデータが渡されていません(ルートで net_history を渡す必要があります)。';
-                } else {
-                    emptyEl.textContent = 'この期間のプレイ記録はありません。';
-                }
+                if (loadState === 'loading') emptyEl.textContent = '読み込み中…';
+                else if (loadState === 'error') emptyEl.textContent = 'グラフの読み込みに失敗しました。';
+                else emptyEl.textContent = ALL_DAYS.some(function(d) { return d.spins > 0; })
+                    ? 'この期間のプレイ記録はありません。' : 'まだプレイ記録がありません。';
                 return;
             }
             emptyEl.hidden = true; wrap.hidden = false; summaryEl.hidden = false;
@@ -428,7 +424,22 @@
         if (window.ResizeObserver) new ResizeObserver(onResize).observe(wrap);
         else window.addEventListener('resize', onResize);
 
-        render();
+        render();   // 読み込み中の表示
+
+        // 既存の /api/casino/stats から全期間(最大365日)を1回だけ取得し、7日/30日/全期間はブラウザ側で切り替える
+        fetch('/api/casino/stats?days=0', { credentials: 'same-origin' })
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (!data || !data.success || !Array.isArray(data.days)) throw new Error('bad response');
+                ALL_DAYS = data.days;
+                loadState = 'ok';
+                render();
+            })
+            .catch(function(e) {
+                console.error('収支グラフの取得に失敗', e);
+                loadState = 'error';
+                render();
+            });
     })();
     {% endif %}
     </script>
