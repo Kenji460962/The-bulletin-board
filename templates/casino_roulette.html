@@ -62,13 +62,14 @@
         .glass-panel:first-of-type { padding-top: 0; }
         .panel-title { font-size: 16px; font-weight: 700; margin: 0 0 10px; }
 
-        .roulette-ball-wrap { display: flex; justify-content: center; padding: 18px 0 8px; }
+        .roulette-ball-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0 8px; }
+        .wheel-canvas { width: 100%; max-width: 340px; aspect-ratio: 1 / 1; display: block; touch-action: manipulation; }
         .roulette-ball {
-            width: 128px; height: 128px; border-radius: 50%;
+            width: 64px; height: 64px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            font-size: 52px; font-weight: 800; color: #fff;
-            background: #6B7280; border: 6px solid var(--card-border);
-            box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+            font-size: 26px; font-weight: 800; color: #fff;
+            background: #6B7280; border: 4px solid var(--card-border);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
             transition: background 0.1s ease, transform 0.25s ease;
             user-select: none;
         }
@@ -170,7 +171,10 @@
         </div>
 
         <div class="glass-panel">
-            <div class="roulette-ball-wrap"><div class="roulette-ball" id="ball">?</div></div>
+            <div class="roulette-ball-wrap">
+                <canvas class="wheel-canvas" id="wheel" role="img" aria-label="ルーレットのホイール"></canvas>
+                <div class="roulette-ball" id="ball">?</div>
+            </div>
             <div class="recent-chips" id="recent-chips">
                 {% for h in history[:12] %}{% if h.detail and h.detail.number is defined %}
                 <span class="chip {{ h.detail.color }}">{{ h.detail.number }}</span>
@@ -265,6 +269,238 @@
     const RED_NUMBERS = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
     const COLOR_JP = { red: '赤', black: '黒', green: '緑' };
 
+    // ======== ホイールとボールのアニメーション ========
+    // ヨーロピアンルーレットのポケットの並び(時計回り、上から)
+    const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+    const TWO_PI = Math.PI * 2;
+    const SEG = TWO_PI / 37;
+    const WHEEL_SPEED = 1.1;      // 待ち時間中のホイールの回転(rad/秒・時計回り)
+    const BALL_SPEED = 13;        // 待ち時間中のボールの周回(rad/秒・反時計回り)
+    const MIN_SETTLE = 2.8;       // ボールが落ち着くまでの最短時間(秒)
+
+    // ホイール上でのポケットの中心角(ホイールの回転角 0 のとき、上=-90度から時計回り)
+    function pocketOffset(idx) { return (idx + 0.5) * SEG - Math.PI / 2; }
+
+    // 結果(idx番目のポケット)が分かった時点から、ボールが減速して必ずそのポケットに収まるように計算する。
+    //  W0: 現在のホイール角 / A0: 現在のボール角 / w0: ホイールの角速度 / wb: ボールの角速度(反時計回りの大きさ)
+    //  ホイール: 角速度が w0 から 0 へ直線的に減る  θw(u) = W0 + w0*Ts*(u - u²/2)   (u = 経過/Ts, 0〜1)
+    //  ボール  : A(u) = Af + K*(1-u)²           (Af は最終角 = 止まったホイールのポケット中心)
+    //  → 初速が現在の周回速度(wb)と一致し、u=1 でちょうどポケットの位置に着く。
+    function computeSettle(W0, A0, w0, wb, idx) {
+        const off = pocketOffset(idx);
+        const C = A0 - W0 - off;
+        const m = Math.ceil((MIN_SETTLE * (wb + w0) / 2 - C) / TWO_PI);   // 何周ぶん余計に回すか
+        const Ts = 2 * (C + TWO_PI * m) / (wb + w0);
+        const wheelEnd = W0 + 0.5 * w0 * Ts;
+        const Af = wheelEnd + off;
+        const K = A0 - Af + TWO_PI * m;
+        return { Ts: Ts, Af: Af, K: K, wheelEnd: wheelEnd };
+    }
+
+    const canvas = document.getElementById('wheel');
+    const ctx = canvas.getContext('2d');
+    const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let cssSize = 320;
+    let wheelAngle = 0;
+    let ballAngle = null;           // null = ボールなし
+    let ballRadius = 0;
+    let highlightIdx = -1;          // 最後に当たったポケット(強調表示)
+    let animMode = 'rest';          // 'rest' / 'idle'(回転中・結果待ち) / 'settle'(減速して収まる)
+    let pendingIdx = null;
+    let settle = null;
+    let settleDone = null;
+    let lastTs = 0;
+    let rafId = 0;
+
+    function setupCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        cssSize = Math.max(240, Math.round(canvas.getBoundingClientRect().width || 320));
+        canvas.width = Math.round(cssSize * dpr);
+        canvas.height = Math.round(cssSize * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    function drawWheel() {
+        const S = cssSize, cx = S / 2, cy = S / 2, R = S / 2 - 2;
+        const rTrackOuter = R * 0.93, rPocketOuter = R * 0.71, rPocketInner = R * 0.47, rHub = R * 0.30;
+        const rBallOuter = R * 0.82, rBallRest = R * 0.60;
+        ctx.clearRect(0, 0, S, S);
+
+        // 外枠(木目調)
+        const wood = ctx.createRadialGradient(cx, cy, R * 0.6, cx, cy, R);
+        wood.addColorStop(0, '#7C4A1E'); wood.addColorStop(1, '#3B2210');
+        ctx.beginPath(); ctx.arc(cx, cy, R, 0, TWO_PI); ctx.fillStyle = wood; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = '#C9A227'; ctx.stroke();
+
+        // ボールが周回するトラック
+        ctx.beginPath(); ctx.arc(cx, cy, rTrackOuter, 0, TWO_PI);
+        ctx.fillStyle = '#1F2937'; ctx.fill();
+        ctx.beginPath(); ctx.arc(cx, cy, rPocketOuter + 2, 0, TWO_PI);
+        ctx.fillStyle = '#111827'; ctx.fill();
+
+        // ポケット(回転するホイール)
+        for (let i = 0; i < 37; i++) {
+            const n = WHEEL_ORDER[i];
+            const a0 = wheelAngle + i * SEG - Math.PI / 2;
+            const a1 = a0 + SEG;
+            ctx.beginPath();
+            ctx.arc(cx, cy, rPocketOuter, a0, a1);
+            ctx.arc(cx, cy, rPocketInner, a1, a0, true);
+            ctx.closePath();
+            ctx.fillStyle = colorOf(n) === 'red' ? '#DC2626' : (colorOf(n) === 'black' ? '#111827' : '#16A34A');
+            ctx.fill();
+            ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.stroke();
+
+            // 数字(ホイールと一緒に回る・外向きに立てる)
+            const mid = a0 + SEG / 2;
+            ctx.save();
+            ctx.translate(cx + Math.cos(mid) * (rPocketOuter - R * 0.075), cy + Math.sin(mid) * (rPocketOuter - R * 0.075));
+            ctx.rotate(mid + Math.PI / 2);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold ' + Math.max(8, Math.round(R * 0.058)) + 'px sans-serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(String(n), 0, 0);
+            ctx.restore();
+        }
+
+        // 当たったポケットを金色で強調
+        if (highlightIdx >= 0) {
+            const a0 = wheelAngle + highlightIdx * SEG - Math.PI / 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, rPocketOuter, a0, a0 + SEG);
+            ctx.arc(cx, cy, rPocketInner, a0 + SEG, a0, true);
+            ctx.closePath();
+            ctx.lineWidth = 3; ctx.strokeStyle = '#FACC15'; ctx.stroke();
+        }
+
+        // 中央のハブ(ホイールと一緒に回る)
+        ctx.beginPath(); ctx.arc(cx, cy, rPocketInner - 1, 0, TWO_PI); ctx.fillStyle = '#4B2E16'; ctx.fill();
+        const hub = ctx.createRadialGradient(cx - rHub * 0.3, cy - rHub * 0.3, 2, cx, cy, rHub);
+        hub.addColorStop(0, '#FDE68A'); hub.addColorStop(1, '#B45309');
+        ctx.beginPath(); ctx.arc(cx, cy, rHub, 0, TWO_PI); ctx.fillStyle = hub; ctx.fill();
+        ctx.lineWidth = 3; ctx.strokeStyle = '#FDE68A';
+        for (let k = 0; k < 4; k++) {
+            const a = wheelAngle + k * Math.PI / 2;
+            ctx.beginPath();
+            ctx.moveTo(cx + Math.cos(a) * rHub * 0.3, cy + Math.sin(a) * rHub * 0.3);
+            ctx.lineTo(cx + Math.cos(a) * (rPocketInner - 4), cy + Math.sin(a) * (rPocketInner - 4));
+            ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(cx, cy, rHub * 0.28, 0, TWO_PI); ctx.fillStyle = '#FEF3C7'; ctx.fill();
+
+        // ボール
+        if (ballAngle !== null) {
+            const br = Math.max(5, R * 0.045);
+            const bx = cx + Math.cos(ballAngle) * ballRadius;
+            const by = cy + Math.sin(ballAngle) * ballRadius;
+            ctx.beginPath(); ctx.arc(bx + 1.5, by + 2, br, 0, TWO_PI); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill();
+            const g = ctx.createRadialGradient(bx - br * 0.35, by - br * 0.35, 1, bx, by, br);
+            g.addColorStop(0, '#FFFFFF'); g.addColorStop(1, '#CBD5E1');
+            ctx.beginPath(); ctx.arc(bx, by, br, 0, TWO_PI); ctx.fillStyle = g; ctx.fill();
+        }
+    }
+
+    function geom() {
+        const R = cssSize / 2 - 2;
+        return { Ro: R * 0.82, Rp: R * 0.60 };
+    }
+
+    function frame(now) {
+        const dt = Math.min(0.05, Math.max(0, (now - lastTs) / 1000));
+        lastTs = now;
+        const g = geom();
+
+        if (animMode === 'idle') {
+            wheelAngle += WHEEL_SPEED * dt;
+            if (ballAngle === null) { ballAngle = -Math.PI / 2; ballRadius = g.Rp; }
+            ballAngle -= BALL_SPEED * dt;
+            ballRadius += (g.Ro - ballRadius) * Math.min(1, dt * 7);    // ポケットから外側のトラックへ飛び出す
+            if (pendingIdx !== null) {
+                const idx = pendingIdx; pendingIdx = null;
+                const c = computeSettle(wheelAngle, ballAngle, WHEEL_SPEED, BALL_SPEED, idx);
+                settle = { t0: now, idx: idx, Ts: c.Ts, K: c.K, Af: c.Af, W0: wheelAngle, r0: ballRadius };
+                animMode = 'settle';
+            }
+        } else if (animMode === 'settle') {
+            const u = Math.min(1, (now - settle.t0) / 1000 / settle.Ts);
+            wheelAngle = settle.W0 + WHEEL_SPEED * settle.Ts * (u - u * u / 2);
+            ballAngle = settle.Af + settle.K * (1 - u) * (1 - u);
+            if (u < 0.55) {
+                ballRadius = settle.r0;
+            } else {
+                const v = (u - 0.55) / 0.45;                                     // 内側へ落ちていく
+                ballRadius = settle.r0 + (g.Rp - settle.r0) * (1 - Math.pow(1 - v, 3))
+                           + (1 - v) * Math.abs(Math.sin(v * 24)) * 7;          // ポケットの縁で小さく跳ねる
+            }
+            if (u >= 1) {
+                ballAngle = settle.Af;
+                ballRadius = g.Rp;
+                highlightIdx = settle.idx;
+                animMode = 'rest';
+                drawWheel();
+                const done = settleDone; settleDone = null;
+                if (done) done();
+                return;
+            }
+        } else {
+            drawWheel();
+            return;
+        }
+        drawWheel();
+        rafId = requestAnimationFrame(frame);
+    }
+
+    function startIdle() {
+        highlightIdx = -1;
+        animMode = 'idle';
+        lastTs = performance.now();
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(frame);
+    }
+
+    // 結果の数字 n に向かって減速し、そのポケットに収まったら解決する Promise を返す
+    function settleTo(n) {
+        return new Promise(function(resolve) {
+            const idx = WHEEL_ORDER.indexOf(n);
+            if (reduceMotion) {            // 動きを減らす設定: アニメーションなしで結果だけ表示
+                cancelAnimationFrame(rafId);
+                animMode = 'rest';
+                ballAngle = wheelAngle + pocketOffset(idx);
+                ballRadius = geom().Rp;
+                highlightIdx = idx;
+                drawWheel();
+                resolve();
+                return;
+            }
+            settleDone = resolve;
+            pendingIdx = idx;
+        });
+    }
+
+    function stopAnimation() {              // 通信失敗など: ボールを消して静止する
+        cancelAnimationFrame(rafId);
+        animMode = 'rest';
+        pendingIdx = null;
+        ballAngle = null;
+        drawWheel();
+    }
+
+    // 初期表示: 前回の出目があれば、そのポケットにボールを置いておく
+    (function initWheel() {
+        setupCanvas();
+        const last = {{ (history[0].detail.number if (history and history[0].detail and history[0].detail.number is defined) else none) | tojson }};
+        if (last !== null && last !== undefined) {
+            const idx = WHEEL_ORDER.indexOf(last);
+            if (idx >= 0) {
+                ballAngle = wheelAngle + pocketOffset(idx);
+                ballRadius = geom().Rp;
+                highlightIdx = idx;
+            }
+        }
+        drawWheel();
+        window.addEventListener('resize', function() { setupCanvas(); drawWheel(); });
+    })();
+
     const spinBtn = document.getElementById('spin-btn');
     const betInput = document.getElementById('bet');
     const balanceEl = document.getElementById('balance');
@@ -344,7 +580,9 @@
         lockInputs(true);
         setMsg('', null);
         const choice = choiceType === 'number' ? { type: 'number', number: pickedNumber } : { type: choiceType };
-        const roll = setInterval(function() { setBall(Math.floor(Math.random() * 37), false); }, 70);
+        ballEl.textContent = '…';
+        ballEl.className = 'roulette-ball';
+        startIdle();      // 結果を待つ間も、ホイールとボールはもう回り始めている
 
         try {
             const requestId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random();
@@ -356,30 +594,28 @@
             const data = await res.json();
 
             if (!data.success) {
-                clearInterval(roll);
+                stopAnimation();
                 setMsg(data.error || '失敗しました。', 'red');
                 if (typeof data.balance === 'number') balanceEl.textContent = data.balance;
                 spinning = false; lockInputs(false);
                 return;
             }
 
-            // 少し回してから、サーバーが決めた出目で止める
-            setTimeout(function() {
-                clearInterval(roll);
-                const n = data.detail.number;
-                setBall(n, true);
-                addChip(n);
-                balanceEl.textContent = data.balance;
-                const label = COLOR_JP[data.detail.color] + ' ' + n;
-                if (data.payout > 0) {
-                    setMsg('🎉 ' + label + ' 的中！ ' + data.payout + 'pt 獲得（純損益 +' + data.net + '）', 'green');
-                } else {
-                    setMsg(label + ' でハズレ（-' + bet + 'pt）', 'red');
-                }
-                spinning = false; lockInputs(false);
-            }, 1100);
+            // サーバーが決めた出目に向かって減速し、そのポケットにボールが収まってから結果を表示する
+            const n = data.detail.number;
+            await settleTo(n);
+            setBall(n, true);
+            addChip(n);
+            balanceEl.textContent = data.balance;
+            const label = COLOR_JP[data.detail.color] + ' ' + n;
+            if (data.payout > 0) {
+                setMsg('🎉 ' + label + ' 的中！ ' + data.payout + 'pt 獲得（純損益 +' + data.net + '）', 'green');
+            } else {
+                setMsg(label + ' でハズレ（-' + bet + 'pt）', 'red');
+            }
+            spinning = false; lockInputs(false);
         } catch (e) {
-            clearInterval(roll);
+            stopAnimation();
             setMsg('通信エラーが発生しました。', 'red');
             spinning = false; lockInputs(false);
         }
