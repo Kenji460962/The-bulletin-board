@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>グループ | talk-ch</title>
+<script>
+    (function() {
+        var saved = localStorage.getItem('talk_ch_theme');
+        if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    })();
+</script>
+<style>
+    :root {
+        --bg-color: #0f172a; --panel-bg: #1e293b; --border-color: #334155;
+        --text-main: #f8fafc; --text-muted: #94a3b8;
+        --accent-color: #38bdf8; --accent-hover: #0ea5e9; --danger-color: #f43f5e;
+    }
+    html[data-theme="light"] {
+        --bg-color: #dfe0dc; --panel-bg: #eeece6; --border-color: #c7c5bd;
+        --text-main: #0f172a; --text-muted: #64748b;
+        --accent-color: #0284c7; --accent-hover: #0369a1; --danger-color: #e11d48;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0; padding: 0; min-height: 100%;
+        background: var(--bg-color); color: var(--text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", sans-serif;
+    }
+    .header-area {
+        position: sticky; top: 0; z-index: 10;
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 14px;
+        background: var(--panel-bg); border-bottom: 1px solid var(--border-color);
+    }
+    .back-btn { color: var(--text-muted); text-decoration: none; font-size: 18px; flex: none; }
+    .page-title { font-weight: 700; font-size: 16px; }
+    .header-spacer { flex: 1; }
+    .new-btn {
+        background: var(--accent-color); color: #0f172a; border: none; border-radius: 8px;
+        padding: 8px 14px; font-size: 13px; font-weight: 700; cursor: pointer; flex: none;
+    }
+    .new-btn:hover { background: var(--accent-hover); }
+
+    .wrap { max-width: 720px; margin: 0 auto; padding: 14px; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+    .tabs a {
+        padding: 6px 14px; border-radius: 999px; font-size: 13px; text-decoration: none;
+        color: var(--text-muted); border: 1px solid var(--border-color);
+    }
+    .tabs a.active { background: var(--panel-bg); color: var(--text-main); font-weight: 700; }
+
+    .group-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    .group-item {
+        display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+        background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 10px;
+        color: inherit; text-decoration: none;
+    }
+    .group-item:hover { border-color: var(--accent-color); }
+    .group-icon {
+        width: 42px; height: 42px; border-radius: 12px; flex: none;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--bg-color); border: 1px solid var(--border-color);
+        font-weight: 700; color: var(--accent-color); font-size: 16px;
+    }
+    .group-main { flex: 1; min-width: 0; }
+    .group-name-row { display: flex; align-items: baseline; gap: 8px; }
+    .group-name { font-weight: 700; font-size: 14.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .group-count { font-size: 11.5px; color: var(--text-muted); flex: none; }
+    .group-last { font-size: 12.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; }
+    .group-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+    .group-time { font-size: 11px; color: var(--text-muted); }
+    .unread {
+        min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
+        background: var(--danger-color); color: #fff; font-size: 11px; font-weight: 700;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .empty-state { text-align: center; color: var(--text-muted); font-size: 13px; padding: 48px 0; line-height: 1.8; }
+
+    .modal-backdrop {
+        display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+        z-index: 50; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+        border-radius: 10px; padding: 20px; width: 100%; max-width: 420px;
+        max-height: 90vh; display: flex; flex-direction: column;
+    }
+    .modal h2 { margin: 0 0 14px; font-size: 16px; }
+    .modal label.lbl { display: block; font-size: 12.5px; color: var(--text-muted); margin-bottom: 6px; }
+    .modal input[type=text] {
+        width: 100%; background: var(--bg-color); color: var(--text-main);
+        border: 1px solid var(--border-color); border-radius: 6px;
+        padding: 9px 10px; font-size: 14px; font-family: inherit; margin-bottom: 14px;
+    }
+    .pick-list {
+        flex: 1; min-height: 80px; overflow-y: auto; margin-bottom: 8px;
+        border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color);
+    }
+    .pick-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer; font-size: 13.5px; }
+    .pick-row:hover { background: rgba(127,127,127,0.12); }
+    .pick-row input { width: 16px; height: 16px; flex: none; }
+    .avatar {
+        width: 28px; height: 28px; border-radius: 50%; flex: none; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+        font-size: 12px; font-weight: 700; color: var(--text-muted);
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .pick-count { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
+    .form-error { font-size: 12.5px; color: var(--danger-color); margin-bottom: 10px; display: none; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+    .modal-actions button { border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-cancel { background: none; border: 1px solid var(--border-color); color: var(--text-muted); }
+    .btn-submit { background: var(--accent-color); border: none; color: #0f172a; }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="header-area">
+    <a class="back-btn" href="/">←</a>
+    <span class="page-title">メッセージ</span>
+    <div class="header-spacer"></div>
+    <button type="button" class="new-btn" id="open-create">＋ グループを作成</button>
+</div>
+
+<div class="wrap">
+    <div class="tabs">
+        <a href="/messages">個人 (DM)</a>
+        <a href="/groups" class="active">グループ</a>
+    </div>
+
+    {% if groups %}
+    <ul class="group-list">
+        {% for g in groups %}
+        <li>
+            <a class="group-item" href="/groups/{{ g.id }}">
+                <span class="group-icon">{{ (g.name or '?')[:1] }}</span>
+                <span class="group-main">
+                    <span class="group-name-row">
+                        <span class="group-name">{{ g.name }}</span>
+                        <span class="group-count">{{ g.member_count }}人</span>
+                    </span>
+                    <span class="group-last" style="display:block;">{{ g.last_content or 'まだメッセージはありません' }}</span>
+                </span>
+                <span class="group-side">
+                    <span class="group-time">{{ g.last_message_at[5:16] if g.last_message_at else '' }}</span>
+                    {% if g.unread_count %}<span class="unread">{{ '99+' if g.unread_count > 99 else g.unread_count }}</span>{% endif %}
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+        まだグループがありません。<br>
+        相互フォローの相手を選んで、最初のグループを作ってみましょう。
+    </div>
+    {% endif %}
+</div>
+
+<div class="modal-backdrop" id="create-modal">
+    <div class="modal">
+        <h2>グループを作成</h2>
+        <label class="lbl" for="group-name">グループ名（{{ name_max }}文字まで）</label>
+        <input type="text" id="group-name" maxlength="{{ name_max }}" placeholder="例: 将棋仲間">
+
+        <label class="lbl">メンバー（相互フォローの相手のみ・自分を含め最大{{ max_members }}人）</label>
+        {% if mutuals %}
+        <div class="pick-list" id="pick-list">
+            {% for u in mutuals %}
+            <label class="pick-row">
+                <input type="checkbox" class="mutual-check" value="{{ u.public_id }}">
+                <span class="avatar">{% if u.icon_path %}<img src="{{ u.icon_path }}" alt="" loading="lazy">{% else %}{{ (u.username or '?')[:1] }}{% endif %}</span>
+                <span>{{ u.username }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <div class="pick-count" id="pick-count">0人選択中</div>
+        {% else %}
+        <div class="empty-state" style="padding:20px 0;">相互フォローの相手がいません。<br>お互いにフォローし合うとグループに招待できます。</div>
+        {% endif %}
+
+        <div class="form-error" id="create-error"></div>
+        <div class="modal-actions">
+            <button type="button" class="btn-cancel" id="create-cancel">キャンセル</button>
+            <button type="button" class="btn-submit" id="create-submit" {% if not mutuals %}disabled{% endif %}>作成する</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const MAX_PICK = {{ max_members - 1 }};
+    const modal = document.getElementById('create-modal');
+    const errEl = document.getElementById('create-error');
+    const submitBtn = document.getElementById('create-submit');
+    const countEl = document.getElementById('pick-count');
+
+    document.getElementById('open-create').addEventListener('click', () => modal.classList.add('open'));
+    document.getElementById('create-cancel').addEventListener('click', () => modal.classList.remove('open'));
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.classList.remove('open'); });
+
+    function picked() {
+        return Array.from(document.querySelectorAll('.mutual-check:checked')).map(c => c.value);
+    }
+    document.querySelectorAll('.mutual-check').forEach(c => c.addEventListener('change', () => {
+        if (picked().length > MAX_PICK) { c.checked = false; }
+        if (countEl) countEl.textContent = picked().length + '人選択中';
+    }));
+
+    submitBtn.addEventListener('click', async () => {
+        const name = document.getElementById('group-name').value.trim();
+        const ids = picked();
+        errEl.style.display = 'none';
+        if (!name) { errEl.textContent = 'グループ名を入力してください。'; errEl.style.display = 'block'; return; }
+        if (!ids.length) { errEl.textContent = 'メンバーを1人以上選んでください。'; errEl.style.display = 'block'; return; }
+        submitBtn.disabled = true;
+        try {
+            const res = await fetch('/api/groups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, public_ids: ids })
+            });
+            const data = await res.json();
+            if (data.success) { location.href = data.url; return; }
+            errEl.textContent = data.error || '作成に失敗しました。';
+            errEl.style.display = 'block';
+        } catch (e) {
+            errEl.textContent = '通信に失敗しました。';
+            errEl.style.display = 'block';
+        }
+        submitBtn.disabled = false;
+    });
+</script>
+</body>
+</html>
