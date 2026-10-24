@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ group.name }} | グループ | talk-ch</title>
+<script>
+    (function() {
+        var saved = localStorage.getItem('talk_ch_theme');
+        if (saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    })();
+</script>
+<style>
+    :root {
+        --bg-color: #0f172a; --panel-bg: #1e293b; --border-color: #334155;
+        --text-main: #f8fafc; --text-muted: #94a3b8;
+        --accent-color: #38bdf8; --accent-hover: #0ea5e9; --danger-color: #f43f5e;
+        --mine-bg: #0369a1;
+    }
+    html[data-theme="light"] {
+        --bg-color: #dfe0dc; --panel-bg: #eeece6; --border-color: #c7c5bd;
+        --text-main: #0f172a; --text-muted: #64748b;
+        --accent-color: #0284c7; --accent-hover: #0369a1; --danger-color: #e11d48;
+        --mine-bg: #0284c7;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+        margin: 0; padding: 0; height: 100%;
+        background: var(--bg-color); color: var(--text-main);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", sans-serif;
+    }
+    body { display: flex; flex-direction: column; }
+
+    .header-area {
+        position: sticky; top: 0; z-index: 10;
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 14px;
+        background: var(--panel-bg); border-bottom: 1px solid var(--border-color);
+    }
+    .back-btn { color: var(--text-muted); text-decoration: none; font-size: 18px; flex: none; }
+    .group-title { min-width: 0; }
+    .group-name { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .group-sub { font-size: 11.5px; color: var(--text-muted); }
+    .header-spacer { flex: 1; }
+    .header-btn {
+        background: none; border: 1px solid var(--border-color); color: var(--text-muted);
+        border-radius: 6px; padding: 5px 11px; font-size: 12px; cursor: pointer; flex: none;
+    }
+    .header-btn:hover { color: var(--accent-color); border-color: var(--accent-color); }
+
+    .messages {
+        flex: 1; overflow-y: auto; padding: 16px;
+        display: flex; flex-direction: column; gap: 12px;
+        max-width: 720px; width: 100%; margin: 0 auto;
+    }
+    .msg { display: flex; gap: 8px; max-width: 86%; }
+    .msg.mine { align-self: flex-end; flex-direction: row-reverse; }
+    .msg.theirs { align-self: flex-start; }
+    .avatar {
+        width: 30px; height: 30px; border-radius: 50%; flex: none; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+        font-size: 12px; font-weight: 700; color: var(--text-muted); text-decoration: none;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .msg-body { display: flex; flex-direction: column; min-width: 0; }
+    .msg.mine .msg-body { align-items: flex-end; }
+    .sender-name { font-size: 11.5px; color: var(--text-muted); margin: 0 0 3px 2px; text-decoration: none; }
+    a.sender-name:hover { text-decoration: underline; }
+    .bubble {
+        padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.6;
+        white-space: pre-wrap; overflow-wrap: anywhere;
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+    }
+    .msg.mine .bubble { background: var(--mine-bg); border-color: var(--mine-bg); color: #fff; }
+    .bubble a { color: inherit; text-decoration: underline; }
+    .msg-time { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
+    .msg-retract { background: none; border: none; padding: 0 0 0 8px; font-size: 10.5px; color: var(--text-muted); cursor: pointer; text-decoration: underline; }
+    .msg-retract:hover { color: #ef4444; }
+    .empty-state { text-align: center; color: var(--text-muted); font-size: 13px; padding: 40px 0; }
+
+    .composer {
+        position: sticky; bottom: 0;
+        background: var(--panel-bg); border-top: 1px solid var(--border-color);
+        padding: 10px 14px;
+    }
+    .composer-inner { max-width: 720px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
+    .composer textarea {
+        flex: 1; resize: none; min-height: 40px; max-height: 140px;
+        background: var(--bg-color); color: var(--text-main);
+        border: 1px solid var(--border-color); border-radius: 8px;
+        padding: 10px 12px; font-size: 14px; font-family: inherit;
+    }
+    .send-btn {
+        background: var(--accent-color); color: #0f172a; border: none;
+        border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 700;
+        cursor: pointer; flex: none;
+    }
+    .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .attach-btn {
+        flex: none; width: 40px; height: 40px; border-radius: 8px; cursor: pointer;
+        background: var(--bg-color); color: var(--text-main);
+        border: 1px solid var(--border-color); font-size: 18px; line-height: 1;
+    }
+    .attach-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .img-preview { max-width: 720px; margin: 0 auto 8px; display: none; align-items: center; gap: 8px; }
+    .img-preview.show { display: flex; }
+    .img-preview img { max-height: 72px; max-width: 120px; border-radius: 8px; border: 1px solid var(--border-color); object-fit: cover; }
+    .img-preview-remove {
+        background: none; border: 1px solid var(--border-color); color: var(--text-muted);
+        border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer;
+    }
+    .msg-img { display: block; max-width: 100%; max-height: 320px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--panel-bg); }
+    .msg .msg-img-link { display: block; line-height: 0; margin-bottom: 4px; }
+    .composer-hint { max-width: 720px; margin: 6px auto 0; font-size: 11px; color: var(--text-muted); }
+    .composer-error { max-width: 720px; margin: 6px auto 0; font-size: 12px; color: var(--danger-color); }
+
+    .modal-backdrop {
+        display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+        z-index: 50; align-items: center; justify-content: center; padding: 16px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+        background: var(--panel-bg); border: 1px solid var(--border-color);
+        border-radius: 10px; padding: 20px; width: 100%; max-width: 420px;
+        max-height: 90vh; overflow-y: auto;
+    }
+    .modal h2 { margin: 0 0 12px; font-size: 16px; }
+    .modal h3 { margin: 18px 0 8px; font-size: 13px; color: var(--text-muted); font-weight: 600; }
+    .member-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; font-size: 13.5px; }
+    .member-row a { color: inherit; text-decoration: none; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .member-row a:hover { text-decoration: underline; }
+    .owner-tag {
+        font-size: 10.5px; color: var(--accent-color); border: 1px solid var(--accent-color);
+        border-radius: 999px; padding: 1px 8px; flex: none;
+    }
+    .kick-btn {
+        background: none; border: 1px solid var(--border-color); color: var(--text-muted);
+        border-radius: 6px; padding: 3px 9px; font-size: 11.5px; cursor: pointer; flex: none;
+    }
+    .kick-btn:hover { color: var(--danger-color); border-color: var(--danger-color); }
+    .pick-list { max-height: 180px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-color); }
+    .pick-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; cursor: pointer; font-size: 13.5px; }
+    .pick-row:hover { background: rgba(127,127,127,0.12); }
+    .pick-row input { width: 16px; height: 16px; flex: none; }
+    .muted-note { font-size: 12.5px; color: var(--text-muted); line-height: 1.7; }
+    .form-error { font-size: 12.5px; color: var(--danger-color); margin: 8px 0 0; display: none; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    .modal-actions button { border-radius: 6px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-cancel { background: none; border: 1px solid var(--border-color); color: var(--text-muted); }
+    .btn-submit { background: var(--accent-color); border: none; color: #0f172a; }
+    .btn-danger { background: var(--danger-color); border: none; color: #fff; }
+    .btn-submit:disabled, .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="header-area">
+    <a class="back-btn" href="/groups">←</a>
+    <div class="group-title">
+        <div class="group-name">{{ group.name }}</div>
+        <div class="group-sub" id="member-count">{{ members | length }}人</div>
+    </div>
+    <div class="header-spacer"></div>
+    <button type="button" class="header-btn" id="open-members">メンバー</button>
+</div>
+
+<div class="messages" id="messages">
+    {% if messages %}
+        {% for m in messages %}
+        <div class="msg {{ 'mine' if m.is_mine else 'theirs' }}" data-msg-id="{{ m.id }}">
+            {% if not m.is_mine %}
+            {% if m.sender_public_id %}<a class="avatar" href="/profile/{{ m.sender_public_id }}">{% else %}<span class="avatar">{% endif %}
+                {% if m.sender_icon %}<img src="{{ m.sender_icon }}" alt="" loading="lazy">{% else %}{{ (m.sender_name or '?')[:1] }}{% endif %}
+            {% if m.sender_public_id %}</a>{% else %}</span>{% endif %}
+            {% endif %}
+            <div class="msg-body">
+                {% if not m.is_mine %}
+                    {% if m.sender_public_id %}<a class="sender-name" href="/profile/{{ m.sender_public_id }}">{{ m.sender_name }}</a>{% else %}<span class="sender-name">{{ m.sender_name }}</span>{% endif %}
+                {% endif %}
+                {% if m.image_url %}<a class="msg-img-link" href="{{ m.image_url }}" target="_blank" rel="noopener"><img class="msg-img" src="{{ m.image_url }}" alt="送信画像" loading="lazy" onload="scrollToBottom()"></a>{% endif %}
+                {% if m.content %}<div class="bubble">{{ m.content | safe }}</div>{% endif %}
+                <div class="msg-time">{{ m.created_at }}{% if m.is_mine and m.content != retracted_text %}<button type="button" class="msg-retract" data-msg-id="{{ m.id }}">取り消す</button>{% endif %}</div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">まだメッセージはありません。最初のひとことを送ってみましょう。</div>
+    {% endif %}
+</div>
+
+<div class="composer">
+    <div class="img-preview" id="img-preview">
+        <img id="img-preview-img" alt="添付する画像">
+        <button type="button" class="img-preview-remove" id="img-preview-remove">取り消す</button>
+    </div>
+    <div class="composer-inner">
+        <input type="file" id="img-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+        <button type="button" class="attach-btn" id="attach-btn" aria-label="写真を添付">📷</button>
+        <textarea id="msg-input" placeholder="メッセージを入力…" maxlength="1000"></textarea>
+        <button type="button" class="send-btn" id="send-btn">送信</button>
+    </div>
+    <div class="composer-hint">Enterで送信 / Shift+Enterで改行</div>
+    <div class="composer-error" id="send-error" style="display:none;"></div>
+</div>
+
+<div class="modal-backdrop" id="members-modal">
+    <div class="modal">
+        <h2>{{ group.name }}</h2>
+        <h3>メンバー（{{ members | length }} / {{ max_members }}人）</h3>
+        {% for u in members %}
+        <div class="member-row">
+            <span class="avatar">{% if u.icon_path %}<img src="{{ u.icon_path }}" alt="" loading="lazy">{% else %}{{ (u.username or '?')[:1] }}{% endif %}</span>
+            <a href="/profile/{{ u.public_id }}">{{ u.username }}</a>
+            {% if u.id == group.owner_id %}<span class="owner-tag">オーナー</span>{% endif %}
+            {% if is_owner and u.id != group.owner_id %}
+            <button type="button" class="kick-btn" data-public-id="{{ u.public_id }}" data-name="{{ u.username }}">外す</button>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        {% if is_owner %}
+        <h3>メンバーを追加</h3>
+        {% if addable and members | length < max_members %}
+        <div class="pick-list">
+            {% for u in addable %}
+            <label class="pick-row">
+                <input type="checkbox" class="add-check" value="{{ u.public_id }}">
+                <span class="avatar">{% if u.icon_path %}<img src="{{ u.icon_path }}" alt="" loading="lazy">{% else %}{{ (u.username or '?')[:1] }}{% endif %}</span>
+                <span>{{ u.username }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <div class="modal-actions" style="margin-top:8px;">
+            <button type="button" class="btn-submit" id="add-submit">選択した人を追加</button>
+        </div>
+        <p class="muted-note">追加された人には、参加前のメッセージは表示されません。</p>
+        {% else %}
+        <p class="muted-note">追加できる相互フォローの相手がいません（または人数の上限です）。</p>
+        {% endif %}
+        {% endif %}
+
+        <div class="form-error" id="manage-error"></div>
+        <div class="modal-actions" style="margin-top:20px;">
+            <button type="button" class="btn-danger" id="leave-btn">グループを退出</button>
+            <button type="button" class="btn-cancel" id="members-close">閉じる</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const GROUP_ID = {{ group.id }};
+    const MY_PUBLIC_ID = {{ my_public_id | tojson }};
+    const RETRACTED_TEXT = {{ retracted_text | tojson }};
+    const MEMBER_COUNT = {{ members | length }};
+    const IS_OWNER = {{ 'true' if is_owner else 'false' }};
+    const messagesEl = document.getElementById('messages');
+
+    function scrollToBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
+    scrollToBottom();
+
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
+    }
+    // サーバー側でescape済みの本文が来るので、URLだけリンク化する
+    function renderContent(escaped) {
+        return String(escaped ?? '').replace(
+            /(https?:\/\/[^\s<>"']+)/g,
+            '<a href="$1" target="_blank" rel="noopener noreferrer nofollow">$1</a>'
+        );
+    }
+
+    // WebSocket / ポーリング / 自分の送信結果で同じメッセージが重複しないようIDで排除する
+    const seenIds = new Set();
+    let lastMessageId = 0;
+    messagesEl.querySelectorAll('[data-msg-id]').forEach(el => {
+        const id = parseInt(el.getAttribute('data-msg-id'), 10);
+        if (!Number.isNaN(id)) { seenIds.add(id); if (id > lastMessageId) lastMessageId = id; }
+    });
+
+    function appendMessage(msg) {
+        const id = msg && msg.id != null ? parseInt(msg.id, 10) : null;
+        if (id != null && !Number.isNaN(id)) {
+            if (seenIds.has(id)) return;
+            seenIds.add(id);
+            if (id > lastMessageId) lastMessageId = id;
+        }
+        const empty = messagesEl.querySelector('.empty-state');
+        if (empty) empty.remove();
+
+        const mine = !!MY_PUBLIC_ID && msg.sender_public_id === MY_PUBLIC_ID;
+        const name = msg.sender_name || '退会したユーザー';
+        const profile = msg.sender_public_id ? `/profile/${encodeURIComponent(msg.sender_public_id)}` : null;
+        const avatarInner = msg.sender_icon
+            ? `<img src="${escapeHtml(msg.sender_icon)}" alt="">`
+            : escapeHtml(name.slice(0, 1));
+        const avatar = mine ? '' : (profile
+            ? `<a class="avatar" href="${profile}">${avatarInner}</a>`
+            : `<span class="avatar">${avatarInner}</span>`);
+        const nameHtml = mine ? '' : (profile
+            ? `<a class="sender-name" href="${profile}">${escapeHtml(name)}</a>`
+            : `<span class="sender-name">${escapeHtml(name)}</span>`);
+        const imgHtml = msg.image_url
+            ? `<a class="msg-img-link" href="${escapeHtml(msg.image_url)}" target="_blank" rel="noopener"><img class="msg-img" src="${escapeHtml(msg.image_url)}" alt="送信画像" onload="scrollToBottom()"></a>`
+            : '';
+        const textHtml = msg.content ? `<div class="bubble">${renderContent(msg.content)}</div>` : '';
+        const retract = (mine && id != null && msg.content !== RETRACTED_TEXT)
+            ? `<button type="button" class="msg-retract" data-msg-id="${id}">取り消す</button>` : '';
+
+        const div = document.createElement('div');
+        div.className = 'msg ' + (mine ? 'mine' : 'theirs');
+        if (id != null) div.setAttribute('data-msg-id', String(id));
+        div.innerHTML = `${avatar}<div class="msg-body">${nameHtml}${imgHtml}${textHtml}<div class="msg-time">${escapeHtml(msg.created_at || '')}${retract}</div></div>`;
+        messagesEl.appendChild(div);
+        scrollToBottom();
+    }
+
+    // ---- 送信取り消し ----
+    function applyRetraction(id, text) {
+        const el = messagesEl.querySelector(`.msg[data-msg-id="${id}"]`);
+        if (!el) return;
+        const img = el.querySelector('.msg-img-link');
+        if (img) img.remove();
+        let bubble = el.querySelector('.bubble');
+        if (!bubble) {
+            bubble = document.createElement('div');
+            bubble.className = 'bubble';
+            el.querySelector('.msg-body').insertBefore(bubble, el.querySelector('.msg-time'));
+        }
+        bubble.textContent = text || RETRACTED_TEXT;
+        const btn = el.querySelector('.msg-retract');
+        if (btn) btn.remove();
+    }
+
+    messagesEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.msg-retract');
+        if (!btn) return;
+        const id = btn.getAttribute('data-msg-id');
+        if (!confirm('このメッセージを送信取り消ししますか？\nメンバー全員の画面で「' + RETRACTED_TEXT + '」に変わります。')) return;
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/api/groups/message/${id}/retract`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) { applyRetraction(id, data.text); }
+            else { alert(data.error || '取り消せませんでした。'); btn.disabled = false; }
+        } catch (err) { alert('通信に失敗しました。'); btn.disabled = false; }
+    });
+
+    // ---- 送信(テキスト+画像) ----
+    const input = document.getElementById('msg-input');
+    const sendBtn = document.getElementById('send-btn');
+    const errorEl = document.getElementById('send-error');
+    const fileInput = document.getElementById('img-input');
+    const attachBtn = document.getElementById('attach-btn');
+    const previewEl = document.getElementById('img-preview');
+    const previewImg = document.getElementById('img-preview-img');
+    const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+    let pendingFile = null, pendingUrl = null;
+
+    function showError(msg) { errorEl.textContent = msg; errorEl.style.display = 'block'; }
+    function clearPendingImage() {
+        pendingFile = null;
+        if (pendingUrl) { URL.revokeObjectURL(pendingUrl); pendingUrl = null; }
+        fileInput.value = '';
+        previewEl.classList.remove('show');
+    }
+    attachBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+        const f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        errorEl.style.display = 'none';
+        if (f.size > IMAGE_MAX_BYTES) { clearPendingImage(); showError('画像は8MB以下にしてください。'); return; }
+        pendingFile = f;
+        if (pendingUrl) URL.revokeObjectURL(pendingUrl);
+        pendingUrl = URL.createObjectURL(f);
+        previewImg.src = pendingUrl;
+        previewEl.classList.add('show');
+    });
+    document.getElementById('img-preview-remove').addEventListener('click', clearPendingImage);
+
+    async function sendMessage() {
+        const content = input.value.trim();
+        if (!content && !pendingFile) return;
+        sendBtn.disabled = true; attachBtn.disabled = true;
+        errorEl.style.display = 'none';
+        try {
+            const fd = new FormData();
+            fd.append('content', content);
+            if (pendingFile) fd.append('image', pendingFile);
+            const res = await fetch(`/api/groups/${GROUP_ID}/send`, { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.success) {
+                input.value = '';
+                clearPendingImage();
+                appendMessage(data.message);
+            } else {
+                showError(data.error || '送信に失敗しました。');
+            }
+        } catch (e) {
+            showError('通信に失敗しました。');
+        } finally {
+            sendBtn.disabled = false; attachBtn.disabled = false;
+            input.focus();
+        }
+    }
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keydown', (e) => {
+        // 日本語入力の変換確定のEnterでは送信しない
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
+    });
+
+    // ---- WebSocket(DMと共用の /ws/dm。切れてもポーリングが拾う) ----
+    let ws = null, reconnectDelay = 1000, pingTimer = null;
+    function leaveBecauseRemoved() {
+        alert('このグループから外されました。');
+        location.href = '/groups';
+    }
+    function connectWS() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
+        ws.onopen = () => {
+            reconnectDelay = 1000;
+            if (pingTimer) clearInterval(pingTimer);
+            pingTimer = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) ws.send('ping');
+            }, 25000);
+        };
+        ws.onmessage = (event) => {
+            let data;
+            try { data = JSON.parse(event.data); } catch { return; }
+            if (data.group_id !== GROUP_ID) return;
+            if (data.type === 'group_new') appendMessage(data.message);
+            else if (data.type === 'group_retracted') applyRetraction(data.message_id, data.text);
+            else if (data.type === 'group_removed') leaveBecauseRemoved();
+        };
+        ws.onclose = () => {
+            if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+            setTimeout(connectWS, reconnectDelay);
+            reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+        };
+        ws.onerror = () => { try { ws.close(); } catch {} };
+    }
+    connectWS();
+
+    // ---- ポーリング(保険。既読の更新も兼ねる) ----
+    async function pollNewMessages() {
+        try {
+            const res = await fetch(`/api/groups/${GROUP_ID}/poll?after_id=${lastMessageId}`, { cache: 'no-store' });
+            const data = await res.json().catch(() => ({}));
+            if (data.removed) { leaveBecauseRemoved(); return; }
+            if (!res.ok) return;
+            if (Array.isArray(data.messages)) data.messages.forEach(appendMessage);
+            if (Array.isArray(data.retracted_ids)) data.retracted_ids.forEach(rid => applyRetraction(rid, data.retracted_text));
+        } catch (e) { /* 次回に任せる */ }
+    }
+    setInterval(pollNewMessages, 4000);
+
+    // ---- メンバー管理 ----
+    const membersModal = document.getElementById('members-modal');
+    const manageError = document.getElementById('manage-error');
+    function manageFail(msg) { manageError.textContent = msg; manageError.style.display = 'block'; }
+    document.getElementById('open-members').addEventListener('click', () => membersModal.classList.add('open'));
+    document.getElementById('members-close').addEventListener('click', () => membersModal.classList.remove('open'));
+    membersModal.addEventListener('click', (e) => { if (e.target === membersModal) membersModal.classList.remove('open'); });
+
+    async function postJson(url, body) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body || {})
+        });
+        return res.json();
+    }
+
+    document.querySelectorAll('.kick-btn').forEach(btn => btn.addEventListener('click', async () => {
+        const name = btn.getAttribute('data-name');
+        if (!confirm(`${name} さんをこのグループから外しますか？`)) return;
+        btn.disabled = true;
+        manageError.style.display = 'none';
+        try {
+            const data = await postJson(`/api/groups/${GROUP_ID}/members/${encodeURIComponent(btn.getAttribute('data-public-id'))}/remove`);
+            if (data.success) location.reload();
+            else { manageFail(data.error || '外せませんでした。'); btn.disabled = false; }
+        } catch (e) { manageFail('通信に失敗しました。'); btn.disabled = false; }
+    }));
+
+    const addBtn = document.getElementById('add-submit');
+    if (addBtn) addBtn.addEventListener('click', async () => {
+        const ids = Array.from(document.querySelectorAll('.add-check:checked')).map(c => c.value);
+        manageError.style.display = 'none';
+        if (!ids.length) { manageFail('追加する人を選んでください。'); return; }
+        addBtn.disabled = true;
+        try {
+            const data = await postJson(`/api/groups/${GROUP_ID}/members`, { public_ids: ids });
+            if (data.success) location.reload();
+            else { manageFail(data.error || '追加できませんでした。'); addBtn.disabled = false; }
+        } catch (e) { manageFail('通信に失敗しました。'); addBtn.disabled = false; }
+    });
+
+    document.getElementById('leave-btn').addEventListener('click', async () => {
+        let msg = 'このグループを退出しますか？\n退出すると、このグループのメッセージは見られなくなります。';
+        if (MEMBER_COUNT <= 1) msg = 'あなたが最後のメンバーです。退出するとグループとメッセージはすべて削除されます。よろしいですか？';
+        else if (IS_OWNER) msg += '\n(オーナーは、最も早く参加したメンバーに引き継がれます)';
+        if (!confirm(msg)) return;
+        manageError.style.display = 'none';
+        try {
+            const data = await postJson(`/api/groups/${GROUP_ID}/leave`);
+            if (data.success) location.href = '/groups';
+            else manageFail(data.error || '退出できませんでした。');
+        } catch (e) { manageFail('通信に失敗しました。'); }
+    });
+</script>
+</body>
+</html>
