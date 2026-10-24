@@ -1138,6 +1138,13 @@
                     </span>
                     <span class="nav-label">メッセージ</span>
                 </a>
+                <a class="side-nav-item" href="/groups">
+                    <span class="nav-icon dm-link" id="group-link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <span class="dm-badge" id="group-badge" style="display:none;"></span>
+                    </span>
+                    <span class="nav-label">グループ</span>
+                </a>
                 {% endif %}
             </nav>
 
@@ -1878,6 +1885,19 @@
             badge.style.display = unread > 0 ? 'flex' : 'none';
         }
 
+        // グループチャットの未読バッジ（DMとは別カウント）
+        const groupBadge = document.getElementById('group-badge');
+        let groupUnread = 0;
+        function renderGroup() {
+            if (!groupBadge) return;
+            groupBadge.textContent = groupUnread > 99 ? '99+' : groupUnread;
+            groupBadge.style.display = groupUnread > 0 ? 'flex' : 'none';
+        }
+        fetch('/api/groups/unread_count', { cache: 'no-store' })
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d && typeof d.count === 'number') { groupUnread = d.count; renderGroup(); } })
+            .catch(() => {});
+
         // 通知の許可は最初のクリック時に求める（読み込み直後に出すとブロックされやすい）
         if ('Notification' in window && Notification.permission === 'default') {
             document.addEventListener('click', function once() {
@@ -1907,6 +1927,19 @@
                 let data;
                 try { data = JSON.parse(event.data); } catch (e) { return; }
                 if (data.type === 'pong') { clearTimeout(pong); return; }
+                if (data.type === 'group_new') {
+                    if (data.from_public_id && CURRENT_MEMBER.public_id && data.from_public_id === CURRENT_MEMBER.public_id) return;
+                    groupUnread += 1;
+                    renderGroup();
+                    const gname = data.group_name || 'グループ';
+                    const gwho = data.from_username || '誰か';
+                    showToast(`💬 ${gname}: ${gwho} さんの新着メッセージ`, `/groups/${data.group_id}`);
+                    if ('Notification' in window && Notification.permission === 'granted'
+                        && document.visibilityState !== 'visible') {
+                        new Notification('talk-ch', { body: `${gname}: ${gwho} さんの新着メッセージ` });
+                    }
+                    return;
+                }
                 if (data.type === 'dm_new') {
                     unread += 1;
                     render();
