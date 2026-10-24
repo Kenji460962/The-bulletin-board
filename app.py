@@ -224,6 +224,7 @@ async def _startup_redis():
     await _get_db_conn()
     await _ensure_adgem_schema()
     await _ensure_dm_image_schema()
+    await _ensure_group_schema()
     await points_service.ensure_schema()
     await _ensure_login_bonus_schema()
 
@@ -4836,12 +4837,15 @@ async def _cleanup_memory_caches_loop():
             _prune_expired(LAST_REPLY_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             _prune_expired(LAST_REPLY_SIGNATURES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             _prune_expired(LAST_DM_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            _prune_expired(LAST_GROUP_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
+            _prune_expired(LAST_GROUP_CREATE_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             # === カジノ追加 ===
             _prune_expired(casino_service.LAST_BET_TIMES, now, _STALE_ENTRY_MAX_AGE_SECONDS)
             # ==================
             # 経過時間による掃除に加え、件数上限でも必ず有界にする
             for _d in (LAST_THREAD_TIMES, LAST_REPLY_TIMES, LAST_REPLY_SIGNATURES,
-                       LAST_DM_TIMES, _PROXY_CHECK_CACHE, _BANNED_IP_CACHE,
+                       LAST_DM_TIMES, LAST_GROUP_TIMES, LAST_GROUP_CREATE_TIMES,
+                       _PROXY_CHECK_CACHE, _BANNED_IP_CACHE,
                        casino_service.LAST_BET_TIMES):  # === カジノ追加 ===
                 _cap_dict_size(_d, 20000)
 
@@ -5692,6 +5696,705 @@ async def dm_image(request: Request, message_id: int):
 @app.get('/api/dm/unread_count')
 async def api_dm_unread_count(request: Request):
     return json_resp({"count": await get_unread_dm_count(request)})
+
+
+# =====================================================================
+# グループチャット
+# =====================================================================
+# 参加者は「作成者(オーナー)と相互フォローで、ブロック関係がない人」だけ。
+# 判定はDMと同じくサーバー側で行う。メッセージ・画像は参加者のみ閲覧可。
+# 後から参加した人には、参加前の履歴は見せない(group_members.join_after_id)。
+# リアルタイム配信はDM用WebSocket(/ws/dm)とRedis Pub/Subをそのまま流用する。
+
+GROUP_MAX_MEMBERS = 20
+GROUP_MAX_PER_USER = 30
+GROUP_NAME_MAX = 30
+GROUP_MAX_LENGTH = 1000
+GROUP_HISTORY_LIMIT = 200
+GROUP_COOLDOWN_SECONDS = 1
+GROUP_CREATE_COOLDOWN_SECONDS = 10
+LAST_GROUP_TIMES: dict[int, float] = {}
+LAST_GROUP_CREATE_TIMES: dict[int, float] = {}
+
+_GROUP_MSG_SELECT = (
+    "SELECT gm.id, gm.sender_id, gm.content, gm.image_key, gm.created_at, "
+    "       u.username, u.public_id, u.icon_path "
+    "FROM group_messages gm LEFT JOIN users u ON u.id = gm.sender_id "
+)
+_URL_LINK_RE = re.compile(r'(https?://[^\s<>]+)')
+
+
+async def _ensure_group_schema():
+    """グループチャット用テーブルを起動時に用意する(冪等)。"""
+    conn = await _get_db_conn()
+    async with _db_lock:
+        try:
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS group_chats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    owner_id INTEGER NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    last_message_at TEXT
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS group_members (
+                    group_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    join_after_id INTEGER NOT NULL DEFAULT 0,
+                    last_read_id INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (group_id, user_id)
+                )
+            """)
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_group_members_user ON group_members(user_id)"
+            )
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS group_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    group_id INTEGER NOT NULL,
+                    sender_id INTEGER NOT NULL,
+                    content TEXT NOT NULL DEFAULT '',
+                    image_key TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )
+            """)
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_group_messages_group ON group_messages(group_id, id)"
+            )
+            await conn.commit()
+        except Exception as e:
+            print(f"グループチャットのスキーマ作成エラー: {e}")
+
+
+async def _get_group_membership(group_id: int, member_id: int):
+    """member_id がグループの参加者なら、グループ情報+自分の参加情報を返す。違えば None。"""
+    res = await execute_query(
+        "SELECT g.id, g.name, g.owner_id, m.join_after_id, m.last_read_id "
+        "FROM group_chats g JOIN group_members m ON m.group_id = g.id "
+        "WHERE g.id = ? AND m.user_id = ?",
+        [group_id, member_id]
+    )
+    return res[0] if res else None
+
+
+async def _group_members(group_id: int) -> list:
+    return await execute_query(
+        "SELECT u.id, u.username, u.public_id, u.icon_path "
+        "FROM group_members m JOIN users u ON u.id = m.user_id "
+        "WHERE m.group_id = ? ORDER BY m.rowid",
+        [group_id]
+    ) or []
+
+
+def _group_msg_out(row: dict, member_id: int, linkify: bool = False) -> dict:
+    """DB行を画面/配信用のdictにする。contentは保存時にhtml.escape済み。"""
+    content = str(row.get('content') or '')
+    if linkify and content:
+        content = _URL_LINK_RE.sub(
+            r'<a href="\1" target="_blank" rel="noopener noreferrer nofollow">\1</a>', content
+        )
+    return {
+        'id': row['id'],
+        'content': content,
+        'image_url': f"/group/image/{row['id']}" if row.get('image_key') else None,
+        'created_at': _to_jst_string(row.get('created_at')),
+        'is_mine': row['sender_id'] == member_id,
+        'sender_name': row.get('username') or '退会したユーザー',
+        'sender_public_id': row.get('public_id'),
+        'sender_icon': row.get('icon_path'),
+    }
+
+
+async def _group_candidates(owner_id: int, public_ids: list[str], skip_ids=()):
+    """public_id のうち、ownerと相互フォローで、ブロック関係がなく実在する人を返す。
+    skip_ids(自分自身・既に参加済み)は対象から外す。戻り値: (有効なユーザー行, 全員有効か)"""
+    pids = [p for p in public_ids if p]
+    if not pids:
+        return [], True
+    ph = ','.join('?' * len(pids))
+    rows = await execute_query(
+        f"SELECT u.id, u.username, u.public_id FROM users u "
+        f"WHERE u.public_id IN ({ph}) "
+        f"AND EXISTS (SELECT 1 FROM follows a WHERE a.follower_id = ? AND a.followee_id = u.id) "
+        f"AND EXISTS (SELECT 1 FROM follows b WHERE b.follower_id = u.id AND b.followee_id = ?) "
+        f"AND NOT EXISTS (SELECT 1 FROM blocks k WHERE "
+        f"    (k.blocker_id = ? AND k.blocked_id = u.id) OR (k.blocker_id = u.id AND k.blocked_id = ?))",
+        [*pids, owner_id, owner_id, owner_id, owner_id]
+    ) or []
+    skip = set(skip_ids)
+    rows = [r for r in rows if r['id'] not in skip and r['id'] != owner_id]
+    return rows, len(rows) == len(set(pids))
+
+
+async def _blocked_with_group(new_ids: list[int], existing_ids: list[int]) -> bool:
+    """新規メンバーと(既存+新規)メンバーの間にブロック関係があるか。"""
+    if not new_ids:
+        return False
+    all_ids = list(dict.fromkeys([*existing_ids, *new_ids]))
+    ph_new = ','.join('?' * len(new_ids))
+    ph_all = ','.join('?' * len(all_ids))
+    res = await execute_query(
+        f"SELECT COUNT(*) AS cnt FROM blocks WHERE "
+        f"(blocker_id IN ({ph_new}) AND blocked_id IN ({ph_all})) OR "
+        f"(blocked_id IN ({ph_new}) AND blocker_id IN ({ph_all}))",
+        [*new_ids, *all_ids, *new_ids, *all_ids]
+    )
+    return bool(res) and res[0]['cnt'] > 0
+
+
+async def _groups_joined_count(member_id: int) -> int:
+    res = await execute_query(
+        "SELECT COUNT(*) AS cnt FROM group_members WHERE user_id = ?", [member_id]
+    )
+    return res[0]['cnt'] if res else 0
+
+
+async def get_unread_group_count(member_id) -> int:
+    if not member_id:
+        return 0
+    res = await execute_query(
+        "SELECT COUNT(*) AS cnt FROM group_messages gm "
+        "JOIN group_members m ON m.group_id = gm.group_id AND m.user_id = ? "
+        "WHERE gm.id > m.last_read_id AND gm.id > m.join_after_id AND gm.sender_id != ?",
+        [member_id, member_id]
+    )
+    return res[0]['cnt'] if res else 0
+
+
+# ---- 書き込み系(トランザクション単位でまとめる) ----
+async def _group_create_tx(name: str, owner_id: int, member_ids: list[int]):
+    conn = await _get_db_conn()
+    async with _db_lock:
+        try:
+            cur = await conn.execute(
+                "INSERT INTO group_chats (name, owner_id) VALUES (?, ?)", [name, owner_id]
+            )
+            gid = cur.lastrowid
+            await cur.close()
+            await conn.executemany(
+                "INSERT INTO group_members (group_id, user_id) VALUES (?, ?)",
+                [(gid, uid) for uid in [owner_id, *member_ids]]
+            )
+            await conn.commit()
+            return gid
+        except Exception as e:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            print(f"グループ作成エラー: {e}")
+            return None
+
+
+async def _group_add_members_tx(group_id: int, user_ids: list[int]) -> bool:
+    conn = await _get_db_conn()
+    async with _db_lock:
+        try:
+            cur = await conn.execute(
+                "SELECT COALESCE(MAX(id), 0) FROM group_messages WHERE group_id = ?", [group_id]
+            )
+            row = await cur.fetchone()
+            await cur.close()
+            mx = int(row[0]) if row else 0
+            # 参加前の履歴は見せない(join_after_id)・参加時点で未読は0
+            await conn.executemany(
+                "INSERT OR IGNORE INTO group_members (group_id, user_id, join_after_id, last_read_id) "
+                "VALUES (?, ?, ?, ?)",
+                [(group_id, uid, mx, mx) for uid in user_ids]
+            )
+            await conn.commit()
+            return True
+        except Exception as e:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            print(f"グループメンバー追加エラー: {e}")
+            return False
+
+
+async def _group_insert_message(group_id: int, sender_id: int, content: str, image_key):
+    conn = await _get_db_conn()
+    async with _db_lock:
+        try:
+            cur = await conn.execute(
+                "INSERT INTO group_messages (group_id, sender_id, content, image_key) VALUES (?, ?, ?, ?)",
+                [group_id, sender_id, content, image_key]
+            )
+            mid = cur.lastrowid
+            await cur.close()
+            await conn.execute(
+                "UPDATE group_chats SET last_message_at = datetime('now') WHERE id = ?", [group_id]
+            )
+            # 送信者自身の分は既読扱い
+            await conn.execute(
+                "UPDATE group_members SET last_read_id = ? "
+                "WHERE group_id = ? AND user_id = ? AND last_read_id < ?",
+                [mid, group_id, sender_id, mid]
+            )
+            await conn.commit()
+            return mid
+        except Exception as e:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            print(f"グループメッセージ保存エラー: {e}")
+            return None
+
+
+async def _group_leave_tx(group_id: int, member_id: int, new_owner_id=None, delete_group=False):
+    """退出(必要ならオーナー交代)、または最後の1人なら会話ごと削除。削除時は画像キーを返す。"""
+    conn = await _get_db_conn()
+    async with _db_lock:
+        try:
+            keys = []
+            if delete_group:
+                cur = await conn.execute(
+                    "SELECT image_key FROM group_messages WHERE group_id = ? AND image_key IS NOT NULL",
+                    [group_id]
+                )
+                keys = [r[0] for r in await cur.fetchall()]
+                await cur.close()
+                await conn.execute("DELETE FROM group_messages WHERE group_id = ?", [group_id])
+                await conn.execute("DELETE FROM group_members WHERE group_id = ?", [group_id])
+                await conn.execute("DELETE FROM group_chats WHERE id = ?", [group_id])
+            else:
+                await conn.execute(
+                    "DELETE FROM group_members WHERE group_id = ? AND user_id = ?", [group_id, member_id]
+                )
+                if new_owner_id:
+                    await conn.execute(
+                        "UPDATE group_chats SET owner_id = ? WHERE id = ?", [new_owner_id, group_id]
+                    )
+            await conn.commit()
+            return True, keys
+        except Exception as e:
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+            print(f"グループ退出エラー: {e}")
+            return False, []
+
+
+async def _group_broadcast(user_ids: list[int], payload: dict):
+    """参加者全員のWebSocket(全worker)へ配信する。"""
+    if not user_ids:
+        return
+    await asyncio.gather(
+        *[dm_manager.send_to_user(uid, payload) for uid in user_ids],
+        return_exceptions=True
+    )
+
+
+# ---------------------------------------------------------------------
+# 画面
+# ---------------------------------------------------------------------
+_MUTUALS_SQL = (
+    "SELECT u.username, u.public_id, u.icon_path FROM follows f1 "
+    "JOIN follows f2 ON f2.follower_id = f1.followee_id AND f2.followee_id = f1.follower_id "
+    "JOIN users u ON u.id = f1.followee_id "
+    "WHERE f1.follower_id = ? {extra} ORDER BY u.username LIMIT 200"
+)
+
+
+@app.get('/groups')
+async def group_list(request: Request):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login')
+    member_id = request.session.get('member_id')
+
+    groups, mutuals, unread_dm_count = await asyncio.gather(
+        execute_query(
+            "SELECT g.id, g.name, g.last_message_at, "
+            "  (SELECT COUNT(*) FROM group_members x WHERE x.group_id = g.id) AS member_count, "
+            "  (SELECT COALESCE(NULLIF(gm.content, ''), CASE WHEN gm.image_key IS NOT NULL THEN '📷 画像' END) "
+            "     FROM group_messages gm WHERE gm.group_id = g.id AND gm.id > m.join_after_id "
+            "     ORDER BY gm.id DESC LIMIT 1) AS last_content, "
+            "  (SELECT COUNT(*) FROM group_messages gm2 WHERE gm2.group_id = g.id "
+            "     AND gm2.id > m.last_read_id AND gm2.id > m.join_after_id AND gm2.sender_id != ?) AS unread_count "
+            "FROM group_members m JOIN group_chats g ON g.id = m.group_id "
+            "WHERE m.user_id = ? "
+            "ORDER BY COALESCE(g.last_message_at, g.created_at) DESC LIMIT 100",
+            [member_id, member_id]
+        ),
+        execute_query(_MUTUALS_SQL.format(extra=""), [member_id]),
+        get_unread_dm_count(request),
+    )
+    groups = groups or []
+    for g in groups:
+        # 本文は保存時にescape済み。Jinjaの自動エスケープと二重にならないよう戻して短縮する
+        text = html.unescape(str(g.get('last_content') or ''))
+        g['last_content'] = text[:40] + ('…' if len(text) > 40 else '')
+        g['last_message_at'] = _to_jst_string(g.get('last_message_at'))
+
+    return templates.TemplateResponse(request, 'groups.html', {
+        'groups': groups,
+        'mutuals': mutuals or [],
+        'unread_dm_count': unread_dm_count,
+        'max_members': GROUP_MAX_MEMBERS,
+        'name_max': GROUP_NAME_MAX,
+    })
+
+
+@app.get('/groups/{group_id}')
+async def group_chat_page(request: Request, group_id: int):
+    if not is_member_logged_in(request):
+        return RedirectResponse(url='/login')
+    member_id = request.session.get('member_id')
+
+    membership = await _get_group_membership(group_id, member_id)
+    if not membership:
+        return text_resp("グループが見つからないか、参加していません。", 404)
+    is_owner = membership['owner_id'] == member_id
+
+    raw, members, addable, my_public_id = await asyncio.gather(
+        execute_query(
+            _GROUP_MSG_SELECT +
+            "WHERE gm.group_id = ? AND gm.id > ? ORDER BY gm.id DESC LIMIT ?",
+            [group_id, membership['join_after_id'], GROUP_HISTORY_LIMIT]
+        ),
+        _group_members(group_id),
+        execute_query(
+            _MUTUALS_SQL.format(
+                extra="AND u.id NOT IN (SELECT user_id FROM group_members WHERE group_id = ?)"
+            ),
+            [member_id, group_id]
+        ) if is_owner else asyncio.sleep(0, result=[]),
+        get_member_public_id(request),
+    )
+    raw = list(reversed(raw or []))
+    messages = [_group_msg_out(r, member_id, linkify=True) for r in raw]
+
+    if raw and raw[-1]['id'] > membership['last_read_id']:
+        # 表示用データは組み立て済みなので、既読更新はバックグラウンドで行う
+        asyncio.create_task(execute_query(
+            "UPDATE group_members SET last_read_id = ? WHERE group_id = ? AND user_id = ?",
+            [raw[-1]['id'], group_id, member_id]
+        ))
+
+    return templates.TemplateResponse(request, 'group_chat.html', {
+        'group': membership,
+        'members': members,
+        'messages': messages,
+        'is_owner': is_owner,
+        'addable': addable or [],
+        'my_public_id': my_public_id,
+        'retracted_text': RETRACTED_TEXT,
+        'max_members': GROUP_MAX_MEMBERS,
+        'unread_dm_count': 0,
+    })
+
+
+# ---------------------------------------------------------------------
+# API
+# ---------------------------------------------------------------------
+@app.get('/api/groups/unread_count')
+async def api_group_unread_count(request: Request):
+    return json_resp({"count": await get_unread_group_count(request.session.get('member_id'))})
+
+
+@app.post('/api/groups')
+async def api_group_create(request: Request):
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    body = await get_json_silent(request) or {}
+    name = re.sub(r'\s+', ' ', str(body.get('name') or '')).strip()
+    if not name or len(name) > GROUP_NAME_MAX:
+        return json_resp({"success": False, "error": f"グループ名は1〜{GROUP_NAME_MAX}文字で入力してください。"}, 400)
+
+    raw_ids = body.get('public_ids')
+    if not isinstance(raw_ids, list):
+        return json_resp({"success": False, "error": "メンバーの指定が不正です。"}, 400)
+    pids = list(dict.fromkeys(str(p) for p in raw_ids if isinstance(p, str)))[:GROUP_MAX_MEMBERS + 5]
+    if not pids:
+        return json_resp({"success": False, "error": "メンバーを1人以上選んでください。"}, 400)
+    if 1 + len(pids) > GROUP_MAX_MEMBERS:
+        return json_resp({"success": False, "error": f"メンバーは自分を含めて{GROUP_MAX_MEMBERS}人までです。"}, 400)
+    if await _groups_joined_count(member_id) >= GROUP_MAX_PER_USER:
+        return json_resp({"success": False, "error": f"参加できるグループは{GROUP_MAX_PER_USER}個までです。"}, 400)
+
+    users, all_ok = await _group_candidates(member_id, pids)
+    if not users or not all_ok:
+        return json_resp({"success": False, "error": "相互フォローでない、またはブロック関係にあるユーザーは追加できません。"}, 400)
+    new_ids = [u['id'] for u in users]
+    if await _blocked_with_group(new_ids, [member_id]):
+        return json_resp({"success": False, "error": "ブロック関係にあるユーザー同士は同じグループに入れられません。"}, 400)
+
+    now = time.time()
+    last = LAST_GROUP_CREATE_TIMES.get(member_id)
+    if last is not None and now - last < GROUP_CREATE_COOLDOWN_SECONDS:
+        return json_resp({"success": False, "error": "作成が速すぎます。少し待ってください。"}, 429)
+    LAST_GROUP_CREATE_TIMES[member_id] = now
+
+    gid = await _group_create_tx(name, member_id, new_ids)
+    if not gid:
+        return json_resp({"success": False, "error": "グループの作成に失敗しました。"}, 500)
+    return json_resp({"success": True, "group_id": gid, "url": f"/groups/{gid}"})
+
+
+@app.post('/api/groups/{group_id}/send')
+async def api_group_send(request: Request, group_id: int):
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    membership = await _get_group_membership(group_id, member_id)
+    if not membership:
+        return json_resp({"success": False, "error": "このグループには参加していません。"}, 403)
+
+    upload = None
+    if 'multipart/form-data' in (request.headers.get('content-type') or '').lower():
+        form = await request.form()
+        content = (form.get('content') or '').strip()
+        up = form.get('image')
+        if up is not None and getattr(up, 'filename', ''):
+            upload = up
+    else:
+        body = await get_json_silent(request)
+        content = (body.get('content') or '').strip() if body else ''
+    if not content and upload is None:
+        return json_resp({"success": False, "error": "本文が空です。"}, 400)
+    if len(content) > GROUP_MAX_LENGTH:
+        return json_resp({"success": False, "error": f"本文は{GROUP_MAX_LENGTH}文字以内にしてください。"}, 400)
+
+    now = time.time()
+    last = LAST_GROUP_TIMES.get(member_id)
+    if last is not None and now - last < GROUP_COOLDOWN_SECONDS:
+        return json_resp({"success": False, "error": "送信が速すぎます。少し待ってください。"}, 429)
+    LAST_GROUP_TIMES[member_id] = now
+
+    safe_content = html.escape(content)
+    image_key = None
+    if upload is not None:
+        image_key, img_err = await _dm_store_image(upload)   # DMと同じ検証・軽量化・R2保存
+        if img_err:
+            return json_resp({"success": False, "error": img_err}, 400)
+
+    mid = await _group_insert_message(group_id, member_id, safe_content, image_key)
+    if not mid:
+        await _delete_r2_key(image_key)
+        return json_resp({"success": False, "error": "送信に失敗しました。"}, 500)
+
+    res = await execute_query(_GROUP_MSG_SELECT + "WHERE gm.id = ?", [mid])
+    if not res:
+        return json_resp({"success": False, "error": "送信に失敗しました。"}, 500)
+    out = _group_msg_out(res[0], member_id)
+
+    member_ids = [r['user_id'] for r in (await execute_query(
+        "SELECT user_id FROM group_members WHERE group_id = ?", [group_id]
+    ) or [])]
+    # 全参加者(送信者の他タブ含む)へ配信。自分かどうかは受信側が sender_public_id で判定する
+    await _group_broadcast(member_ids, {
+        "type": "group_new",
+        "group_id": group_id,
+        "group_name": membership['name'],
+        "from_public_id": out['sender_public_id'],
+        "from_username": out['sender_name'],
+        "message": {**out, "is_mine": False},
+    })
+    return json_resp({"success": True, "message": out})
+
+
+@app.get('/api/groups/{group_id}/poll')
+async def api_group_poll(request: Request, group_id: int):
+    """WebSocketが届かない環境向けの保険。after_id より新しいメッセージだけ返す。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    membership = await _get_group_membership(group_id, member_id)
+    if not membership:
+        return json_resp({"success": False, "removed": True, "error": "このグループには参加していません。"}, 404)
+
+    try:
+        after_id = int(request.query_params.get('after_id') or 0)
+    except (TypeError, ValueError):
+        after_id = 0
+    after_id = max(after_id, membership['join_after_id'], 0)
+
+    rows = await execute_query(
+        _GROUP_MSG_SELECT + "WHERE gm.group_id = ? AND gm.id > ? ORDER BY gm.id ASC LIMIT 50",
+        [group_id, after_id]
+    ) or []
+
+    # ここまで見た = 既読。クライアント由来の値でも実在するメッセージIDを超えないよう丸める
+    target = max(after_id, rows[-1]['id'] if rows else 0)
+    if target > membership['last_read_id']:
+        await execute_query(
+            "UPDATE group_members SET last_read_id = "
+            "  (SELECT MIN(?, COALESCE(MAX(id), 0)) FROM group_messages WHERE group_id = ?) "
+            "WHERE group_id = ? AND user_id = ? AND last_read_id < ?",
+            [target, group_id, group_id, member_id, target]
+        )
+
+    retracted = await execute_query(
+        "SELECT id FROM group_messages WHERE group_id = ? AND id > ? AND content = ? "
+        "ORDER BY id DESC LIMIT 100",
+        [group_id, membership['join_after_id'], RETRACTED_TEXT]
+    ) or []
+    return {
+        "success": True,
+        "messages": [_group_msg_out(r, member_id) for r in rows],
+        "retracted_ids": [x['id'] for x in retracted],
+        "retracted_text": RETRACTED_TEXT,
+    }
+
+
+@app.post('/api/groups/message/{message_id}/retract')
+async def api_group_retract(request: Request, message_id: int):
+    """自分が送ったグループメッセージを送信取り消しする(DMと同じ仕様)。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    rows = await execute_query(
+        "SELECT gm.id, gm.group_id, gm.sender_id, gm.content, gm.image_key "
+        "FROM group_messages gm JOIN group_members m ON m.group_id = gm.group_id AND m.user_id = ? "
+        "WHERE gm.id = ?",
+        [member_id, message_id]
+    )
+    if not rows:
+        return json_resp({"success": False, "error": "メッセージが見つかりません。"}, 404)
+    m = rows[0]
+    if m['sender_id'] != member_id:
+        return json_resp({"success": False, "error": "自分が送ったメッセージだけ取り消せます。"}, 403)
+    if (m.get('content') or '') == RETRACTED_TEXT and not m.get('image_key'):
+        return json_resp({"success": False, "error": "すでに取り消されています。"}, 400)
+
+    try:
+        await execute_query(
+            "UPDATE group_messages SET content = ?, image_key = NULL WHERE id = ? AND sender_id = ?",
+            [RETRACTED_TEXT, message_id, member_id]
+        )
+    except Exception as e:
+        print(f"グループ取り消しエラー: {e}")
+        return json_resp({"success": False, "error": "取り消しに失敗しました。"}, 500)
+
+    await _delete_r2_key(m.get('image_key'))
+    member_ids = [r['user_id'] for r in (await execute_query(
+        "SELECT user_id FROM group_members WHERE group_id = ?", [m['group_id']]
+    ) or [])]
+    await _group_broadcast(member_ids, {
+        "type": "group_retracted", "group_id": m['group_id'],
+        "message_id": message_id, "text": RETRACTED_TEXT,
+    })
+    return {"success": True, "text": RETRACTED_TEXT}
+
+
+@app.get('/group/image/{message_id}')
+async def group_image(request: Request, message_id: int):
+    """グループの添付画像を配信する。そのグループの参加者(かつ参加後のメッセージ)だけ見られる。"""
+    if not is_member_logged_in(request):
+        return text_resp("ログインが必要です。", 401)
+    member_id = request.session.get('member_id')
+    rows = await execute_query(
+        "SELECT gm.image_key FROM group_messages gm "
+        "JOIN group_members m ON m.group_id = gm.group_id AND m.user_id = ? "
+        "WHERE gm.id = ? AND gm.image_key IS NOT NULL AND gm.id > m.join_after_id",
+        [member_id, message_id]
+    )
+    if not rows:
+        return text_resp("画像が見つかりません。", 404)
+    try:
+        obj = await run_in_threadpool(
+            lambda: s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=rows[0]['image_key'])
+        )
+        data = await run_in_threadpool(obj['Body'].read)
+        ctype = obj.get('ContentType') or 'application/octet-stream'
+    except Exception as e:
+        print(f"グループ画像の取得エラー: {e}")
+        return text_resp("画像が見つかりません。", 404)
+    return Response(
+        content=data, media_type=ctype,
+        headers={'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'},
+    )
+
+
+@app.post('/api/groups/{group_id}/members')
+async def api_group_add_members(request: Request, group_id: int):
+    """メンバー追加(オーナーのみ)。追加できるのはオーナーと相互フォローでブロック関係のない人。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    membership = await _get_group_membership(group_id, member_id)
+    if not membership:
+        return json_resp({"success": False, "error": "このグループには参加していません。"}, 403)
+    if membership['owner_id'] != member_id:
+        return json_resp({"success": False, "error": "メンバーを追加できるのはグループの作成者(オーナー)だけです。"}, 403)
+
+    body = await get_json_silent(request) or {}
+    raw_ids = body.get('public_ids')
+    if not isinstance(raw_ids, list):
+        return json_resp({"success": False, "error": "メンバーの指定が不正です。"}, 400)
+    pids = list(dict.fromkeys(str(p) for p in raw_ids if isinstance(p, str)))[:GROUP_MAX_MEMBERS + 5]
+    if not pids:
+        return json_resp({"success": False, "error": "追加するメンバーを選んでください。"}, 400)
+
+    current = await _group_members(group_id)
+    current_ids = [r['id'] for r in current]
+    users, all_ok = await _group_candidates(member_id, pids, skip_ids=current_ids)
+    if not users or not all_ok:
+        return json_resp({"success": False, "error": "相互フォローでない、ブロック関係がある、または既に参加済みのユーザーが含まれています。"}, 400)
+    if len(current_ids) + len(users) > GROUP_MAX_MEMBERS:
+        return json_resp({"success": False, "error": f"メンバーは{GROUP_MAX_MEMBERS}人までです。"}, 400)
+    new_ids = [u['id'] for u in users]
+    if await _blocked_with_group(new_ids, current_ids):
+        return json_resp({"success": False, "error": "ブロック関係にあるユーザー同士は同じグループに入れられません。"}, 400)
+
+    if not await _group_add_members_tx(group_id, new_ids):
+        return json_resp({"success": False, "error": "追加に失敗しました。"}, 500)
+    return json_resp({"success": True, "added": len(new_ids)})
+
+
+@app.post('/api/groups/{group_id}/members/{public_id}/remove')
+async def api_group_remove_member(request: Request, group_id: int, public_id: str):
+    """メンバーを外す(オーナーのみ)。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    membership = await _get_group_membership(group_id, member_id)
+    if not membership:
+        return json_resp({"success": False, "error": "このグループには参加していません。"}, 403)
+    if membership['owner_id'] != member_id:
+        return json_resp({"success": False, "error": "メンバーを外せるのはグループの作成者(オーナー)だけです。"}, 403)
+    target_id = await _user_id_by_public_id(public_id)
+    if not target_id or target_id == member_id:
+        return json_resp({"success": False, "error": "対象のユーザーが不正です。"}, 400)
+    if not await _get_group_membership(group_id, target_id):
+        return json_resp({"success": False, "error": "そのユーザーは参加していません。"}, 404)
+
+    await execute_query(
+        "DELETE FROM group_members WHERE group_id = ? AND user_id = ?", [group_id, target_id]
+    )
+    await dm_manager.send_to_user(target_id, {"type": "group_removed", "group_id": group_id})
+    return json_resp({"success": True})
+
+
+@app.post('/api/groups/{group_id}/leave')
+async def api_group_leave(request: Request, group_id: int):
+    """退出。オーナーが抜けるときは最も早く参加した人に引き継ぐ。最後の1人が抜けたら会話ごと削除。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    membership = await _get_group_membership(group_id, member_id)
+    if not membership:
+        return json_resp({"success": False, "error": "このグループには参加していません。"}, 403)
+
+    others = [r['id'] for r in await _group_members(group_id) if r['id'] != member_id]
+    if not others:
+        ok, keys = await _group_leave_tx(group_id, member_id, delete_group=True)
+        if ok:
+            for k in keys:
+                await _delete_r2_key(k)
+    else:
+        new_owner = others[0] if membership['owner_id'] == member_id else None
+        ok, _ = await _group_leave_tx(group_id, member_id, new_owner_id=new_owner)
+    if not ok:
+        return json_resp({"success": False, "error": "退出に失敗しました。"}, 500)
+    return json_resp({"success": True})
 
 
 # ---------------------------------------------------------------------
