@@ -711,6 +711,8 @@
 
 
 
+    {% include '_mascot_helper.html' %}
+
     <script>
     // ページ全体(このscriptタグ内のどこからでも)使えるよう、トップレベルで宣言する
     const currentMemberUsername = {% if current_member %}"{{ current_member.username }}"{% else %}null{% endif %};
