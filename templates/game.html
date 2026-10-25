@@ -553,7 +553,7 @@
 
     {% if not room %}
 
-    <div class="panel">
+    <div class="panel" style="background:transparent; border:none; border-radius:0; padding:0;">
 
         <h1>
             オンラインオセロ
@@ -640,7 +640,7 @@
             id="lobby-msg"
         ></div>
 
-        <div style="border-top:1px solid var(--border-color); margin-top:18px; padding-top:14px;">
+        <div style="margin-top:18px;">
             {% include '_live_games.html' %}
         </div>
 
