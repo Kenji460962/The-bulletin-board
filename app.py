@@ -4614,6 +4614,158 @@ async def get_older_replies(request: Request, thread_id: int):
         return json_resp({"success": False, "error": "データベースエラー", "replies": [], "has_more": False}, 500)
 
 
+# =========================
+# 「いまの話題」: 直近50件のレスから、いま話題になっていることを抜き出す
+# 外部サービスは使わず、サーバー内の単純な集計だけで行う(AIではない)。
+#   1) レス本文から単語(カタカナ語/漢字語/英数字語)を取り出す
+#   2) 「その単語を含むレスが何件あるか」「何人が使っているか」で話題度を決める
+#   3) 話題の単語を多く含み、他のレスから返信(>>N)されたレスを代表として選ぶ
+# =========================
+_HOT_WINDOW = 50
+_HOT_CACHE = {}          # thread_id -> (最新レスID, 期限, 結果)
+_HOT_CACHE_TTL = 30      # 秒。同じスレを連打されても集計は30秒に1回だけ
+_HOT_CACHE_MAX = 500
+
+_HOT_URL_RE = re.compile(r'https?://\S+')
+_HOT_ANCHOR_RE = re.compile(r'(?:&gt;|>){1,2}\s*\d+(?:\s*[-,、]\s*\d+)*')
+_HOT_REF_RE = re.compile(r'(?:&gt;|>){1,2}\s*(\d+)')
+_HOT_TAG_RE = re.compile(r'<[^>]+>')
+_HOT_TOKEN_RE = re.compile(r'[ァ-ヶー]{2,}|[一-龥々〆]{2,}|[A-Za-z][A-Za-z0-9]{2,}|[一-龥々]')
+_HOT_RETRACTED = '内容を送信取り消しされました。'
+
+# どのスレにも出てくる語は話題ではないので除く
+_HOT_STOPWORDS = set(
+    '今日 昨日 明日 最近 本当 自分 今回 時間 場合 感じ 気持ち 以上 普通 全然 結構 一番 大丈夫 '
+    '質問 皆さん 大体 何故 理由 意味 問題 状況 部分 内容 話題 書き込み 投稿 返信 連続 少し '
+    '現在 最初 最後 必要 可能 以外 以下 同じ 他人 相手 全部 一応 絶対 完全 確認 気分 '
+    'スレ スレッド レス ホント コレ ソレ アレ ドコ ダレ ナニ ヤッパリ ホントウ アリガトウ '
+    'スゴイ ワカル ワカラナイ ヨロシク オハヨウ コンニチハ コンバンハ '
+    'http https www com'.split()
+)
+# 動詞の語幹や機能語になりがちな1文字漢字(これらは単独では話題にしない)
+_HOT_STOP_KANJI = set('行来見思言聞出入使知考作持取分合立会着居有無何今私彼他時事物人方中上下前後間気的所度回目手') 
+
+
+def _hot_clean(raw):
+    t = html.unescape(_HOT_TAG_RE.sub(' ', str(raw or '')))
+    t = _HOT_URL_RE.sub(' ', t)
+    t = _HOT_ANCHOR_RE.sub(' ', t)
+    return t.strip()
+
+
+def _analyze_hot_topics(rows, total_count):
+    """rows: 新しい順(最大50件)のレス(dict)。total_count: スレ全体のレス数。"""
+    rows = list(reversed(rows))                       # 古い順に直す
+    n = len(rows)
+    first_num = total_count - n + 1                   # rows[0] のレス番号
+    cleaned, token_sets, authors = [], [], []
+    for r in rows:
+        raw = r.get('content') or ''
+        if _HOT_RETRACTED in str(raw):
+            cleaned.append(''); token_sets.append(set()); authors.append(None); continue
+        text = _hot_clean(raw)
+        cleaned.append(text)
+        toks = set()
+        for w in _HOT_TOKEN_RE.findall(text):
+            w = w.lower() if w.isascii() else w
+            if w in _HOT_STOPWORDS:
+                continue
+            if len(w) == 1 and w in _HOT_STOP_KANJI:
+                continue
+            toks.add(w)
+        token_sets.append(toks)
+        authors.append(r.get('poster_public_id') or r.get('user_id') or r.get('ip_address'))
+
+    # 単語ごと: 含むレス数(df)・使った人数
+    df, who = {}, {}
+    for toks, a in zip(token_sets, authors):
+        for w in toks:
+            df[w] = df.get(w, 0) + 1
+            who.setdefault(w, set()).add(a)
+
+    scored = []
+    for w, c in df.items():
+        need = 3 if len(w) == 1 else 2
+        if c < need:
+            continue
+        people = len(who[w])
+        scored.append((c + 0.5 * people + 0.2 * min(len(w), 6), w, c))
+    scored.sort(reverse=True)
+
+    # 「ラーメ」と「ラーメン」のように包含関係で重複する語は、長い方を残す
+    keywords = []
+    for sc, w, c in scored:
+        if any((w in k['word'] or k['word'] in w) and abs(k['count'] - c) <= 1 for k in keywords):
+            continue
+        keywords.append({'word': w, 'count': c, 'score': sc})
+        if len(keywords) >= 5:
+            break
+    weight = {k['word']: k['score'] for k in keywords}
+
+    # 返信された回数(>>N)
+    refs = {}
+    for r in rows:
+        for m in _HOT_REF_RE.findall(str(r.get('content') or '')):
+            refs[int(m)] = refs.get(int(m), 0) + 1
+
+    quotes = []
+    if weight:
+        cand = []
+        for i, text in enumerate(cleaned):
+            if len(text) < 8:
+                continue
+            hit = sum(weight[w] for w in token_sets[i] if w in weight)
+            if hit <= 0:
+                continue
+            num = first_num + i
+            val = hit / (len(text) ** 0.5) + 1.5 * refs.get(num, 0)
+            cand.append((val, num, text))
+        cand.sort(reverse=True)
+        for val, num, text in cand[:2]:
+            one = re.sub(r'\s+', ' ', text)
+            quotes.append({'num': num, 'text': one if len(one) <= 50 else one[:50] + '…'})
+        quotes.sort(key=lambda q: q['num'])
+
+    return {
+        'success': True,
+        'count': n,
+        'keywords': [{'word': k['word'], 'count': k['count']} for k in keywords],
+        'quotes': quotes,
+    }
+
+
+@app.get('/thread/{thread_id}/hot_topics')
+async def thread_hot_topics(request: Request, thread_id: int):
+    client_ip = get_client_ip(request)
+    if await is_banned_request(request, client_ip):
+        return json_resp({"success": False, "error": "Banned"}, 403)
+    try:
+        now = time.time()
+        cached = _HOT_CACHE.get(thread_id)
+        if cached and cached[1] > now:
+            return json_resp(cached[2])
+
+        rows, count_res = await asyncio.gather(
+            execute_query(
+                "SELECT id, content, user_id, poster_public_id, ip_address FROM replies "
+                "WHERE thread_id = ? ORDER BY id DESC LIMIT ?",
+                [thread_id, _HOT_WINDOW]
+            ),
+            execute_query("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id]),
+        )
+        total = count_res[0]['cnt'] if count_res else len(rows)
+        result = _analyze_hot_topics([dict(r) for r in rows], total)
+
+        if len(_HOT_CACHE) >= _HOT_CACHE_MAX:
+            for k in [k for k, v in _HOT_CACHE.items() if v[1] <= now] or list(_HOT_CACHE)[:100]:
+                _HOT_CACHE.pop(k, None)
+        _HOT_CACHE[thread_id] = (rows[0]['id'] if rows else 0, now + _HOT_CACHE_TTL, result)
+        return json_resp(result)
+    except Exception as e:
+        print(f"話題集計エラー: {e}")
+        return json_resp({"success": False, "error": "集計に失敗しました"}, 500)
+
+
 # --- リアルタイム自動更新用API ---
 @app.get('/thread/{thread_id}/get_new_replies')
 async def get_new_replies(request: Request, thread_id: int):
