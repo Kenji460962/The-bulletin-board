@@ -944,8 +944,11 @@
             font-size: 24px;
             background: var(--primary-soft);
             border-radius: var(--radius-sm);
+            text-shadow: none;   /* ダークテーマの文字ハローがアイコン(特に小さい「歩」)に重なって見えるのを防ぐ */
         }
         .game-card-koma {
+            text-shadow: none;
+            line-height: 1;
             width: 30px; height: 30px;
             background: linear-gradient(180deg, #f0d9ab, #d9b477);
             clip-path: polygon(50% 0%, 88% 22%, 100% 100%, 0% 100%, 12% 22%);
