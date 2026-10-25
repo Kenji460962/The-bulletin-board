@@ -1,0 +1,84 @@
+{# 現在プレイ中のゲーム一覧(観戦用)。各ロビー/トップのゲームタブから {% include '_live_games.html' %} で使う #}
+<style>
+    .lg-title { font-size: 15px; font-weight: 700; margin: 0 0 2px 0; }
+    .lg-sub { font-size: 12px; color: var(--text-muted, #94a3b8); margin: 0 0 6px 0; }
+    .lg-empty { font-size: 13px; color: var(--text-muted, #94a3b8); padding: 10px 0; }
+    .lg-item {
+        display: flex; align-items: center; gap: 10px;
+        padding: 10px 12px; margin-top: 8px;
+        border: 1px solid var(--border-color, #334155); border-radius: 8px;
+        color: inherit; text-decoration: none;
+    }
+    .lg-item:hover { background: rgba(148, 163, 184, 0.1); text-decoration: none; }
+    .lg-game { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+               background: rgba(56, 189, 248, 0.18); color: var(--accent-color, #38bdf8); white-space: nowrap; }
+    .lg-players { flex: 1; min-width: 0; font-size: 13px; line-height: 1.5; }
+    .lg-players span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lg-watch { font-size: 12px; color: var(--text-muted, #94a3b8); white-space: nowrap; }
+    .lg-go { font-size: 12px; font-weight: 700; color: var(--accent-color, #38bdf8); white-space: nowrap; }
+</style>
+<div class="lg-title">👀 いま対戦中のゲーム（観戦できます）</div>
+<div class="lg-sub">クリックすると誰でも観戦できます。登録不要です。</div>
+<div id="lg-list"><div class="lg-empty">読み込み中...</div></div>
+<script>
+(function () {
+    var listEl = document.getElementById('lg-list');
+    if (!listEl) return;
+    var timer = null;
+
+    function render(games) {
+        listEl.textContent = '';
+        if (!games.length) {
+            var empty = document.createElement('div');
+            empty.className = 'lg-empty';
+            empty.textContent = '現在対戦中のゲームはありません。';
+            listEl.appendChild(empty);
+            return;
+        }
+        games.forEach(function (g) {
+            var a = document.createElement('a');
+            a.className = 'lg-item';
+            a.href = g.url;
+
+            var tag = document.createElement('span');
+            tag.className = 'lg-game';
+            tag.textContent = g.game_label;
+
+            var players = document.createElement('div');
+            players.className = 'lg-players';
+            var p1 = document.createElement('span');
+            p1.textContent = g.a_label + ': ' + g.a_name;
+            var p2 = document.createElement('span');
+            p2.textContent = g.b_label + ': ' + g.b_name;
+            players.appendChild(p1);
+            players.appendChild(p2);
+
+            var watch = document.createElement('span');
+            watch.className = 'lg-watch';
+            watch.textContent = '👁 ' + (g.spectators || 0);
+
+            var go = document.createElement('span');
+            go.className = 'lg-go';
+            go.textContent = '観戦する ›';
+
+            a.appendChild(tag);
+            a.appendChild(players);
+            a.appendChild(watch);
+            a.appendChild(go);
+            listEl.appendChild(a);
+        });
+    }
+
+    function load() {
+        if (document.hidden) return;
+        fetch('/api/games/live', { cache: 'no-store' })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d && d.success) render(d.games || []); })
+            .catch(function () {});
+    }
+
+    load();
+    timer = setInterval(load, 10000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) load(); });
+})();
+</script>
