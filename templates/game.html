@@ -640,6 +640,10 @@
             id="lobby-msg"
         ></div>
 
+        <div style="border-top:1px solid var(--border-color); margin-top:18px; padding-top:14px;">
+            {% include '_live_games.html' %}
+        </div>
+
         <!--
           対局開始前の画面。スマホ/PCで自動的にサイズが切り替わります。
         -->
@@ -887,6 +891,7 @@
          対局画面
     ========================================== -->
 
+    <div class="game-layout">
     <div class="panel">
 
 
@@ -1026,6 +1031,8 @@
             </div>
         </div>
 
+    {% set chat_game = 'othello' %}
+    {% include '_game_chat.html' %}
     </div>
 
 
