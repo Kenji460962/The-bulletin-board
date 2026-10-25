@@ -150,6 +150,10 @@
     .btn-cancel { background: none; border: 1px solid var(--border-color); color: var(--text-muted); }
     .btn-submit { background: var(--accent-color); border: none; color: #0f172a; }
     .btn-danger { background: var(--danger-color); border: none; color: #fff; }
+    .danger-zone { display: flex; flex-direction: column; gap: 8px; }
+    .danger-zone button { border-radius: 6px; padding: 10px 14px; font-size: 13px; font-weight: 600; cursor: pointer; width: 100%; }
+    .btn-outline-danger { background: none; border: 1px solid var(--danger-color); color: var(--danger-color); }
+    .btn-outline-danger:hover { background: var(--danger-color); color: #fff; }
     .btn-submit:disabled, .btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
@@ -162,7 +166,7 @@
         <div class="group-sub" id="member-count">{{ members | length }}人</div>
     </div>
     <div class="header-spacer"></div>
-    <button type="button" class="header-btn" id="open-members">メンバー</button>
+    <button type="button" class="header-btn" id="open-members">メンバー・設定</button>
 </div>
 
 <div class="messages" id="messages">
@@ -241,8 +245,14 @@
         {% endif %}
 
         <div class="form-error" id="manage-error"></div>
-        <div class="modal-actions" style="margin-top:20px;">
-            <button type="button" class="btn-danger" id="leave-btn">グループを退出</button>
+        <h3>グループの操作</h3>
+        <div class="danger-zone">
+            <button type="button" class="btn-outline-danger" id="leave-btn">🚪 このグループを脱退する</button>
+            {% if is_owner %}
+            <button type="button" class="btn-danger" id="delete-btn">🗑 グループを削除する（全員分のメッセージが消えます）</button>
+            {% endif %}
+        </div>
+        <div class="modal-actions" style="margin-top:16px;">
             <button type="button" class="btn-cancel" id="members-close">閉じる</button>
         </div>
     </div>
@@ -414,7 +424,11 @@
     // ---- WebSocket(DMと共用の /ws/dm。切れてもポーリングが拾う) ----
     let ws = null, reconnectDelay = 1000, pingTimer = null;
     function leaveBecauseRemoved() {
-        alert('このグループから外されました。');
+        alert('このグループから外されたか、グループが削除されました。');
+        location.href = '/groups';
+    }
+    function leaveBecauseDeleted() {
+        alert('このグループは作成者によって削除されました。');
         location.href = '/groups';
     }
     function connectWS() {
@@ -434,6 +448,7 @@
             if (data.type === 'group_new') appendMessage(data.message);
             else if (data.type === 'group_retracted') applyRetraction(data.message_id, data.text);
             else if (data.type === 'group_removed') leaveBecauseRemoved();
+            else if (data.type === 'group_deleted') leaveBecauseDeleted();
         };
         ws.onclose = () => {
             if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
@@ -500,16 +515,28 @@
     });
 
     document.getElementById('leave-btn').addEventListener('click', async () => {
-        let msg = 'このグループを退出しますか？\n退出すると、このグループのメッセージは見られなくなります。';
-        if (MEMBER_COUNT <= 1) msg = 'あなたが最後のメンバーです。退出するとグループとメッセージはすべて削除されます。よろしいですか？';
+        let msg = 'このグループを脱退しますか？\n脱退すると、このグループのメッセージは見られなくなります。';
+        if (MEMBER_COUNT <= 1) msg = 'あなたが最後のメンバーです。脱退するとグループとメッセージはすべて削除されます。よろしいですか？';
         else if (IS_OWNER) msg += '\n(オーナーは、最も早く参加したメンバーに引き継がれます)';
         if (!confirm(msg)) return;
         manageError.style.display = 'none';
         try {
             const data = await postJson(`/api/groups/${GROUP_ID}/leave`);
             if (data.success) location.href = '/groups';
-            else manageFail(data.error || '退出できませんでした。');
+            else manageFail(data.error || '脱退できませんでした。');
         } catch (e) { manageFail('通信に失敗しました。'); }
+    });
+
+    const deleteBtn = document.getElementById('delete-btn');
+    if (deleteBtn) deleteBtn.addEventListener('click', async () => {
+        if (!confirm('このグループを削除しますか？\nメッセージと画像はすべて消え、メンバー全員が見られなくなります。この操作は取り消せません。')) return;
+        manageError.style.display = 'none';
+        deleteBtn.disabled = true;
+        try {
+            const data = await postJson(`/api/groups/${GROUP_ID}/delete`);
+            if (data.success) location.href = '/groups';
+            else { manageFail(data.error || '削除できませんでした。'); deleteBtn.disabled = false; }
+        } catch (e) { manageFail('通信に失敗しました。'); deleteBtn.disabled = false; }
     });
 </script>
 </body>
