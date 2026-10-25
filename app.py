@@ -178,6 +178,8 @@ async def _redis_listener():
                         await manager.broadcast_local(data['thread_id'], data['reply'])
                     elif kind == 'dm_message':
                         await dm_manager.send_to_user_local(data['user_id'], data['payload'])
+                    elif kind == 'game_chat':
+                        await game_chat_manager.broadcast_local(data['key'], data['payload'])
                 except Exception as e:
                     print(f"Redisリアルタイム配信の処理エラー: {e}")
         except asyncio.CancelledError:
@@ -3118,6 +3120,303 @@ async def archive_old_threads(request: Request):
     }
 
 
+# =========================
+# 観戦機能(プレイ中ゲーム一覧) + 観戦チャット
+# =========================
+# ・対戦が始まった(status='playing')部屋は /api/games/live の一覧に載り、誰でも観戦できる。
+#   観戦者は対局の部屋URLをそのまま開くだけ(席が埋まっていれば自動的に観戦者になる)。
+# ・ゲーム画面の右側に、対戦者と観戦者が話せるチャットを置く(/ws/gamechat/{game}/{code})。
+# ・チャットは対局が終わった瞬間に削除する(履歴を消し、接続中の全員へ closed を通知)。
+#   履歴はRedisがあればRedisのリスト(TTL付き)、無ければプロセス内メモリに置く。
+
+_GAME_ROOM_META = {
+    'othello': {'table': 'othello_rooms', 'a': 'black', 'b': 'white', 'path': '/game/',
+                'label_a': '黒', 'label_b': '白'},
+    'chess':   {'table': 'chess_rooms',   'a': 'white', 'b': 'black', 'path': '/chess/',
+                'label_a': '白', 'label_b': '黒'},
+    'shogi':   {'table': 'shogi_rooms',   'a': 'sente', 'b': 'gote',  'path': '/shogi/',
+                'label_a': '先手', 'label_b': '後手'},
+}
+GAME_LIVE_WINDOW = timedelta(hours=6)    # 最後の着手からこれより経った「対局中」は放置とみなして一覧に出さない
+GAME_LIVE_LIST_LIMIT = 40
+GAME_CHAT_MAX_LEN = 200
+GAME_CHAT_HISTORY_MAX = 100
+GAME_CHAT_TTL_SEC = 6 * 3600             # Redis上の履歴の保険用TTL(通常は対局終了時に即削除)
+GAME_CHAT_MIN_INTERVAL = 1.0             # 秒。連投防止
+GAME_CHAT_IDLE_TIMEOUT = 70              # 秒。クライアントは約25秒ごとにpingを送る
+GAME_CHAT_MEM_ROOMS_MAX = 500
+
+
+class GameChatManager:
+    def __init__(self):
+        # {room_key: {websocket: who}}  room_key = "othello:ABC123"
+        self.rooms: dict[str, dict[WebSocket, dict]] = {}
+        # Redisが使えないときの履歴置き場
+        self._mem_history: dict[str, list] = {}
+
+    @staticmethod
+    def key(game: str, code: str) -> str:
+        return f"{game}:{code}"
+
+    async def connect(self, key: str, websocket: WebSocket, who: dict):
+        await websocket.accept()
+        self.rooms.setdefault(key, {})[websocket] = who
+
+    def disconnect(self, key: str, websocket: WebSocket):
+        room = self.rooms.get(key)
+        if room is None or websocket not in room:
+            return
+        del room[websocket]
+        if not room:
+            del self.rooms[key]
+        else:
+            try:
+                asyncio.get_running_loop().create_task(self.broadcast_presence(key))
+            except RuntimeError:
+                pass
+
+    def presence_payload(self, key: str) -> dict:
+        players, spectators = set(), set()
+        for who in self.rooms.get(key, {}).values():
+            (players if who['role'] == 'player' else spectators).add(who['uid'])
+        return {"type": "presence", "players": len(players), "spectators": len(spectators)}
+
+    async def broadcast_presence(self, key: str):
+        await self._send_local(key, self.presence_payload(key))
+
+    async def _send_local(self, key: str, payload: dict):
+        dead = []
+        for ws in list(self.rooms.get(key, {})):
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(key, ws)
+
+    async def broadcast_local(self, key: str, payload: dict):
+        # 同一プロセス内の接続にだけ配信する(全worker分はpublish()がRedis経由で呼び合う)
+        await self._send_local(key, payload)
+        if payload.get('type') == 'closed':
+            # 対局終了: 接続を畳む(クライアントも closed を受けたら再接続しない)
+            for ws in list(self.rooms.pop(key, {})):
+                try:
+                    await ws.close()
+                except Exception:
+                    pass
+
+    async def publish(self, key: str, payload: dict):
+        if redis_client is None:
+            await self.broadcast_local(key, payload)
+            return
+        try:
+            await redis_client.publish(REALTIME_CHANNEL, json.dumps(
+                {"kind": "game_chat", "key": key, "payload": payload}, ensure_ascii=False))
+        except Exception as e:
+            print(f"Redis publish エラー(game chat): {e}")
+            await self.broadcast_local(key, payload)
+
+    async def history(self, key: str) -> list:
+        if redis_client is not None:
+            try:
+                raw = await redis_client.lrange(f"gamechat:{key}", 0, -1)
+                return [json.loads(x) for x in raw]
+            except Exception as e:
+                print(f"ゲームチャット履歴取得エラー: {e}")
+        return list(self._mem_history.get(key, []))
+
+    async def add_history(self, key: str, msg: dict):
+        if redis_client is not None:
+            try:
+                rk = f"gamechat:{key}"
+                await redis_client.rpush(rk, json.dumps(msg, ensure_ascii=False))
+                await redis_client.ltrim(rk, -GAME_CHAT_HISTORY_MAX, -1)
+                await redis_client.expire(rk, GAME_CHAT_TTL_SEC)
+                return
+            except Exception as e:
+                print(f"ゲームチャット履歴保存エラー: {e}")
+        lst = self._mem_history.setdefault(key, [])
+        lst.append(msg)
+        del lst[:-GAME_CHAT_HISTORY_MAX]
+        while len(self._mem_history) > GAME_CHAT_MEM_ROOMS_MAX:
+            self._mem_history.pop(next(iter(self._mem_history)), None)
+
+    async def clear_history(self, key: str):
+        self._mem_history.pop(key, None)
+        if redis_client is not None:
+            try:
+                await redis_client.delete(f"gamechat:{key}")
+            except Exception as e:
+                print(f"ゲームチャット履歴削除エラー: {e}")
+
+    async def close_room(self, key: str):
+        # 対局終了: 履歴を消し、全員にチャット終了を知らせる
+        await self.clear_history(key)
+        await self.publish(key, {"type": "closed"})
+
+
+game_chat_manager = GameChatManager()
+
+
+async def _game_chat_close(game: str, room_code: str):
+    # 対局が終わった時に呼ぶ。失敗しても対局の終了処理は止めない。
+    try:
+        await game_chat_manager.close_room(game_chat_manager.key(game, room_code))
+    except Exception as e:
+        print(f"ゲームチャット終了処理エラー({game}, {room_code}): {e}")
+
+
+@app.get('/api/games/live')
+async def api_games_live(request: Request):
+    # 現在プレイ中(マッチ成立済み)のゲーム一覧。観戦リンクは path + room_code。
+    cutoff = (datetime.utcnow() - GAME_LIVE_WINDOW).isoformat()
+
+    async def fetch(game: str, meta: dict):
+        a, b = meta['a'], meta['b']
+        try:
+            rows = await execute_query(
+                f"SELECT room_code, {a}_name AS a_name, {b}_name AS b_name, updated_at "
+                f"FROM {meta['table']} WHERE status = 'playing' AND updated_at >= ? "
+                f"ORDER BY updated_at DESC LIMIT {GAME_LIVE_LIST_LIMIT}",
+                [cutoff],
+            )
+        except Exception as e:
+            print(f"観戦一覧取得エラー({game}): {e}")
+            return []
+        out = []
+        for r in rows or []:
+            code = r['room_code']
+            pres = game_chat_manager.presence_payload(game_chat_manager.key(game, code))
+            out.append({
+                'game': game,
+                'game_label': GAME_LABELS.get(game, game),
+                'room_code': code,
+                'url': meta['path'] + code,
+                'a_label': meta['label_a'], 'b_label': meta['label_b'],
+                # 名前は保存時にHTMLエスケープ済みなので戻して返す(表示側はtextContentで出す)
+                'a_name': html.unescape(r.get('a_name') or '名無しさん'),
+                'b_name': html.unescape(r.get('b_name') or '名無しさん'),
+                'spectators': pres['spectators'],
+                'updated_at': r.get('updated_at') or '',
+            })
+        return out
+
+    results = await asyncio.gather(*(fetch(g, m) for g, m in _GAME_ROOM_META.items()))
+    games = [g for sub in results for g in sub]
+    games.sort(key=lambda g: g['updated_at'], reverse=True)
+    resp = json_resp({'success': True, 'games': games[:GAME_LIVE_LIST_LIMIT]})
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
+@app.websocket('/ws/gamechat/{game}/{room_code}')
+async def game_chat_ws(websocket: WebSocket, game: str, room_code: str):
+    meta = _GAME_ROOM_META.get(game)
+    code = (room_code or '').upper()
+    if not meta or not re.fullmatch(r'[A-Z0-9]{6}', code):
+        await websocket.close(code=1008)
+        return
+    a, b = meta['a'], meta['b']
+    sql = (f"SELECT status, {a}_token AS a_token, {b}_token AS b_token, "
+           f"{a}_name AS a_name, {b}_name AS b_name FROM {meta['table']} WHERE room_code = ? LIMIT 1")
+    rows = await execute_query(sql, [code])
+    if not rows:
+        await websocket.close(code=1008)
+        return
+    room = rows[0]
+    key = game_chat_manager.key(game, code)
+
+    # 対局が終わった部屋のチャットは存在しない(履歴が残っていれば念のため消す)
+    if room.get('status') == 'finished':
+        await websocket.accept()
+        await game_chat_manager.clear_history(key)
+        try:
+            await websocket.send_json({"type": "closed"})
+            await websocket.close()
+        except Exception:
+            pass
+        return
+
+    # 対戦者か観戦者か。名前は必ずサーバー側で決める(なりすまし防止のためクライアントからは受け取らない)。
+    token = websocket.cookies.get('game_player_token') or websocket.cookies.get('user_bbs_token')
+    ident = await _thread_ws_identity(websocket)
+    if token and token == room.get('a_token'):
+        who = {'uid': f"p:{token}", 'role': 'player', 'side': meta['label_a'],
+               'name': html.unescape(room.get('a_name') or '名無しさん')}
+    elif token and token == room.get('b_token'):
+        who = {'uid': f"p:{token}", 'role': 'player', 'side': meta['label_b'],
+               'name': html.unescape(room.get('b_name') or '名無しさん')}
+    else:
+        name = ident.get('username') or '名無しさん'
+        if ident.get('guest') and ident.get('guest_id'):
+            name = f"{name} (ID:{str(ident['guest_id'])[:6]})"
+        who = {'uid': f"s:{ident['id']}", 'role': 'spectator', 'side': '', 'name': name}
+    who['last'] = 0.0
+
+    await game_chat_manager.connect(key, websocket, who)
+    try:
+        await websocket.send_json({
+            "type": "init",
+            "history": await game_chat_manager.history(key),
+            "me": {"role": who['role'], "name": who['name'], "side": who['side']},
+            **game_chat_manager.presence_payload(key),
+        })
+    except Exception:
+        game_chat_manager.disconnect(key, websocket)
+        return
+    await game_chat_manager.broadcast_presence(key)
+
+    try:
+        while True:
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=GAME_CHAT_IDLE_TIMEOUT)
+            if raw == 'ping':
+                await websocket.send_text('{"type":"pong"}')
+                continue
+            try:
+                data = json.loads(raw)
+            except Exception:
+                continue
+            if not isinstance(data, dict) or data.get('type') != 'msg':
+                continue
+
+            text = ' '.join(str(data.get('text') or '').split())[:GAME_CHAT_MAX_LEN]
+            if not text:
+                continue
+            now = time.monotonic()
+            if now - who['last'] < GAME_CHAT_MIN_INTERVAL:
+                await websocket.send_json({"type": "error", "message": "少し間をあけて送信してください"})
+                continue
+            who['last'] = now
+
+            cur = await execute_query(f"SELECT status FROM {meta['table']} WHERE room_code = ? LIMIT 1", [code])
+            status = cur[0].get('status') if cur else 'finished'
+            if status == 'finished':
+                await game_chat_manager.close_room(key)
+                break
+            if status != 'playing':
+                await websocket.send_json({"type": "error", "message": "対戦が始まるとチャットできます"})
+                continue
+
+            msg = {
+                "type": "msg", "id": uuid.uuid4().hex[:8], "ts": int(time.time()),
+                "role": who['role'], "side": who['side'], "name": who['name'],
+                "text": filter_ng_words(text),
+            }
+            await game_chat_manager.add_history(key, msg)
+            await game_chat_manager.publish(key, msg)
+    except asyncio.TimeoutError:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"ゲームチャットWSエラー: {e}")
+    finally:
+        game_chat_manager.disconnect(key, websocket)
+
+
 @app.get('/game')
 async def game_lobby(request: Request):
     resp = templates.TemplateResponse(request, 'game.html', {'room': None, 'my_color': None})
@@ -3267,6 +3566,8 @@ async def game_move(request: Request, room_code: str):
         'UPDATE othello_rooms SET board=?,turn=?,status=?,winner=?,updated_at=? WHERE room_code=? AND turn=?',
         [new_board, next_turn, status, winner, now, code, player]
     )
+    if status == 'finished':
+        await _game_chat_close('othello', code)
     return {'success': True}
 
 
@@ -3298,6 +3599,7 @@ async def game_resign(request: Request, room_code: str):
     resigner_id = r.get('black_member_id') if player == 'B' else r.get('white_member_id')
     winner_id = r.get('white_member_id') if player == 'B' else r.get('black_member_id')
     await _award_game_resign_result('othello', code, resigner_id, winner_id)
+    await _game_chat_close('othello', code)
     return {'success': True}
 
 
@@ -3488,6 +3790,8 @@ async def chess_move(request: Request, room_code: str):
         'UPDATE chess_rooms SET board=?,turn=?,updated_at=?,in_check=?,status=?,winner=?,castling=?,en_passant=? WHERE room_code=? AND turn=?',
         [new_board_json, next_color, now, (next_color if next_in_check else None), new_status, winner, new_castling, new_ep_json, code, color]
     )
+    if new_status == 'finished':
+        await _game_chat_close('chess', code)
     return {'success': True}
 
 
@@ -3518,6 +3822,7 @@ async def chess_resign(request: Request, room_code: str):
     resigner_id = r.get('white_member_id') if color == 'w' else r.get('black_member_id')
     winner_id = r.get('black_member_id') if color == 'w' else r.get('white_member_id')
     await _award_game_resign_result('chess', code, resigner_id, winner_id)
+    await _game_chat_close('chess', code)
     return {'success': True}
 
 
@@ -3714,6 +4019,8 @@ async def shogi_move(request: Request, room_code: str):
         'UPDATE shogi_rooms SET board=?,hands=?,turn=?,updated_at=?,in_check=?,status=?,winner=? WHERE room_code=? AND turn=?',
         [json.dumps(board), json.dumps(hands), next_color, now, (next_color if next_in_check else None), new_status, winner, code, color]
     )
+    if new_status == 'finished':
+        await _game_chat_close('shogi', code)
     return {'success': True}
 
 
@@ -3744,6 +4051,7 @@ async def shogi_resign(request: Request, room_code: str):
     resigner_id = r.get('sente_member_id') if color == 's' else r.get('gote_member_id')
     winner_id = r.get('gote_member_id') if color == 's' else r.get('sente_member_id')
     await _award_game_resign_result('shogi', code, resigner_id, winner_id)
+    await _game_chat_close('shogi', code)
     return {'success': True}
 
 
@@ -3818,6 +4126,8 @@ async def shogi_drop(request: Request, room_code: str):
         'UPDATE shogi_rooms SET board=?,hands=?,turn=?,updated_at=?,in_check=?,status=?,winner=? WHERE room_code=? AND turn=?',
         [json.dumps(new_board), json.dumps(hands), next_color, now, (next_color if next_in_check else None), new_status, winner, code, color]
     )
+    if new_status == 'finished':
+        await _game_chat_close('shogi', code)
     return {'success': True}
 
 
