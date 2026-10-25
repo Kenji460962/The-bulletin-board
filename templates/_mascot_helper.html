@@ -97,7 +97,7 @@
             <div class="mh-choices" id="mh-choices"></div>
         </div>
     </div>
-    <button type="button" class="mh-btn" id="mh-btn">💬 キャラに話しかける</button>
+    <button type="button" class="mh-btn" id="mh-btn">キャラに話しかける</button>
 </div>
 
 <script>
@@ -106,7 +106,7 @@
     var GLB_SRC = '/static/talk_ch_mascot.glb';
     var FLOAT_AFTER_DONE_MS = 10000;   // 要件が終わってから戻るまで浮遊する時間
     var MOVE_MS = 1000;                // 登場/退場の長さ
-    var BTN_LABEL = '💬 キャラに話しかける';
+    var BTN_LABEL = 'キャラに話しかける';
     var GREETING = 'こんにちは！何かお手伝いできることはありますか？';
 
     var THREAD_TITLE = {{ (thread.title if thread is defined and thread else none) | tojson }};
