@@ -579,6 +579,67 @@ def text_resp(content, status_code: int = 200):
     return HTMLResponse(content=content, status_code=status_code)
 
 
+# =========================
+# 統一エラーページ
+# 404などブラウザ遷移で見えるエラーは全てtemplates/error.htmlに集約する。
+# (POST/fetch系のtext_respはクライアントが本文を読むので触らない)
+# =========================
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
+
+_ERROR_TITLES = {
+    400: ("リクエストが正しくありません", "お手数ですが、もう一度やり直してください。"),
+    401: ("ログインが必要です", "このページを見るにはログインしてください。"),
+    403: ("アクセスできません", "このページを表示する権限がありません。"),
+    404: ("ページが見つかりません", "URLが間違っているか、ページが削除された可能性があります。"),
+    405: ("この操作はできません", "許可されていないリクエストです。"),
+    429: ("アクセスが集中しています", "しばらく待ってからもう一度お試しください。"),
+    500: ("エラーが発生しました", "サーバー側で問題が起きました。時間をおいてお試しください。"),
+    503: ("ただいま利用できません", "メンテナンス中か、一時的に混み合っています。"),
+}
+
+
+def error_page(message=None, status_code: int = 404, headers=None):
+    title, default_msg = _ERROR_TITLES.get(
+        status_code, ("エラーが発生しました", "時間をおいてもう一度お試しください。")
+    )
+    html_body = templates.get_template('error.html').render(
+        status_code=status_code,
+        title=title,
+        message=message or default_msg,
+    )
+    return HTMLResponse(content=html_body, status_code=status_code, headers=headers)
+
+
+def _wants_html(request: Request) -> bool:
+    accept = request.headers.get('accept', '')
+    return 'text/html' in accept or accept in ('', '*/*') and request.method == 'GET' and 'json' not in request.headers.get('content-type', '')
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if _wants_html(request):
+        return error_page(None, exc.status_code, headers=getattr(exc, 'headers', None))
+    title = _ERROR_TITLES.get(exc.status_code, ("エラーが発生しました", ""))[0]
+    return JSONResponse({"success": False, "error": title}, status_code=exc.status_code,
+                        headers=getattr(exc, 'headers', None))
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(request: Request, exc: RequestValidationError):
+    if _wants_html(request):
+        return error_page(None, 400)
+    return JSONResponse({"success": False, "error": "リクエストが正しくありません"}, status_code=400)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    print(f"未処理の例外: {request.method} {request.url.path}: {exc!r}")
+    if _wants_html(request):
+        return error_page(None, 500)
+    return JSONResponse({"success": False, "error": "サーバーエラーが発生しました"}, status_code=500)
+
+
 async def get_json_silent(request: Request):
     try:
         return await request.json()
@@ -1326,10 +1387,10 @@ async def offerwall_page(request: Request):
 
     public_id = await get_member_public_id(request)
     if public_id and await is_banned_member_public_id(public_id):
-        return text_resp("利用できません。", 403)
+        return error_page("利用できません。", 403)
 
     if not ADGEM_APP_ID:
-        return text_resp("Offer Wallは現在準備中です。", 503)
+        return error_page("Offer Wallは現在準備中です。", 503)
 
     member_id = request.session.get('member_id')
     player_id = await get_or_create_adgem_player_id(member_id)
@@ -1802,12 +1863,12 @@ async def member_logout(request: Request):
 async def verify_email(request: Request, token: str):
     user = await _consume_token(token, 'verify')
     if not user:
-        return text_resp("確認リンクが無効か、有効期限が切れています。", 400)
+        return error_page("確認リンクが無効か、有効期限が切れています。", 400)
     try:
         await execute_query("UPDATE users SET email_verified = 1 WHERE id = ?", [user['id']])
     except Exception as e:
         print(f"メール確認エラー: {e}")
-        return text_resp("データベースエラーが発生しました。", 500)
+        return error_page("データベースエラーが発生しました。", 500)
     return templates.TemplateResponse(request, 'email_verified.html', {})
 
 
@@ -2143,7 +2204,7 @@ async def profile_view(request: Request, public_id: str):
         execute_query("SELECT COUNT(*) as cnt FROM replies WHERE poster_public_id = ?", [public_id]),
     )
     if not res:
-        return text_resp("そのユーザーは見つかりませんでした。", 404)
+        return error_page("そのユーザーは見つかりませんでした。", 404)
     profile_user = res[0]
     board_stats = {
         'thread_count': thread_count_res[0]['cnt'] if thread_count_res else 0,
@@ -2824,7 +2885,7 @@ async def archive_view(request: Request, thread_id: int):
         payload = json.loads(raw.decode('utf-8'))
     except Exception as e:
         print(f"過去ログ取得エラー(thread_id={thread_id}): {e}")
-        return text_resp("この過去ログは見つかりませんでした", 404)
+        return error_page("この過去ログは見つかりませんでした", 404)
 
     thread = payload.get('thread', {})
     replies = payload.get('replies', [])
@@ -4214,7 +4275,7 @@ async def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=No
 async def index(request: Request):
     client_ip = get_client_ip(request)
     if await is_banned_request(request, client_ip):
-        return text_resp("あなたはアクセス禁止（BAN）されています。", 403)
+        return error_page("あなたはアクセス禁止（BAN）されています。", 403)
 
     if request.method == 'HEAD':
         return Response(content='', status_code=200)
@@ -4629,7 +4690,7 @@ async def get_new_replies(request: Request, thread_id: int):
 async def thread_view(request: Request, thread_id: int):
     client_ip = get_client_ip(request)
     if await is_banned_request(request, client_ip):
-        return text_resp("あなたはアクセス禁止（BAN）されています。", 403)
+        return (error_page("あなたはアクセス禁止（BAN）されています。", 403) if request.method == 'GET' else text_resp("あなたはアクセス禁止（BAN）されています。", 403))
 
     if request.method == 'POST':
         form = await request.form()
@@ -4811,7 +4872,7 @@ async def thread_view(request: Request, thread_id: int):
             ),
         )
         if not thread_res:
-            return text_resp("スレッドが見つかりません", 404)
+            return (error_page("スレッドが見つかりません", 404) if request.method == 'GET' else text_resp("スレッドが見つかりません", 404))
         thread = thread_res[0]
         thread['tags_list'] = _parse_tags(thread.get('tags'))
 
@@ -4845,7 +4906,7 @@ async def thread_view(request: Request, thread_id: int):
             r['is_op'] = bool(op_user_id) and r.get('user_id') == op_user_id
     except Exception as e:
         print(f"スレッド読み込みエラー: {e}")
-        return text_resp("データベースエラーが発生しました", 500)
+        return (error_page("データベースエラーが発生しました", 500) if request.method == 'GET' else text_resp("データベースエラーが発生しました", 500))
 
     is_admin_user = can_manage_board(request)
     user_token = request.cookies.get('user_bbs_token')
@@ -5536,7 +5597,7 @@ async def dm_conversation(request: Request, public_id: str):
         get_unread_dm_count(request),
     )
     if not partner_res:
-        return text_resp("そのユーザーは見つかりませんでした。", 404)
+        return error_page("そのユーザーは見つかりませんでした。", 404)
     partner = partner_res[0]
 
     messages = []
@@ -5980,7 +6041,7 @@ async def api_points_transfer(request: Request, public_id: str):
 async def dm_image(request: Request, message_id: int):
     """DMの添付画像を配信する。その会話の当事者(送信者・受信者)だけが見られる。"""
     if not is_member_logged_in(request):
-        return text_resp("ログインが必要です。", 401)
+        return error_page("ログインが必要です。", 401)
     member_id = request.session.get('member_id')
     rows = await execute_query(
         "SELECT m.image_key FROM dm_messages m "
@@ -5989,7 +6050,7 @@ async def dm_image(request: Request, message_id: int):
         [message_id, member_id, member_id]
     )
     if not rows:
-        return text_resp("画像が見つかりません。", 404)
+        return error_page("画像が見つかりません。", 404)
     try:
         obj = await run_in_threadpool(
             lambda: s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=rows[0]['image_key'])
@@ -5998,7 +6059,7 @@ async def dm_image(request: Request, message_id: int):
         ctype = obj.get('ContentType') or 'application/octet-stream'
     except Exception as e:
         print(f"DM画像の取得エラー: {e}")
-        return text_resp("画像が見つかりません。", 404)
+        return error_page("画像が見つかりません。", 404)
     return Response(
         content=data, media_type=ctype,
         headers={'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'},
@@ -6361,7 +6422,7 @@ async def group_chat_page(request: Request, group_id: int):
 
     membership = await _get_group_membership(group_id, member_id)
     if not membership:
-        return text_resp("グループが見つからないか、参加していません。", 404)
+        return error_page("グループが見つからないか、参加していません。", 404)
     is_owner = membership['owner_id'] == member_id
 
     raw, members, addable, my_public_id = await asyncio.gather(
@@ -6600,7 +6661,7 @@ async def api_group_retract(request: Request, message_id: int):
 async def group_image(request: Request, message_id: int):
     """グループの添付画像を配信する。そのグループの参加者(かつ参加後のメッセージ)だけ見られる。"""
     if not is_member_logged_in(request):
-        return text_resp("ログインが必要です。", 401)
+        return error_page("ログインが必要です。", 401)
     member_id = request.session.get('member_id')
     rows = await execute_query(
         "SELECT gm.image_key FROM group_messages gm "
@@ -6609,7 +6670,7 @@ async def group_image(request: Request, message_id: int):
         [member_id, message_id]
     )
     if not rows:
-        return text_resp("画像が見つかりません。", 404)
+        return error_page("画像が見つかりません。", 404)
     try:
         obj = await run_in_threadpool(
             lambda: s3_client.get_object(Bucket=R2_BUCKET_NAME, Key=rows[0]['image_key'])
@@ -6618,7 +6679,7 @@ async def group_image(request: Request, message_id: int):
         ctype = obj.get('ContentType') or 'application/octet-stream'
     except Exception as e:
         print(f"グループ画像の取得エラー: {e}")
-        return text_resp("画像が見つかりません。", 404)
+        return error_page("画像が見つかりません。", 404)
     return Response(
         content=data, media_type=ctype,
         headers={'Cache-Control': 'private, max-age=86400', 'X-Content-Type-Options': 'nosniff'},
@@ -6797,7 +6858,7 @@ async def api_report(request: Request):
 @app.get('/admin')
 async def admin_dashboard(request: Request):
     if not can_manage_board(request):
-        return text_resp("権限がありません。", 403)
+        return error_page("権限がありません。", 403)
 
     status = request.query_params.get('status', 'open')
     if status not in ('open', 'resolved', 'rejected'):
@@ -7351,7 +7412,7 @@ async def market_sell_submit(request: Request):
 async def market_official_form(request: Request):
     """公式商品の出品フォーム。admin のみ。"""
     if not _is_market_admin(request):
-        return text_resp("権限がありません。", 403)
+        return error_page("権限がありません。", 403)
     return templates.TemplateResponse(request, 'market_form.html', {
         'mode': 'official', 'action': '/market/official/new', 'item': None,
         'allowed_types': MARKET_OFFICIAL_TYPES, 'type_labels': market_service.ITEM_TYPE_LABELS,
@@ -7394,7 +7455,7 @@ async def market_item_page(request: Request, item_id: int):
     is_admin = _is_market_admin(request)
     item = await market_service.get_item_for_view(item_id, viewer_id, is_admin)
     if not item or item['status'] != 'active':
-        return text_resp("商品が見つかりません。", 404)
+        return error_page("商品が見つかりません。", 404)
     item['created_at'] = _to_jst_string(item.get('created_at'))
 
     is_own = bool(viewer_id) and item.get('seller_user_id') == viewer_id
@@ -7484,11 +7545,11 @@ async def market_edit_form(request: Request, item_id: int):
     is_admin = _is_market_admin(request)
     item = await market_service.get_item(item_id)
     if not item or item['status'] != 'active':
-        return text_resp("商品が見つかりません。", 404)
+        return error_page("商品が見つかりません。", 404)
     is_own = item.get('seller_user_id') == member_id
     # 公式商品は admin のみ、一般商品は出品者本人のみ編集可能
     if not ((is_own and not item['is_official']) or (item['is_official'] and is_admin)):
-        return text_resp("権限がありません。", 403)
+        return error_page("権限がありません。", 403)
     # 編集画面には現在のURLを表示するため権限確認後に secret 込みで取得
     full = await market_service.get_item_full(item_id)
     return templates.TemplateResponse(request, 'market_form.html', {
@@ -7726,7 +7787,7 @@ async def market_shop(request: Request, public_id: str):
         [public_id],
     )
     if not res:
-        return text_resp("そのユーザーは見つかりませんでした。", 404)
+        return error_page("そのユーザーは見つかりませんでした。", 404)
     seller = res[0]
     items, summary, reviews = await asyncio.gather(
         market_service.shop_items(seller['id']),
@@ -7790,7 +7851,7 @@ async def casino_game_page(request: Request, game_key: str):
         return RedirectResponse(url='/login', status_code=303)
     game = casino_service.get_game(game_key)
     if not game:
-        return text_resp("そのゲームは見つかりません。", 404)
+        return error_page("そのゲームは見つかりません。", 404)
 
     member_id = request.session.get('member_id')
     balance, history, stats, current_member = await asyncio.gather(
