@@ -5489,7 +5489,7 @@ async def dm_list(request: Request):
         return RedirectResponse(url='/login')
     member_id = request.session.get('member_id')
 
-    conversations, mutuals, unread_dm_count = await asyncio.gather(
+    conversations, mutuals, unread_dm_count, unread_group_count = await asyncio.gather(
         execute_query(
             "SELECT c.id AS conversation_id, "
             "       u.username, u.public_id, u.icon_path, "
@@ -5514,12 +5514,14 @@ async def dm_list(request: Request):
             [member_id]
         ),
         get_unread_dm_count(request),
+        get_unread_group_count(member_id),
     )
 
     return templates.TemplateResponse(request, 'messages.html', {
         'conversations': conversations or [],
         'mutuals': mutuals or [],
         'unread_dm_count': unread_dm_count,
+        'unread_group_count': unread_group_count,
     })
 
 
@@ -6704,6 +6706,35 @@ async def api_group_leave(request: Request, group_id: int):
         ok, _ = await _group_leave_tx(group_id, member_id, new_owner_id=new_owner)
     if not ok:
         return json_resp({"success": False, "error": "退出に失敗しました。"}, 500)
+    return json_resp({"success": True})
+
+
+@app.post('/api/groups/{group_id}/delete')
+async def api_group_delete(request: Request, group_id: int):
+    """グループを削除する(オーナーのみ)。メッセージ・画像・メンバー情報をすべて消し、他のメンバーへ通知する。"""
+    member_id, err = await _require_member(request)
+    if err:
+        return err
+    membership = await _get_group_membership(group_id, member_id)
+    if not membership:
+        return json_resp({"success": False, "error": "このグループには参加していません。"}, 403)
+    if membership['owner_id'] != member_id:
+        return json_resp({"success": False, "error": "グループを削除できるのは作成者(オーナー)だけです。"}, 403)
+
+    other_ids = [r['id'] for r in await _group_members(group_id) if r['id'] != member_id]
+    ok, keys = await _group_leave_tx(group_id, member_id, delete_group=True)
+    if not ok:
+        return json_resp({"success": False, "error": "削除に失敗しました。"}, 500)
+    for k in keys:
+        try:
+            await _delete_r2_key(k)
+        except Exception as e:
+            print(f"グループ削除時の画像削除エラー: {e}")
+    for uid in other_ids:
+        try:
+            await dm_manager.send_to_user(uid, {"type": "group_deleted", "group_id": group_id})
+        except Exception as e:
+            print(f"グループ削除の通知エラー: {e}")
     return json_resp({"success": True})
 
 
