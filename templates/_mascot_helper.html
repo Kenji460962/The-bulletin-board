@@ -300,10 +300,29 @@
         later(leave, FLOAT_AFTER_DONE_MS);   // 要件が終わってから10秒浮遊 → 退場
     }
 
+    // 書き込み欄に話題を入れる。ユーザーが自分で書いている途中の文章は上書きしない。
+    // 戻り値: 'filled'(入れた) / 'kept'(入力中なので入れなかった) / 'none'(欄が無い)
+    var lastInserted = '';
+    function fillInput(text) {
+        var ta = document.querySelector('#bbsForm textarea[name="content"]') ||
+                 document.querySelector('textarea[name="content"]');
+        if (!ta) return 'none';
+        // 空欄、または前回このキャラが入れた文章のままのときだけ差し替える
+        if (ta.value !== '' && ta.value !== lastInserted) return 'kept';
+        ta.value = text;
+        lastInserted = text;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));   // 文字数表示などの既存処理に通知
+        return 'filled';
+    }
+
     function proposeTopic() {
         clearTimers();
         var topic = nextTopic();
-        say('こんな話題はどうかな？\n' + topic, function () {
+        var result = fillInput(topic);
+        var note = result === 'filled' ? '\n（書き込み欄に入れておいたよ）'
+                 : result === 'kept' ? '\n（入力中の文章があるから、入れてないよ）'
+                 : '';
+        say('こんな話題はどうかな？\n' + topic + note, function () {
             showChoices([{ label: '別の話題', fn: proposeTopic }]);
             scheduleLeave();   // 「別の話題」を押すたびにリセットされる
         });
