@@ -38,6 +38,20 @@
     .header-area a:hover { color: var(--accent-color); }
 
     .container { max-width: 620px; margin: 0 auto; padding: 16px; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+    .tabs a {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 14px; border-radius: 999px; font-size: 13px; text-decoration: none;
+        color: var(--text-muted); border: 1px solid var(--border-color);
+    }
+    .tabs a:hover { border-color: var(--accent-color); }
+    .tabs a.active { background: var(--panel-bg); color: var(--text-main); font-weight: 700; }
+    .tab-badge {
+        background: var(--danger-color); color: #fff; border-radius: 999px;
+        min-width: 18px; height: 18px; padding: 0 5px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 10.5px; font-weight: 700;
+    }
     .section-title {
         font-size: 12px; font-weight: 700; color: var(--text-muted);
         text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 10px;
@@ -102,6 +116,11 @@
 </div>
 
 <div class="container">
+    <div class="tabs">
+        <a href="/messages" class="active">個人 (DM)</a>
+        <a href="/groups">グループ{% if unread_group_count and unread_group_count > 0 %}<span class="tab-badge">{{ unread_group_count if unread_group_count < 100 else '99+' }}</span>{% endif %}</a>
+    </div>
+
     <div class="section-title">やり取り中</div>
     {% if conversations %}
     <div class="conv-list">
