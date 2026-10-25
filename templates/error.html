@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="/static/favicon.webp" type="image/webp">
+    <title>{{ status_code }} {{ title }} | talk-ch</title>
+
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('talk_ch_theme') === 'dark') {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
+
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+
+    <style>
+        :root {
+            --bg: #F6F8FA;
+            --card-bg: #FFFFFF;
+            --card-border: #E5E7EB;
+            --text: #111827;
+            --text-muted: #475569;
+            --primary: #2563EB;
+            --primary-hover: #1D4ED8;
+            --cyan: #00E5E5;
+        }
+        html[data-theme="dark"] {
+            --bg: #0F1115;
+            --card-bg: #16181D;
+            --card-border: #2A2D34;
+            --text: #E5E7EB;
+            --text-muted: #CBD5E1;
+            --primary: #5B93F5;
+            --primary-hover: #7CA8F8;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 16px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', Meiryo, sans-serif;
+        }
+        .card {
+            width: 100%;
+            max-width: 480px;
+            text-align: center;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 6px;
+            padding: 28px 24px 32px;
+        }
+        .stage {
+            position: relative;
+            width: 260px;
+            height: 220px;
+            margin: 0 auto 4px;
+        }
+        .float {
+            position: absolute;
+            inset: 0 0 18px 0;
+            animation: float 2.4s ease-in-out infinite;
+        }
+        model-viewer {
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            --poster-color: transparent;
+            cursor: pointer;
+            outline: none;
+        }
+        .shadow {
+            position: absolute;
+            left: 50%;
+            bottom: 4px;
+            width: 120px;
+            height: 14px;
+            margin-left: -60px;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.18);
+            filter: blur(4px);
+            animation: shadow 2.4s ease-in-out infinite;
+        }
+        html[data-theme="dark"] .shadow { background: rgba(0, 229, 229, 0.18); }
+        @keyframes float {
+            0%, 100% { transform: translateY(6px); }
+            50%      { transform: translateY(-14px); }
+        }
+        @keyframes shadow {
+            0%, 100% { transform: scaleX(1);   opacity: 1; }
+            50%      { transform: scaleX(0.7); opacity: 0.55; }
+        }
+        .code {
+            font-size: 56px;
+            font-weight: 800;
+            letter-spacing: 0.04em;
+            line-height: 1;
+            margin: 8px 0 10px;
+            color: var(--cyan);
+        }
+        h1 { font-size: 20px; margin: 0 0 8px; }
+        p  { margin: 0 0 22px; color: var(--text-muted); font-size: 14px; line-height: 1.7; }
+        .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+        .btn {
+            display: inline-block;
+            padding: 10px 18px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid var(--primary);
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-primary { background: var(--primary); color: #fff; }
+        .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+        .btn-ghost { background: transparent; color: var(--primary); }
+        .btn-ghost:hover { background: rgba(37, 99, 235, 0.08); }
+
+        @media (prefers-reduced-motion: reduce) {
+            .float, .shadow { animation: none; }
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <div class="stage">
+            <div class="float">
+                <model-viewer id="mascot"
+                              src="/static/talk_ch_mascot.glb"
+                              alt="talk-chのマスコット"
+                              camera-orbit="0deg 80deg auto"
+                              field-of-view="30deg"
+                              environment-image="neutral"
+                              exposure="1.1"
+                              shadow-intensity="0"
+                              interaction-prompt="none"
+                              disable-zoom
+                              disable-pan
+                              touch-action="pan-y"
+                              loading="eager"
+                              reveal="auto"></model-viewer>
+            </div>
+            <div class="shadow"></div>
+        </div>
+
+        <div class="code">{{ status_code }}</div>
+        <h1>{{ title }}</h1>
+        <p>{{ message }}</p>
+
+        <div class="actions">
+            <a class="btn btn-primary" href="/">トップページへ戻る</a>
+            <button type="button" class="btn btn-ghost" onclick="history.length > 1 ? history.back() : (location.href = '/')">前のページへ</button>
+        </div>
+    </main>
+
+    <script>
+        // 数秒ふわふわ浮遊 → くるっと一回転 → また浮遊、を繰り返す。
+        // クリック/タップでもその場で一回転する。
+        (function () {
+            var mv = document.getElementById('mascot');
+            if (!mv) return;
+
+            var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            var FLOAT_MS = 3000;   // 浮遊している時間
+            var SPIN_MS = 1100;    // 一回転にかける時間
+            var spinning = false;
+            var timer = null;
+
+            function ease(t) {
+                return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            }
+
+            function schedule() {
+                clearTimeout(timer);
+                if (reduce) return;
+                timer = setTimeout(spin, FLOAT_MS);
+            }
+
+            function spin() {
+                if (spinning || reduce) return;
+                spinning = true;
+                clearTimeout(timer);
+                var start = performance.now();
+                (function step(now) {
+                    var t = Math.min((now - start) / SPIN_MS, 1);
+                    mv.orientation = '0deg 0deg ' + (-360 * ease(t)) + 'deg';
+                    if (t < 1) {
+                        requestAnimationFrame(step);
+                    } else {
+                        mv.orientation = '0deg 0deg 0deg';
+                        spinning = false;
+                        schedule();
+                    }
+                })(start);
+            }
+
+            mv.addEventListener('load', schedule);
+            mv.addEventListener('click', spin);
+            mv.addEventListener('error', function () { mv.style.display = 'none'; });
+        })();
+    </script>
+</body>
+</html>
