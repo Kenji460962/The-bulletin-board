@@ -1,0 +1,385 @@
+{# =====================================================================
+   マスコット案内役(thread.html などから {% include '_mascot_helper.html' %} で使う)
+   - 広告欄の真上のボタンを押すと、回転しながらキャラが登場
+   - 「何かお手伝いできることはありますか?」→「話題提案」「何でもない」
+   - 要件が終わって10秒浮遊したあと、回転しながらボタンへ戻る
+   - 3Dモデル/model-viewerは初回クリック(or ホバー)まで読み込まない
+   ===================================================================== #}
+<style>
+    .mh-dock {
+        position: fixed;
+        z-index: 30;
+        right: 12px;
+        bottom: 173px;              /* スマホ: 下の入力欄(高さ165px)のすぐ上 */
+        width: min(300px, calc(100vw - 24px));
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
+        pointer-events: none;       /* 空きスペースは下のレスを触れるように */
+    }
+    .mh-dock > * { pointer-events: auto; }
+
+    @media (min-width: 768px) {
+        /* PC: 右の広告欄(幅330px)の「広告」の真上。広告を下に寄せて上に余白を作る */
+        .ad-space-pc { justify-content: flex-end; }
+        .mh-dock { right: 15px; bottom: 290px; width: 300px; align-items: stretch; }
+    }
+
+    .mh-btn {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--accent-color);
+        background: var(--panel-bg);
+        color: var(--accent-color);
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .mh-btn:hover:not(:disabled) { background: var(--accent-color); color: #0f172a; }
+    .mh-btn:disabled { opacity: 0.55; cursor: default; }
+    @media (min-width: 768px) { .mh-btn { width: 100%; border-radius: 6px; } }
+
+    .mh-panel { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .mh-panel[hidden] { display: none; }
+
+    .mh-char { width: 100%; height: clamp(90px, 18vh, 150px); pointer-events: none; }
+    .mh-float { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 64px; }
+    .mh-float.mh-floating { animation: mh-float 2.4s ease-in-out infinite; }
+    .mh-float model-viewer { width: 100%; height: 100%; background: transparent; --poster-color: transparent; pointer-events: none; }
+    @keyframes mh-float {
+        0%, 100% { transform: translateY(6px); }
+        50%      { transform: translateY(-12px); }
+    }
+
+    .mh-bubble {
+        position: relative;
+        width: 100%;
+        min-height: 104px;
+        box-sizing: border-box;
+        padding: 12px 30px 10px 14px;
+        background: var(--panel-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        color: var(--text-main);
+        font-size: 13px;
+        line-height: 1.6;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+        transition: opacity 0.25s;
+    }
+    .mh-bubble.mh-hidden { opacity: 0; pointer-events: none; }
+    .mh-text { white-space: pre-wrap; word-break: break-word; min-height: 3.2em; }
+    .mh-text strong { color: var(--accent-color); }
+    .mh-close {
+        position: absolute; top: 4px; right: 6px;
+        width: 22px; height: 22px; line-height: 20px; padding: 0;
+        border: none; background: transparent; color: var(--text-muted);
+        font-size: 16px; cursor: pointer; border-radius: 4px;
+    }
+    .mh-close:hover { color: var(--text-main); background: rgba(128, 128, 128, 0.2); }
+    .mh-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .mh-choice {
+        font: inherit; font-size: 12px; font-weight: 600;
+        padding: 6px 12px; border-radius: 6px; cursor: pointer;
+        border: 1px solid var(--accent-color); background: transparent; color: var(--accent-color);
+    }
+    .mh-choice:hover { background: var(--accent-color); color: #0f172a; }
+</style>
+
+<div class="mh-dock" id="mh-dock">
+    <div class="mh-panel" id="mh-panel" hidden>
+        <div class="mh-char" id="mh-char"><div class="mh-float" id="mh-float"></div></div>
+        <div class="mh-bubble mh-hidden" id="mh-bubble" role="dialog" aria-live="polite" aria-label="お手伝いキャラ">
+            <button type="button" class="mh-close" id="mh-close" aria-label="閉じる">×</button>
+            <div class="mh-text" id="mh-text"></div>
+            <div class="mh-choices" id="mh-choices"></div>
+        </div>
+    </div>
+    <button type="button" class="mh-btn" id="mh-btn">💬 キャラに話しかける</button>
+</div>
+
+<script>
+(function () {
+    var MV_SRC = '/static/model-viewer.min.js';
+    var GLB_SRC = '/static/talk_ch_mascot.glb';
+    var FLOAT_AFTER_DONE_MS = 10000;   // 要件が終わってから戻るまで浮遊する時間
+    var MOVE_MS = 1000;                // 登場/退場の長さ
+    var BTN_LABEL = '💬 キャラに話しかける';
+    var GREETING = 'こんにちは！何かお手伝いできることはありますか？';
+
+    var THREAD_TITLE = {{ (thread.title if thread is defined and thread else none) | tojson }};
+
+    var TOPICS = [
+        '最近ハマっていることはある？',
+        '子どもの頃に好きだったアニメやゲームは？',
+        '無人島に1つだけ持っていくなら何にする？',
+        '朝型？夜型？それぞれの1日の過ごし方を教えて！',
+        '今までで一番おいしかったご飯は？',
+        '最近買ってよかったものを教えて！',
+        '行ってみたい国や場所はどこ？',
+        '学生時代の「あるある」を語ろう',
+        '一生食べるならラーメン・カレー・寿司、どれ？',
+        '寝る前のルーティンはある？',
+        '最近見て面白かった動画・映画・ドラマは？',
+        '1日だけ誰かになれるなら誰になる？',
+        '好きな季節とその理由は？',
+        '休日の理想の過ごし方を教えて！',
+        '地元の自慢できるものを紹介して！',
+        '今年中にやりたいことは？',
+        'よく聴く音楽やおすすめの曲は？',
+        '犬派？猫派？それともほかの動物？',
+        '初めて買ったゲームは何だった？',
+        '「これだけは譲れない」マイルールは？',
+        '100万円もらったら何に使う？',
+        '最近一番笑ったことは？',
+        '子どもの頃の夢は何だった？',
+        '自分だけが知っている小さなコツ・ライフハックは？',
+        'おすすめのコンビニ商品は？',
+        'タイムマシンがあったら過去と未来、どっちに行く？',
+        '最近のちょっとした幸せを教えて！',
+        '得意なことや特技を自慢しよう！'
+    ];
+    if (THREAD_TITLE) {
+        TOPICS.push('このスレ「' + THREAD_TITLE + '」について、みんなはどう思う？');
+        TOPICS.push('このスレ「' + THREAD_TITLE + '」にまつわる思い出はある？');
+    }
+
+    var dock = document.getElementById('mh-dock');
+    var btn = document.getElementById('mh-btn');
+    var panel = document.getElementById('mh-panel');
+    var charBox = document.getElementById('mh-char');
+    var floatBox = document.getElementById('mh-float');
+    var bubble = document.getElementById('mh-bubble');
+    var textEl = document.getElementById('mh-text');
+    var choicesEl = document.getElementById('mh-choices');
+    var closeBtn = document.getElementById('mh-close');
+    if (!dock || !btn) return;
+
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var mv = null;
+    var viewerPromise = null;
+    var busy = false;          // 登場〜退場の間 true
+    var leaving = false;
+    var timers = [];
+    var typeTimer = null;
+    var topicBag = [];
+
+    function later(fn, ms) { var t = setTimeout(fn, ms); timers.push(t); return t; }
+    function clearTimers() {
+        timers.forEach(clearTimeout); timers = [];
+        if (typeTimer) { clearInterval(typeTimer); typeTimer = null; }
+    }
+    function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+    function easeIn(t) { return t * t * t; }
+
+    // ---- 読み込み(初回クリック/ホバーまで遅延) ----
+    function warmUp() {
+        try { import(MV_SRC).catch(function () {}); } catch (e) {}
+        try { fetch(GLB_SRC, { cache: 'force-cache' }).catch(function () {}); } catch (e) {}
+    }
+    ['pointerenter', 'focus', 'touchstart'].forEach(function (ev) {
+        btn.addEventListener(ev, function once() { btn.removeEventListener(ev, once); warmUp(); }, { passive: true });
+    });
+
+    function ensureViewer() {
+        if (viewerPromise) return viewerPromise;
+        viewerPromise = import(MV_SRC)
+            .then(function () { return customElements.whenDefined('model-viewer'); })
+            .then(function () {
+                mv = document.createElement('model-viewer');
+                mv.setAttribute('src', GLB_SRC);
+                mv.setAttribute('alt', 'talk-chのマスコット');
+                mv.setAttribute('camera-orbit', '180deg 80deg auto');
+                mv.setAttribute('field-of-view', '30deg');
+                mv.setAttribute('environment-image', 'neutral');
+                mv.setAttribute('exposure', '1.1');
+                mv.setAttribute('shadow-intensity', '0');
+                mv.setAttribute('interaction-prompt', 'none');
+                mv.setAttribute('loading', 'eager');
+                mv.setAttribute('disable-zoom', '');
+                mv.setAttribute('disable-pan', '');
+                floatBox.textContent = '';
+                floatBox.appendChild(mv);
+                return new Promise(function (resolve, reject) {
+                    mv.addEventListener('load', resolve, { once: true });
+                    mv.addEventListener('error', function (e) { reject(e); }, { once: true });
+                    setTimeout(function () { reject(new Error('timeout')); }, 15000);
+                });
+            })
+            .catch(function (e) {
+                console.error('[talk-ch mascot] 3Dモデルを読み込めませんでした', e);
+                mv = null;
+                floatBox.textContent = '💬';   // 3Dが出せなくても会話はできるようにする
+            });
+        return viewerPromise;
+    }
+
+    // ---- 動き ----
+    function spinYaw(fromDeg, toDeg, ms, ease) {
+        return new Promise(function (resolve) {
+            if (!mv || reduce) { resolve(); return; }
+            var start = performance.now();
+            (function step(now) {
+                var t = Math.min((now - start) / ms, 1);
+                var deg = fromDeg + (toDeg - fromDeg) * ease(t);
+                mv.orientation = '0deg 0deg ' + deg + 'deg';
+                if (t < 1) requestAnimationFrame(step);
+                else { mv.orientation = '0deg 0deg 0deg'; resolve(); }
+            })(start);
+        });
+    }
+
+    function deltaToButton() {
+        var a = charBox.getBoundingClientRect();
+        var b = btn.getBoundingClientRect();
+        return {
+            dx: (b.left + b.width / 2) - (a.left + a.width / 2),
+            dy: (b.top + b.height / 2) - (a.top + a.height / 2)
+        };
+    }
+
+    function moveChar(toButton, ms, ease) {
+        // toButton=true: ボタンへ吸い込まれる / false: ボタンから出てくる
+        if (reduce) return Promise.resolve();
+        var d = deltaToButton();
+        var hidden = 'translate(' + d.dx + 'px,' + d.dy + 'px) scale(0.1)';
+        var frames = toButton
+            ? [{ transform: 'none', opacity: 1 }, { transform: hidden, opacity: 0 }]
+            : [{ transform: hidden, opacity: 0 }, { transform: 'none', opacity: 1 }];
+        var anim = charBox.animate(frames, {
+            duration: ms,
+            easing: toButton ? 'cubic-bezier(.5,0,.8,.4)' : 'cubic-bezier(.2,.7,.2,1)',
+            fill: 'both'
+        });
+        return anim.finished.then(function () { return anim; }).catch(function () { return anim; });
+    }
+
+    // ---- 会話 ----
+    function say(text, done) {
+        clearInterval(typeTimer); typeTimer = null;
+        choicesEl.textContent = '';
+        textEl.textContent = '';
+        if (reduce) { textEl.textContent = text; if (done) done(); return; }
+        var i = 0;
+        typeTimer = setInterval(function () {
+            i++;
+            textEl.textContent = text.slice(0, i);
+            if (i >= text.length) {
+                clearInterval(typeTimer); typeTimer = null;
+                if (done) done();
+            }
+        }, 28);
+    }
+
+    function showChoices(list) {
+        choicesEl.textContent = '';
+        list.forEach(function (c) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'mh-choice';
+            b.textContent = c.label;
+            b.addEventListener('click', function () { if (!leaving) c.fn(); });
+            choicesEl.appendChild(b);
+        });
+    }
+
+    function nextTopic() {
+        if (!topicBag.length) {
+            topicBag = TOPICS.slice();
+            for (var i = topicBag.length - 1; i > 0; i--) {   // シャッフルして一巡するまで重複させない
+                var j = Math.floor(Math.random() * (i + 1));
+                var t = topicBag[i]; topicBag[i] = topicBag[j]; topicBag[j] = t;
+            }
+        }
+        return topicBag.pop();
+    }
+
+    function scheduleLeave() {
+        later(leave, FLOAT_AFTER_DONE_MS);   // 要件が終わってから10秒浮遊 → 退場
+    }
+
+    function proposeTopic() {
+        clearTimers();
+        var topic = nextTopic();
+        say('こんな話題はどうかな？\n' + topic, function () {
+            showChoices([{ label: '別の話題', fn: proposeTopic }]);
+            scheduleLeave();   // 「別の話題」を押すたびにリセットされる
+        });
+    }
+
+    function nothing() {
+        clearTimers();
+        say('わかった！何かあったらまた呼んでね。', function () {
+            choicesEl.textContent = '';
+            scheduleLeave();
+        });
+    }
+
+    function askMenu() {
+        say(GREETING, function () {
+            showChoices([
+                { label: '話題提案', fn: proposeTopic },
+                { label: '何でもない', fn: nothing }
+            ]);
+        });
+    }
+
+    // ---- 登場 / 退場 ----
+    function enter() {
+        if (busy) return;
+        busy = true; leaving = false;
+        btn.disabled = true;
+        btn.textContent = '読み込み中…';
+
+        panel.hidden = false;
+        panel.style.visibility = 'hidden';
+        bubble.classList.add('mh-hidden');
+        textEl.textContent = '';
+        choicesEl.textContent = '';
+
+        ensureViewer().then(function () {
+            btn.textContent = 'お話し中…';
+            // 吹き出しの高さを確保してから位置を測る(キャラがずれないように)
+            bubble.classList.remove('mh-hidden');
+            bubble.style.opacity = '0';
+            panel.style.visibility = 'visible';
+            floatBox.classList.remove('mh-floating');
+            var p1 = moveChar(false, MOVE_MS, easeOut);
+            var p2 = spinYaw(-720, 0, MOVE_MS, easeOut);
+            return Promise.all([p1, p2]);
+        }).then(function (res) {
+            var anim = res && res[0];
+            if (anim && anim.cancel) anim.cancel();
+            floatBox.classList.add('mh-floating');
+            bubble.style.opacity = '';
+            askMenu();
+        });
+    }
+
+    function leave() {
+        if (!busy || leaving) return;
+        leaving = true;
+        clearTimers();
+        bubble.classList.add('mh-hidden');
+        floatBox.classList.remove('mh-floating');
+        var p1 = moveChar(true, MOVE_MS, easeIn);
+        var p2 = spinYaw(0, 720, MOVE_MS, easeIn);
+        Promise.all([p1, p2]).then(function (res) {
+            var anim = res && res[0];
+            if (anim && anim.cancel) anim.cancel();
+            panel.hidden = true;
+            panel.style.visibility = '';
+            textEl.textContent = '';
+            choicesEl.textContent = '';
+            btn.disabled = false;
+            btn.textContent = BTN_LABEL;
+            busy = false; leaving = false;
+        });
+    }
+
+    btn.addEventListener('click', enter);
+    closeBtn.addEventListener('click', leave);   // ×は即退場
+})();
+</script>
