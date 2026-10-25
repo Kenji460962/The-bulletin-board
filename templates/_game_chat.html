@@ -1,0 +1,181 @@
+{# 対局画面の右側に出す観戦チャット。使う側で {% set chat_game = 'othello' %} などを指定して include する #}
+<style>
+    .game-layout {
+        display: flex; flex-wrap: wrap; gap: 16px;
+        justify-content: center; align-items: flex-start;
+        width: 100%; max-width: 1000px;
+    }
+    .game-layout > .panel,
+    .game-layout > .game-wrap { flex: 1 1 440px; max-width: 480px; margin-bottom: 0; }
+    .game-chat {
+        flex: 0 1 320px; min-width: 260px; max-width: 480px; width: 100%;
+        height: 560px; display: flex; flex-direction: column;
+        background: var(--panel-bg, #1e293b); border: 1px solid var(--border-color, #334155);
+        border-radius: 10px; overflow: hidden;
+    }
+    @media (max-width: 860px) {
+        .game-chat { flex: 1 1 100%; height: 360px; }
+    }
+    .gc-head {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 14px; font-size: 14px; font-weight: 700;
+        border-bottom: 1px solid var(--border-color, #334155);
+    }
+    .gc-presence { font-size: 12px; font-weight: 400; color: var(--text-muted, #94a3b8); }
+    .gc-log { flex: 1; overflow-y: auto; padding: 10px 12px; font-size: 13px; line-height: 1.5; }
+    .gc-msg { margin-bottom: 8px; word-break: break-word; }
+    .gc-meta { font-size: 11px; color: var(--text-muted, #94a3b8); }
+    .gc-name { font-weight: 700; }
+    .gc-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px;
+                border-radius: 999px; margin-right: 4px; vertical-align: 1px; }
+    .gc-badge.player { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+    .gc-badge.spectator { background: rgba(56, 189, 248, 0.18); color: var(--accent-color, #38bdf8); }
+    .gc-system { font-size: 12px; color: var(--text-muted, #94a3b8); text-align: center; margin: 8px 0; }
+    .gc-note { font-size: 11px; color: var(--text-muted, #94a3b8); padding: 6px 12px 0; }
+    .gc-form { display: flex; gap: 6px; padding: 8px 10px 10px; }
+    .gc-form input {
+        flex: 1; min-width: 0; padding: 8px 10px; font-size: 14px;
+        background: var(--bg-color, #0f172a); color: var(--text-main, #f8fafc);
+        border: 1px solid var(--border-color, #334155); border-radius: 6px;
+    }
+    .gc-form button {
+        padding: 8px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+        background: var(--accent-color, #38bdf8); color: #0f172a; border: none; border-radius: 6px;
+    }
+    .gc-form button:disabled, .gc-form input:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+<aside class="game-chat" id="game-chat" aria-label="観戦チャット">
+    <div class="gc-head">
+        <span>💬 観戦チャット</span>
+        <span class="gc-presence" id="gc-presence"></span>
+    </div>
+    <div class="gc-log" id="gc-log"></div>
+    <div class="gc-note" id="gc-note">対戦者と観戦者が話せます。対局が終わるとチャットは削除されます。</div>
+    <div class="gc-form">
+        <input type="text" id="gc-input" maxlength="200" placeholder="メッセージを入力" autocomplete="off">
+        <button type="button" id="gc-send">送信</button>
+    </div>
+</aside>
+<script>
+(function () {
+    var GAME = {{ chat_game | tojson }};
+    var CODE = {{ room.room_code | tojson }};
+    var logEl = document.getElementById('gc-log');
+    var inputEl = document.getElementById('gc-input');
+    var sendBtn = document.getElementById('gc-send');
+    var presenceEl = document.getElementById('gc-presence');
+    var noteEl = document.getElementById('gc-note');
+
+    var ws = null, pingTimer = null, retry = 0, closed = false;
+
+    function nearBottom() {
+        return logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 60;
+    }
+    function scrollDown() { logEl.scrollTop = logEl.scrollHeight; }
+
+    function addSystem(text) {
+        var stick = nearBottom();
+        var d = document.createElement('div');
+        d.className = 'gc-system';
+        d.textContent = text;
+        logEl.appendChild(d);
+        if (stick) scrollDown();
+    }
+
+    function addMsg(m) {
+        var stick = nearBottom();
+        var wrap = document.createElement('div');
+        wrap.className = 'gc-msg';
+
+        var meta = document.createElement('div');
+        meta.className = 'gc-meta';
+        var badge = document.createElement('span');
+        badge.className = 'gc-badge ' + (m.role === 'player' ? 'player' : 'spectator');
+        badge.textContent = m.role === 'player' ? ('対戦者' + (m.side ? '・' + m.side : '')) : '観戦';
+        var name = document.createElement('span');
+        name.className = 'gc-name';
+        name.textContent = m.name || '名無しさん';
+        var time = document.createElement('span');
+        time.textContent = ' ' + new Date((m.ts || 0) * 1000).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+        meta.appendChild(badge);
+        meta.appendChild(name);
+        meta.appendChild(time);
+
+        var body = document.createElement('div');
+        body.textContent = m.text || '';   // textContent で出すのでHTMLは解釈されない
+
+        wrap.appendChild(meta);
+        wrap.appendChild(body);
+        logEl.appendChild(wrap);
+        if (stick) scrollDown();
+    }
+
+    function setPresence(d) {
+        presenceEl.textContent = '対戦者 ' + (d.players || 0) + ' ・ 観戦 ' + (d.spectators || 0);
+    }
+
+    function onClosed() {
+        // 対局終了: 会話を画面からも消し、入力を止める
+        closed = true;
+        clearInterval(pingTimer);
+        logEl.textContent = '';
+        addSystem('対局が終了したため、チャットは削除されました。');
+        inputEl.value = '';
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+        noteEl.textContent = '';
+        presenceEl.textContent = '';
+    }
+
+    function connect() {
+        if (closed) return;
+        var proto = location.protocol === 'https:' ? 'wss' : 'ws';
+        ws = new WebSocket(proto + '://' + location.host + '/ws/gamechat/' + encodeURIComponent(GAME) + '/' + encodeURIComponent(CODE));
+
+        ws.onopen = function () {
+            retry = 0;
+            clearInterval(pingTimer);
+            pingTimer = setInterval(function () {
+                if (ws && ws.readyState === 1) ws.send('ping');
+            }, 25000);
+        };
+        ws.onmessage = function (ev) {
+            var d;
+            try { d = JSON.parse(ev.data); } catch (e) { return; }
+            if (d.type === 'init') {
+                logEl.textContent = '';
+                (d.history || []).forEach(addMsg);
+                setPresence(d);
+                scrollDown();
+            } else if (d.type === 'msg') {
+                addMsg(d);
+            } else if (d.type === 'presence') {
+                setPresence(d);
+            } else if (d.type === 'error') {
+                addSystem(d.message || 'エラーが発生しました');
+            } else if (d.type === 'closed') {
+                onClosed();
+            }
+        };
+        ws.onclose = function () {
+            clearInterval(pingTimer);
+            if (closed) return;
+            retry += 1;
+            setTimeout(connect, Math.min(1000 * Math.pow(2, retry), 15000));
+        };
+    }
+
+    function send() {
+        var text = inputEl.value.trim();
+        if (!text || closed || !ws || ws.readyState !== 1) return;
+        ws.send(JSON.stringify({ type: 'msg', text: text }));
+        inputEl.value = '';
+    }
+    sendBtn.addEventListener('click', send);
+    inputEl.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); send(); }   // 日本語変換の確定Enterでは送らない
+    });
+
+    connect();
+})();
+</script>
