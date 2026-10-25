@@ -14,6 +14,7 @@
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
             --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
             --sente-color: #f8fafc;
             --gote-color: #fbbf24;
             --board-line: #0b1220;
@@ -35,7 +36,7 @@
         }
         a { color: var(--accent-color); text-decoration: none; }
         a:hover { text-decoration: underline; }
-        .top-nav { width: 100%; max-width: 460px; margin-bottom: 12px; font-size: 13px; display: flex; justify-content: space-between; }
+        .top-nav { width: 100%; max-width: 480px; margin-bottom: 12px; font-size: 13px; line-height: 1.8; }
         h1 { font-size: 19px; margin: 0 0 12px 0; }
         .panel {
             background: var(--panel-bg);
@@ -97,6 +98,26 @@
         }
         label { font-size: 13px; color: var(--text-muted); }
         .hr { border-top: 1px solid var(--border-color); margin: 18px 0; }
+
+        /* --- ロビー(オセロ・チェスと同じ見た目) --- */
+        .lobby-panel h1 { font-size: 20px; margin: 0 0 4px 0; }
+        .lobby-panel h2 { font-size: 16px; margin: 0 0 12px 0; color: var(--text-muted); font-weight: 600; }
+        .lobby-panel .lobby-label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+        .lobby-actions { display: flex; flex-direction: column; gap: 16px; }
+        .lobby-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .lobby-row input { flex: 1; min-width: 160px; width: auto; }
+        .lobby-panel input[type="text"] {
+            background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-main);
+            padding: 8px 10px; border-radius: 6px; font-size: 14px; margin-top: 0; outline: none;
+        }
+        .lobby-panel input[type="text"]:focus { border-color: var(--accent-color); }
+        .lobby-panel button {
+            background: var(--accent-color); color: #06202e; border: none;
+            padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 14px;
+            cursor: pointer; transition: background 0.15s ease;
+        }
+        .lobby-panel button:hover { background: var(--accent-hover); }
+        .lobby-panel button:disabled { background: #475569; color: var(--text-muted); cursor: not-allowed; }
 
         /* --- 対局画面 --- */
         .game-wrap { width: 100%; max-width: 460px; }
@@ -196,26 +217,37 @@
 <body>
 
     <div class="top-nav">
-        <a href="{{ url_for('games_hub') }}">← ゲーム一覧に戻る</a>
-        <a href="/">talk-chトップ</a>
+        <a href="/">← talk-chに戻る</a>
+        <span style="color: var(--text-muted); margin: 0 6px;">|</span>
+        <a href="{{ url_for('shogi_lobby') }}">☖ 将棋ロビーへ</a>
+        <span style="color: var(--text-muted); margin: 0 6px;">|</span>
+        <a href="{{ url_for('games_hub') }}">🎮 ゲーム一覧</a>
     </div>
 
-    <h1>☖ オンライン将棋</h1>
+    {% if room %}<h1>☖ オンライン将棋</h1>{% endif %}
 
     {% if not room %}
-    <div class="panel">
-        <div style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">
-            部屋を作って、リンクや部屋コードを相手に共有しよう。登録不要・匿名で対局できます。
+    <div class="panel lobby-panel" style="background:transparent; border:none; border-radius:0; padding:0; max-width:480px;">
+        <h1>オンライン将棋</h1>
+        <h2>友達と対戦しよう（登録不要・匿名）</h2>
+        <div class="lobby-actions">
+            <div>
+                <div class="lobby-label">表示する名前（省略可）</div>
+                <input type="text" id="player-name-input" placeholder="名無しさん" maxlength="20" style="width: 100%;">
+            </div>
+            <div>
+                <button id="createBtn">新しい部屋を作る</button>
+            </div>
+            <div>
+                <div class="lobby-label">部屋コードを持っている場合</div>
+                <div class="lobby-row">
+                    <input type="text" id="joinCode" placeholder="例: AB12CD" maxlength="6" style="text-transform: uppercase;" autocapitalize="characters">
+                    <button id="joinBtn">参加する</button>
+                </div>
+            </div>
         </div>
-        <label for="player-name-input">表示する名前（省略可）</label>
-        <input type="text" id="player-name-input" placeholder="名無しさん" maxlength="20">
-        <div class="hr"></div>
-        <button class="btn" id="createBtn">対局部屋を作る</button>
-        <div class="hr"></div>
-        <label for="joinCode">部屋コードを入力して参加</label>
-        <input type="text" id="joinCode" placeholder="例: AB12CD" maxlength="6" autocapitalize="characters">
-        <button class="btn secondary" id="joinBtn">この部屋に入る</button>
-        <div style="border-top:1px solid var(--border-color); margin-top:18px; padding-top:14px;">
+
+        <div style="margin-top:18px;">
             {% include '_live_games.html' %}
         </div>
     </div>
