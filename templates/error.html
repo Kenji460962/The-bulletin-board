@@ -17,7 +17,7 @@
         })();
     </script>
 
-    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+    <script type="module" src="/static/model-viewer.min.js" onerror="window.__mvFailed=true"></script>
 
     <style>
         :root {
@@ -79,6 +79,8 @@
             cursor: pointer;
             outline: none;
         }
+        .fallback { display: none; position: absolute; inset: 0 0 18px 0; align-items: center; justify-content: center; font-size: 72px; }
+        .fallback.show { display: flex; }
         .shadow {
             position: absolute;
             left: 50%;
@@ -151,6 +153,7 @@
                               loading="eager"
                               reveal="auto"></model-viewer>
             </div>
+            <div class="fallback" id="fallback" aria-hidden="true">💬</div>
             <div class="shadow"></div>
         </div>
 
@@ -207,7 +210,17 @@
 
             mv.addEventListener('load', schedule);
             mv.addEventListener('click', spin);
-            mv.addEventListener('error', function () { mv.style.display = 'none'; });
+            function showFallback(e) {
+                console.error('[talk-ch mascot] 3Dモデルの読み込みに失敗しました', e && e.detail ? e.detail : e);
+                mv.style.display = 'none';
+                var fb = document.getElementById('fallback');
+                if (fb) fb.classList.add('show');
+            }
+            mv.addEventListener('error', showFallback);
+            // model-viewerのスクリプト自体が読めなかった場合
+            setTimeout(function () {
+                if (window.__mvFailed || !window.customElements.get('model-viewer')) showFallback('model-viewer is not defined');
+            }, 4000);
         })();
     </script>
 </body>
