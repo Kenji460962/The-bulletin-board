@@ -97,7 +97,7 @@
             <div class="mh-choices" id="mh-choices"></div>
         </div>
     </div>
-    <button type="button" class="mh-btn" id="mh-btn">キャラに話しかける</button>
+    <button type="button" class="mh-btn" id="mh-btn">とくちゃんに話しかける</button>
 </div>
 
 <script>
@@ -106,9 +106,10 @@
     var GLB_SRC = '/static/talk_ch_mascot.glb';
     var FLOAT_AFTER_DONE_MS = 10000;   // 要件が終わってから戻るまで浮遊する時間
     var MOVE_MS = 1000;                // 登場/退場の長さ
-    var BTN_LABEL = 'キャラに話しかける';
-    var GREETING = 'こんにちは！何かお手伝いできることはありますか？';
+    var BTN_LABEL = 'とくちゃんに話しかける';
+    var GREETING = 'こんにちは！とくちゃんです！何かお手伝いできることはありますか？';
 
+    var THREAD_ID = {{ (thread.id if thread is defined and thread else none) | tojson }};
     var THREAD_TITLE = {{ (thread.title if thread is defined and thread else none) | tojson }};
 
     var TOPICS = [
@@ -257,7 +258,7 @@
     }
 
     // ---- 会話 ----
-    function say(text, done) {
+    function say(text, done, speed) {
         clearInterval(typeTimer); typeTimer = null;
         choicesEl.textContent = '';
         textEl.textContent = '';
@@ -270,7 +271,7 @@
                 clearInterval(typeTimer); typeTimer = null;
                 if (done) done();
             }
-        }, 28);
+        }, speed || 28);
     }
 
     function showChoices(list) {
@@ -336,12 +337,64 @@
         });
     }
 
+    // 直近50件のレスから「いま話題になっていること」を聞く(集計はサーバー内で完結する)
+    function hotTopics() {
+        clearTimers();
+        choicesEl.textContent = '';
+        say('ちょっと見てくるね…', function () {
+            var url = '/thread/' + encodeURIComponent(THREAD_ID) + '/hot_topics';
+            fetch(url, { credentials: 'same-origin' })
+                .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+                .then(showHotResult)
+                .catch(function (e) {
+                    console.error('[talk-ch mascot] 話題の集計に失敗', e);
+                    say('ごめん、うまく見られなかった…', function () {
+                        showChoices([{ label: 'もう一度', fn: hotTopics }]);
+                        scheduleLeave();
+                    });
+                });
+        });
+    }
+
+    function showHotResult(data) {
+        if (leaving) return;
+        var words = (data && data.keywords) || [];
+        var quotes = (data && data.quotes) || [];
+        var text;
+        if (!data || !data.success || (data.count || 0) < 5) {
+            text = 'まだレスが少なくて、話題は見えないみたい。';
+        } else if (!words.length) {
+            text = '直近' + data.count + '件を見たけど、はっきりした話題はまだないみたい。';
+        } else {
+            text = '直近' + data.count + '件のレスでは、こんな話題が出てるよ！\n' +
+                   words.map(function (w) { return '・' + w.word + '（' + w.count + '件）'; }).join('\n');
+            if (quotes.length) {
+                text += '\n\nたとえばこんなレス：\n' + quotes.map(function (q) {
+                    return '>>' + q.num + ' ' + q.text;
+                }).join('\n');
+            }
+        }
+        say(text, function () {
+            var list = [];
+            if (typeof window.scrollToPost === 'function') {
+                quotes.slice(0, 2).forEach(function (q) {
+                    list.push({ label: '>>' + q.num + 'へ', fn: function () { window.scrollToPost(q.num); scheduleLeave(); } });
+                });
+            }
+            list.push({ label: '話題提案', fn: proposeTopic });
+            showChoices(list);
+            scheduleLeave();
+        }, 12);
+    }
+
     function askMenu() {
         say(GREETING, function () {
-            showChoices([
-                { label: '話題提案', fn: proposeTopic },
-                { label: '何でもない', fn: nothing }
-            ]);
+            var list = [{ label: '話題提案', fn: proposeTopic }];
+            if (THREAD_ID !== null && THREAD_ID !== undefined) {
+                list.push({ label: 'いまの話題', fn: hotTopics });   // スレッド画面でだけ出す
+            }
+            list.push({ label: '何でもない', fn: nothing });
+            showChoices(list);
         });
     }
 
