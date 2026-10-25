@@ -188,7 +188,7 @@
     </div>
 
     {% if not room %}
-    <div class="panel">
+    <div class="panel" style="background:transparent; border:none; border-radius:0; padding:0;">
         <h1>オンラインチェス</h1>
         <h2>友達と対戦しよう（登録不要・匿名）</h2>
         <div class="lobby-actions">
@@ -209,7 +209,7 @@
         </div>
         <div class="msg" id="lobby-msg"></div>
 
-        <div style="border-top:1px solid var(--border-color); margin-top:18px; padding-top:14px;">
+        <div style="margin-top:18px;">
             {% include '_live_games.html' %}
         </div>
 
