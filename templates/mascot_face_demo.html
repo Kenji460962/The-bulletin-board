@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>マスコットの表情テスト | talk-ch</title>
+<script src="/static/mascot_face.js" defer></script>
+<script type="module" src="/static/model-viewer.min.js"></script>
+<style>
+  :root { color-scheme: light dark; --bg:#F6F8FA; --text:#111827; --muted:#475569; --accent:#2563EB; --line:#E5E7EB; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0F1115; --text:#E5E7EB; --muted:#CBD5E1; --accent:#5B93F5; --line:#2A2D34; } }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN','Noto Sans JP',Meiryo,sans-serif; display:flex; flex-direction:column; align-items:center; padding:20px 12px 40px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p { color:var(--muted); font-size:13px; margin:0 0 12px; }
+  model-viewer { width:min(420px,100%); height:320px; background:transparent; --poster-color:transparent; }
+  .grid { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; max-width:560px; margin-top:8px; }
+  button { font:inherit; font-size:13px; padding:7px 14px; border-radius:6px; border:1px solid var(--accent); background:transparent; color:var(--accent); cursor:pointer; }
+  button.on, button:hover { background:var(--accent); color:#fff; }
+  .row { margin-top:14px; display:flex; gap:14px; align-items:center; font-size:13px; color:var(--muted); }
+</style>
+</head>
+<body>
+  <h1>マスコットの表情テスト</h1>
+  <p>ボタンで表情が切り替わります。</p>
+  <model-viewer id="mv" src="/static/talk_ch_mascot.glb" alt="talk-chのマスコット"
+      camera-orbit="180deg 80deg auto" field-of-view="30deg" environment-image="neutral" exposure="1.1"
+      shadow-intensity="0" interaction-prompt="none" disable-zoom disable-pan touch-action="pan-y"></model-viewer>
+  <div class="grid" id="grid"></div>
+  <div class="row">
+    <label><input type="checkbox" id="blink" checked> 自動まばたき</label>
+    <label><input type="checkbox" id="orbit"> ドラッグで回す</label>
+  </div>
+<script>
+  var LABELS = { neutral:'ふつう', smile:'にっこり', happy:'うれしい', laugh:'大笑い', wink:'ウインク', doubt:'疑い', shy:'照れ', sad:'しょんぼり', angry:'おこ', surprised:'びっくり', sleepy:'ねむい', thinking:'考え中' };
+  var mv = document.getElementById('mv'), grid = document.getElementById('grid'), face = null;
+  function build() {
+    Object.keys(LABELS).forEach(function (k) {
+      var b = document.createElement('button'); b.textContent = LABELS[k]; b.dataset.k = k;
+      b.onclick = function () { face.set(k); mark(k); };
+      grid.appendChild(b);
+    });
+  }
+  function mark(k) { [].forEach.call(grid.children, function (b) { b.classList.toggle('on', b.dataset.k === k); }); }
+  function start(blink) {
+    if (face) face.destroy();
+    face = window.TalkChFace.attach(mv, { initial: face ? face.get() : 'neutral', blink: blink });
+  }
+  build();
+  mv.addEventListener('load', function () { start(true); mark('neutral'); });
+  document.getElementById('blink').onchange = function () { start(this.checked); };
+  document.getElementById('orbit').onchange = function () { this.checked ? mv.setAttribute('camera-controls', '') : mv.removeAttribute('camera-controls'); };
+</script>
+</body>
+</html>
