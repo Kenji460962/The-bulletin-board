@@ -17,6 +17,7 @@
         })();
     </script>
 
+    <script src="/static/mascot_face.js" defer></script>
     <script type="module" src="/static/model-viewer.min.js" onerror="window.__mvFailed=true"></script>
 
     <style>
@@ -171,6 +172,10 @@
             var mv = document.getElementById('mascot');
             if (!mv) return;
 
+            // ステータスごとの表情(404は疑い顔、500はびっくり、混雑/メンテは眠そう、それ以外はしょんぼり)
+            var BASE_FACE = {{ ({404: 'doubt', 500: 'surprised', 503: 'sleepy', 429: 'sleepy'}).get(status_code, 'sad') | tojson }};
+            var face = null;
+
             var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
             var FLOAT_MS = 3000;   // 浮遊している時間
             var SPIN_MS = 1100;    // 一回転にかける時間
@@ -191,6 +196,7 @@
                 if (spinning || reduce) return;
                 spinning = true;
                 clearTimeout(timer);
+                if (face) face.set('laugh');   // 回っている間は「> <」
                 var start = performance.now();
                 (function step(now) {
                     var t = Math.min((now - start) / SPIN_MS, 1);
@@ -200,12 +206,16 @@
                     } else {
                         mv.orientation = '0deg 0deg 0deg';
                         spinning = false;
+                        if (face) face.set(BASE_FACE);
                         schedule();
                     }
                 })(start);
             }
 
-            mv.addEventListener('load', schedule);
+            mv.addEventListener('load', function () {
+                if (window.TalkChFace) face = window.TalkChFace.attach(mv, { initial: BASE_FACE });
+                schedule();
+            });
             mv.addEventListener('click', spin);
             function showFallback(e) {
                 console.error('[talk-ch mascot] 3Dモデルの読み込みに失敗しました', e && e.detail ? e.detail : e);
