@@ -10,8 +10,8 @@
         try { if (localStorage.getItem('talk_ch_theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}
     })();
 </script>
-<script src="/static/mascot_face.js?v=20261026a" defer></script>
-<script type="module" src="/static/model-viewer.min.js?v=20261026a"></script>
+<script src="/static/mascot_face.js?v=20261026b" defer></script>
+<script type="module" src="/static/model-viewer.min.js?v=20261026b"></script>
 <style>
   :root { --bg:#F6F8FA; --text:#111827; --muted:#475569; --accent:#2563EB; --line:#E5E7EB; }
   html[data-theme="dark"] { --bg:#0F1115; --text:#E5E7EB; --muted:#CBD5E1; --accent:#5B93F5; --line:#2A2D34; }
@@ -30,7 +30,7 @@
 <body>
   <h1>マスコットの表情テスト</h1>
   <p>ボタンで表情が切り替わります。</p>
-  <model-viewer id="mv" src="/static/talk_ch_mascot.glb?v=20261026a" alt="talk-chのマスコット"
+  <model-viewer id="mv" src="/static/talk_ch_mascot.glb?v=20261026b" alt="talk-chのマスコット"
       camera-orbit="180deg 80deg auto" field-of-view="30deg" environment-image="neutral" exposure="1.1"
       shadow-intensity="0" interaction-prompt="none" disable-zoom disable-pan touch-action="pan-y"></model-viewer>
   <div class="grid" id="grid"></div>
