@@ -173,6 +173,17 @@
             font-weight: 600;
         }
 
+        /* 会員の名前はプロフィールへのリンク(ゲストはリンクなし) */
+        .player-name a {
+            color: inherit;
+            text-decoration: none;
+        }
+        .player-name a:hover,
+        .player-name a:focus-visible {
+            color: var(--accent-color);
+            text-decoration: underline;
+        }
+
         .rating-val {
             font-weight: 700;
             color: var(--accent-color);
@@ -224,7 +235,9 @@
                     {% for p in othello_ranking %}
                     <tr class="rank-{{ loop.index }}">
                         <td class="rank-num">{{ loop.index }}</td>
-                        <td class="player-name">{{ p.display_name }}</td>
+                        <td class="player-name">
+                            {% if p.public_id %}<a href="{{ url_for('profile_view', public_id=p.public_id) }}">{{ p.display_name }}</a>{% else %}{{ p.display_name }}{% endif %}
+                        </td>
                         <td class="rating-val">{{ p.rating }}</td>
                         <td class="wld">{{ p.wins }}勝{{ p.losses }}敗{{ p.draws }}分</td>
                     </tr>
@@ -251,7 +264,9 @@
                     {% for p in chess_ranking %}
                     <tr class="rank-{{ loop.index }}">
                         <td class="rank-num">{{ loop.index }}</td>
-                        <td class="player-name">{{ p.display_name }}</td>
+                        <td class="player-name">
+                            {% if p.public_id %}<a href="{{ url_for('profile_view', public_id=p.public_id) }}">{{ p.display_name }}</a>{% else %}{{ p.display_name }}{% endif %}
+                        </td>
                         <td class="rating-val">{{ p.rating }}</td>
                         <td class="wld">{{ p.wins }}勝{{ p.losses }}敗{{ p.draws }}分</td>
                     </tr>
@@ -278,7 +293,9 @@
                     {% for p in shogi_ranking %}
                     <tr class="rank-{{ loop.index }}">
                         <td class="rank-num">{{ loop.index }}</td>
-                        <td class="player-name">{{ p.display_name }}</td>
+                        <td class="player-name">
+                            {% if p.public_id %}<a href="{{ url_for('profile_view', public_id=p.public_id) }}">{{ p.display_name }}</a>{% else %}{{ p.display_name }}{% endif %}
+                        </td>
                         <td class="rating-val">{{ p.rating }}</td>
                         <td class="wld">{{ p.wins }}勝{{ p.losses }}敗{{ p.draws }}分</td>
                     </tr>
