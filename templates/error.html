@@ -17,8 +17,8 @@
         })();
     </script>
 
-    <script src="/static/mascot_face.js" defer></script>
-    <script type="module" src="/static/model-viewer.min.js" onerror="window.__mvFailed=true"></script>
+    <script src="/static/mascot_face.js?v=20261026b" defer></script>
+    <script type="module" src="/static/model-viewer.min.js?v=20261026b" onerror="window.__mvFailed=true"></script>
 
     <style>
         :root {
@@ -137,7 +137,7 @@
         <div class="stage">
             <div class="float">
                 <model-viewer id="mascot"
-                              src="/static/talk_ch_mascot.glb"
+                              src="/static/talk_ch_mascot.glb?v=20261026b"
                               alt="talk-chのマスコット"
                               camera-orbit="180deg 80deg auto"
                               field-of-view="30deg"
@@ -214,6 +214,7 @@
 
             mv.addEventListener('load', function () {
                 if (window.TalkChFace) face = window.TalkChFace.attach(mv, { initial: BASE_FACE });
+                else console.warn('[talk-ch mascot] mascot_face.js が読み込まれていません(static/ に置いてありますか?)');
                 schedule();
             });
             mv.addEventListener('click', spin);
