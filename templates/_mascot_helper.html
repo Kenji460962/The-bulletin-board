@@ -97,17 +97,18 @@
             <div class="mh-choices" id="mh-choices"></div>
         </div>
     </div>
-    <button type="button" class="mh-btn" id="mh-btn">とくちゃんに話しかける</button>
+    <button type="button" class="mh-btn" id="mh-btn">💬 キャラに話しかける</button>
 </div>
 
 <script>
 (function () {
-    var MV_SRC = '/static/model-viewer.min.js';
-    var GLB_SRC = '/static/talk_ch_mascot.glb';
+    var MV_SRC = '/static/model-viewer.min.js?v=20261026b';
+    var GLB_SRC = '/static/talk_ch_mascot.glb?v=20261026b';
     var FLOAT_AFTER_DONE_MS = 10000;   // 要件が終わってから戻るまで浮遊する時間
     var MOVE_MS = 1000;                // 登場/退場の長さ
-    var BTN_LABEL = 'とくちゃんに話しかける';
-    var GREETING = 'こんにちは！とくちゃんです！何かお手伝いできることはありますか？';
+    var FACE_SRC = '/static/mascot_face.js?v=20261026b';
+    var BTN_LABEL = '💬 キャラに話しかける';
+    var GREETING = 'こんにちは！何かお手伝いできることはありますか？';
 
     var THREAD_ID = {{ (thread.id if thread is defined and thread else none) | tojson }};
     var THREAD_TITLE = {{ (thread.title if thread is defined and thread else none) | tojson }};
@@ -166,6 +167,19 @@
     var timers = [];
     var typeTimer = null;
     var topicBag = [];
+    var face = null;           // 表情(TalkChFace)。読み込めなくても会話は続けられる
+
+    function setFace(name) { if (face) face.set(name); }
+    function loadFaceScript() {
+        if (window.TalkChFace) return Promise.resolve();
+        return new Promise(function (resolve) {
+            var sc = document.createElement('script');
+            sc.src = FACE_SRC;
+            sc.onload = resolve;
+            sc.onerror = function () { console.error('[talk-ch mascot] 表情スクリプトを読み込めませんでした'); resolve(); };
+            document.head.appendChild(sc);
+        });
+    }
 
     function later(fn, ms) { var t = setTimeout(fn, ms); timers.push(t); return t; }
     function clearTimers() {
@@ -204,7 +218,12 @@
                 floatBox.textContent = '';
                 floatBox.appendChild(mv);
                 return new Promise(function (resolve, reject) {
-                    mv.addEventListener('load', resolve, { once: true });
+                    mv.addEventListener('load', function () {
+                        loadFaceScript().then(function () {
+                            if (window.TalkChFace) face = window.TalkChFace.attach(mv, { initial: 'neutral' });
+                            resolve();
+                        });
+                    }, { once: true });
                     mv.addEventListener('error', function (e) { reject(e); }, { once: true });
                     setTimeout(function () { reject(new Error('timeout')); }, 15000);
                 });
@@ -318,6 +337,7 @@
 
     function proposeTopic() {
         clearTimers();
+        setFace('happy');
         var topic = nextTopic();
         var result = fillInput(topic);
         var note = result === 'filled' ? '\n（書き込み欄に入れておいたよ）'
@@ -331,6 +351,7 @@
 
     function nothing() {
         clearTimers();
+        setFace('wink');
         say('わかった！何かあったらまた呼んでね。', function () {
             choicesEl.textContent = '';
             scheduleLeave();
@@ -340,6 +361,7 @@
     // 直近50件のレスから「いま話題になっていること」を聞く(集計はサーバー内で完結する)
     function hotTopics() {
         clearTimers();
+        setFace('thinking');
         choicesEl.textContent = '';
         say('ちょっと見てくるね…', function () {
             var url = '/thread/' + encodeURIComponent(THREAD_ID) + '/hot_topics';
@@ -348,6 +370,7 @@
                 .then(showHotResult)
                 .catch(function (e) {
                     console.error('[talk-ch mascot] 話題の集計に失敗', e);
+                    setFace('sad');
                     say('ごめん、うまく見られなかった…', function () {
                         showChoices([{ label: 'もう一度', fn: hotTopics }]);
                         scheduleLeave();
@@ -362,10 +385,13 @@
         var quotes = (data && data.quotes) || [];
         var text;
         if (!data || !data.success || (data.count || 0) < 5) {
+            setFace('sleepy');
             text = 'まだレスが少なくて、話題は見えないみたい。';
         } else if (!words.length) {
+            setFace('sleepy');
             text = '直近' + data.count + '件を見たけど、はっきりした話題はまだないみたい。';
         } else {
+            setFace('happy');
             text = '直近' + data.count + '件のレスでは、こんな話題が出てるよ！\n' +
                    words.map(function (w) { return '・' + w.word + '（' + w.count + '件）'; }).join('\n');
             if (quotes.length) {
@@ -388,6 +414,7 @@
     }
 
     function askMenu() {
+        setFace('smile');
         say(GREETING, function () {
             var list = [{ label: '話題提案', fn: proposeTopic }];
             if (THREAD_ID !== null && THREAD_ID !== undefined) {
@@ -412,6 +439,7 @@
         choicesEl.textContent = '';
 
         ensureViewer().then(function () {
+            setFace('laugh');   // 回りながら登場する間は「> <」
             btn.textContent = 'お話し中…';
             // 吹き出しの高さを確保してから位置を測る(キャラがずれないように)
             bubble.classList.remove('mh-hidden');
@@ -436,11 +464,13 @@
         clearTimers();
         bubble.classList.add('mh-hidden');
         floatBox.classList.remove('mh-floating');
+        setFace('laugh');
         var p1 = moveChar(true, MOVE_MS, easeIn);
         var p2 = spinYaw(0, 720, MOVE_MS, easeIn);
         Promise.all([p1, p2]).then(function (res) {
             var anim = res && res[0];
             if (anim && anim.cancel) anim.cancel();
+            setFace('neutral');
             panel.hidden = true;
             panel.style.visibility = '';
             textEl.textContent = '';
