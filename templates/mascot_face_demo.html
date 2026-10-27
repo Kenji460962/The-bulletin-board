@@ -36,6 +36,7 @@
   <div class="grid" id="grid"></div>
   <div class="row">
     <label><input type="checkbox" id="blink" checked> 自動まばたき</label>
+    <label><input type="checkbox" id="idle" checked> 表情のゆらぎ</label>
     <label><input type="checkbox" id="orbit"> ドラッグで回す</label>
   </div>
   <a class="back" href="/">トップページへ戻る</a>
@@ -50,13 +51,18 @@
     });
   }
   function mark(k) { [].forEach.call(grid.children, function (b) { b.classList.toggle('on', b.dataset.k === k); }); }
-  function start(blink) {
+  function start() {
     if (face) face.destroy();
-    face = window.TalkChFace.attach(mv, { initial: face ? face.get() : 'neutral', blink: blink });
+    face = window.TalkChFace.attach(mv, {
+      initial: face ? face.get() : 'neutral',
+      blink: document.getElementById('blink').checked,
+      idle: document.getElementById('idle').checked
+    });
   }
   build();
-  mv.addEventListener('load', function () { start(true); mark('neutral'); });
-  document.getElementById('blink').onchange = function () { start(this.checked); };
+  mv.addEventListener('load', function () { start(); mark('neutral'); });
+  document.getElementById('blink').onchange = start;
+  document.getElementById('idle').onchange = start;
   document.getElementById('orbit').onchange = function () { this.checked ? mv.setAttribute('camera-controls', '') : mv.removeAttribute('camera-controls'); };
 </script>
 </body>
