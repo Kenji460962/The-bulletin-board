@@ -5,11 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <title>マスコットの表情テスト | talk-ch</title>
+<script>
+    (function () {
+        try { if (localStorage.getItem('talk_ch_theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) {}
+    })();
+</script>
 <script src="/static/mascot_face.js?v=20261026a" defer></script>
 <script type="module" src="/static/model-viewer.min.js?v=20261026a"></script>
 <style>
-  :root { color-scheme: light dark; --bg:#F6F8FA; --text:#111827; --muted:#475569; --accent:#2563EB; --line:#E5E7EB; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#0F1115; --text:#E5E7EB; --muted:#CBD5E1; --accent:#5B93F5; --line:#2A2D34; } }
+  :root { --bg:#F6F8FA; --text:#111827; --muted:#475569; --accent:#2563EB; --line:#E5E7EB; }
+  html[data-theme="dark"] { --bg:#0F1115; --text:#E5E7EB; --muted:#CBD5E1; --accent:#5B93F5; --line:#2A2D34; }
   body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Hiragino Kaku Gothic ProN','Noto Sans JP',Meiryo,sans-serif; display:flex; flex-direction:column; align-items:center; padding:20px 12px 40px; }
   h1 { font-size:18px; margin:0 0 4px; }
   p { color:var(--muted); font-size:13px; margin:0 0 12px; }
@@ -17,6 +22,8 @@
   .grid { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; max-width:560px; margin-top:8px; }
   button { font:inherit; font-size:13px; padding:7px 14px; border-radius:6px; border:1px solid var(--accent); background:transparent; color:var(--accent); cursor:pointer; }
   button.on, button:hover { background:var(--accent); color:#fff; }
+  a.back { margin-top:18px; font-size:13px; color:var(--accent); text-decoration:none; }
+  a.back:hover { text-decoration:underline; }
   .row { margin-top:14px; display:flex; gap:14px; align-items:center; font-size:13px; color:var(--muted); }
 </style>
 </head>
@@ -31,6 +38,7 @@
     <label><input type="checkbox" id="blink" checked> 自動まばたき</label>
     <label><input type="checkbox" id="orbit"> ドラッグで回す</label>
   </div>
+  <a class="back" href="/">トップページへ戻る</a>
 <script>
   var LABELS = { neutral:'ふつう', smile:'にっこり', happy:'うれしい', laugh:'大笑い', wink:'ウインク', doubt:'疑い', shy:'照れ', sad:'しょんぼり', angry:'おこ', surprised:'びっくり', sleepy:'ねむい', thinking:'考え中' };
   var mv = document.getElementById('mv'), grid = document.getElementById('grid'), face = null;
