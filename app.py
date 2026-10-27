@@ -2033,6 +2033,12 @@ async def terms(request: Request):
     return templates.TemplateResponse(request, 'terms.html', {})
 
 
+@app.get('/mascot_face_demo')
+async def mascot_face_demo(request: Request):
+    # マスコットの表情テスト用ページ(各表情をボタンで確認できる)
+    return templates.TemplateResponse(request, 'mascot_face_demo.html', {})
+
+
 @app.get('/roles')
 async def roles(request: Request):
     return templates.TemplateResponse(request, 'roles.html', {})
