@@ -107,8 +107,8 @@
     var FLOAT_AFTER_DONE_MS = 10000;   // 要件が終わってから戻るまで浮遊する時間
     var MOVE_MS = 1000;                // 登場/退場の長さ
     var FACE_SRC = '/static/mascot_face.js?v=20261026b';
-    var BTN_LABEL = '💬 キャラに話しかける';
-    var GREETING = 'こんにちは！何かお手伝いできることはありますか？';
+    var BTN_LABEL = 'とくちゃんに話しかける';
+    var GREETING = 'こんにちは！とくちゃんです！何かお手伝いできることはありますか？';
 
     var THREAD_ID = {{ (thread.id if thread is defined and thread else none) | tojson }};
     var THREAD_TITLE = {{ (thread.title if thread is defined and thread else none) | tojson }};
