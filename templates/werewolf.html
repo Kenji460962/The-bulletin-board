@@ -1,156 +1,256 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>人狼 | Talk-ch</title>
-<style>
-:root{--bg:#14161c;--panel:#1d2029;--panel2:#252936;--line:#32384a;--text:#e8eaf0;--sub:#9aa3b8;--accent:#6c8cff;--wolf:#ff6b6b;--ok:#4cc38a;--warn:#f0b429}
-@media (prefers-color-scheme:light){:root{--bg:#f3f4f8;--panel:#fff;--panel2:#eef0f6;--line:#d5d9e6;--text:#1c2030;--sub:#667088;--accent:#3a5bd9;--wolf:#d63b3b;--ok:#1f9d63;--warn:#b7791f}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.5}
-.wrap{max-width:1000px;margin:0 auto;padding:12px}
-header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
-header a{color:var(--sub);text-decoration:none;font-size:14px}
-header h1{font-size:20px;margin:0}
-[hidden]{display:none!important}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
-.card h2{font-size:15px;margin:0 0 10px;color:var(--sub);font-weight:600}
-input,select,button{font:inherit}
-input[type=text],select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-width:0}
-button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600}
-button:disabled{opacity:.45;cursor:not-allowed}
-button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
-button.sm{padding:5px 10px;font-size:13px}
-button.sel{background:var(--ok)}
-button.danger{background:var(--wolf)}
-.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.room-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel2)}
-.room-item .meta{font-size:13px;color:var(--sub)}
-.empty{color:var(--sub);font-size:14px}
-.bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-.phase{font-size:18px;font-weight:700}
-.timer{font-variant-numeric:tabular-nums;font-size:22px;font-weight:700;color:var(--warn)}
-.sub{color:var(--sub);font-size:13px}
-.banner{padding:10px 12px;border-radius:10px;margin-bottom:12px;font-weight:600;background:var(--panel2);border:1px solid var(--line)}
-.banner.win{border-color:var(--ok);color:var(--ok)}
-.grid{display:grid;grid-template-columns:1fr;gap:12px}
-@media (min-width:820px){.grid{grid-template-columns:340px 1fr}}
-.pl{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:var(--panel2)}
-.pl .no{font-weight:700;color:var(--sub);min-width:38px}
-.pl .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pl.dead{opacity:.5}
-.pl.dead .nm{text-decoration:line-through}
-.pl.me{border-color:var(--accent)}
-.tag{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--panel);border:1px solid var(--line);color:var(--sub)}
-.tag.wolf{color:var(--wolf);border-color:var(--wolf)}
-.tag.host{color:var(--warn);border-color:var(--warn)}
-.role{font-size:20px;font-weight:800}
-.role.werewolf,.role.madman{color:var(--wolf)}
-.notes{margin:8px 0 0;padding-left:18px;font-size:14px}
-#log{height:380px;overflow-y:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px}
-.msg{padding:3px 2px;font-size:14px;word-break:break-word}
-.msg .who{font-weight:700;margin-right:6px}
-.msg.system{text-align:center;color:var(--sub);font-size:13px;padding:6px 0}
-.msg.wolf{color:var(--wolf)}
-.msg.dead{color:var(--sub);font-style:italic}
-.msg .ch{font-size:11px;margin-right:6px;padding:0 6px;border-radius:99px;border:1px solid currentColor}
-.sendbar{display:flex;gap:8px;margin-top:8px}
-.sendbar input{flex:1}
-.err{color:var(--wolf);font-size:13px;min-height:18px;margin-top:6px}
-</style>
+    <link rel="icon" href="{{ url_for('static', path='favicon.webp') }}" type="image/webp">
+    <link rel="apple-touch-icon" href="{{ url_for('static', path='apple-touch-icon.png') }}">
+    <link rel="manifest" href="{{ url_for('static', path='site.webmanifest') }}">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オンライン人狼 - talk-ch</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --border-color: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-color: #38bdf8;
+            --accent-hover: #0ea5e9;
+            --wolf: #f87171;
+            --ok: #4ade80;
+            --warn: #fbbf24;
+        }
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        body {
+            font-family: 'Inter', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            line-height: 1.5;
+        }
+        a { color: var(--accent-color); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .page { width: 100%; max-width: 960px; }
+        .top-nav { width: 100%; margin-bottom: 12px; font-size: 13px; }
+        .narrow { width: 100%; max-width: 480px; margin: 0 auto; }
+        .panel, .card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 20px;
+            width: 100%;
+            margin-bottom: 16px;
+        }
+        h1 { font-size: 20px; margin: 0 0 4px 0; }
+        h2 { font-size: 16px; margin: 0 0 12px 0; color: var(--text-muted); font-weight: 600; }
+        input[type="text"], select {
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-family: inherit;
+            min-width: 0;
+        }
+        button {
+            background: var(--accent-color);
+            color: #06202e;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: inherit;
+        }
+        button:hover { background: var(--accent-hover); }
+        button:disabled { background: #475569; color: var(--text-muted); cursor: not-allowed; }
+        button.ghost { background: var(--bg-color); color: var(--text-main); border: 1px solid var(--border-color); }
+        button.ghost:hover { background: var(--border-color); }
+        button.ghost:disabled { background: var(--bg-color); color: var(--text-muted); }
+        button.sm { padding: 5px 10px; font-size: 13px; }
+        button.sel { background: var(--ok); color: #052e16; }
+        button.danger { background: var(--wolf); color: #2a0a0a; }
+        .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .lobby-actions { display: flex; flex-direction: column; gap: 16px; }
+        .label { font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+        .err { color: var(--wolf); font-size: 13px; min-height: 18px; margin-top: 8px; }
+        .sub { color: var(--text-muted); font-size: 13px; }
+        .empty { color: var(--text-muted); font-size: 14px; }
+        .room-item {
+            display: flex; justify-content: space-between; align-items: center; gap: 8px;
+            padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px;
+            margin-bottom: 8px; background: var(--bg-color);
+        }
+        .room-item .meta { font-size: 13px; color: var(--text-muted); }
+        .room-code-box {
+            background: var(--bg-color);
+            border: 1px dashed var(--border-color);
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 14px;
+            margin-top: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .room-code-box strong { font-size: 18px; letter-spacing: 2px; color: var(--accent-color); }
+        .bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .phase { font-size: 18px; font-weight: 700; }
+        .timer { font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 700; color: var(--warn); }
+        .banner {
+            text-align: center; font-size: 16px; font-weight: 700;
+            padding: 12px; margin-bottom: 16px; border-radius: 8px;
+            background: rgba(56, 189, 248, 0.15);
+        }
+        .banner.win { background: rgba(74, 222, 128, 0.15); color: var(--ok); }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 0 16px; }
+        @media (min-width: 820px) { .grid { grid-template-columns: 340px 1fr; } }
+        .pl {
+            display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+            border: 1px solid var(--border-color); border-radius: 8px;
+            margin-bottom: 6px; background: var(--bg-color);
+        }
+        .pl .no { font-weight: 700; color: var(--text-muted); min-width: 38px; }
+        .pl .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pl.dead { opacity: .5; }
+        .pl.dead .nm { text-decoration: line-through; }
+        .pl.me { border-color: var(--accent-color); }
+        .tag {
+            font-size: 11px; padding: 1px 7px; border-radius: 99px;
+            background: var(--panel-bg); border: 1px solid var(--border-color); color: var(--text-muted);
+        }
+        .tag.wolf { color: var(--wolf); border-color: var(--wolf); }
+        .tag.host { color: var(--warn); border-color: var(--warn); }
+        .role { font-size: 20px; font-weight: 700; }
+        .role.werewolf, .role.madman { color: var(--wolf); }
+        .notes { margin: 8px 0 0; padding-left: 18px; font-size: 14px; }
+        #log {
+            height: 380px; overflow-y: auto; background: var(--bg-color);
+            border: 1px solid var(--border-color); border-radius: 8px; padding: 8px;
+        }
+        .msg { padding: 3px 2px; font-size: 14px; word-break: break-word; }
+        .msg .who { font-weight: 700; margin-right: 6px; }
+        .msg.system { text-align: center; color: var(--text-muted); font-size: 13px; padding: 6px 0; }
+        .msg.wolf { color: var(--wolf); }
+        .msg.dead { color: var(--text-muted); font-style: italic; }
+        .msg .ch { font-size: 11px; margin-right: 6px; padding: 0 6px; border-radius: 99px; border: 1px solid currentColor; }
+        .sendbar { display: flex; gap: 8px; margin-top: 8px; }
+        .sendbar input { flex: 1; }
+    </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <a href="/games">← ゲーム一覧</a>
-    <h1>🐺 人狼</h1>
-  </header>
+<div class="page">
+    <div class="top-nav">
+        <a href="/">← talk-chに戻る</a>
+        <span style="color: var(--text-muted); margin: 0 6px;">|</span>
+        <a href="/werewolf">🐺 人狼ロビーへ</a>
+    </div>
 
-  <!-- ===== ロビー ===== -->
-  <section id="lobby" hidden>
-    <div class="card">
-      <h2>部屋を作る(4〜12人)</h2>
-      <div class="row">
-        <input type="text" id="lobbyName" maxlength="20" placeholder="名前(未入力は名無しさん)">
-        <select id="discussSel">
-          <option value="60">議論 1分</option>
-          <option value="120">議論 2分</option>
-          <option value="180" selected>議論 3分</option>
-          <option value="240">議論 4分</option>
-          <option value="300">議論 5分</option>
-        </select>
-        <button id="createBtn">部屋を作る</button>
-      </div>
-      <div class="err" id="lobbyErr"></div>
-    </div>
-    <div class="card">
-      <h2>募集中・対局中の部屋</h2>
-      <div id="roomList"><div class="empty">読み込み中…</div></div>
-    </div>
-    <div class="card sub">
-      人数に応じて役職が決まります(村人・人狼・占い師・騎士・霊媒師・狂人)。昼は議論して投票で1人を処刑、夜は人狼が1人を襲撃します。
-      人狼を全員処刑すれば村人陣営の勝ち、人狼が村人と同数になれば人狼陣営の勝ちです。
-    </div>
-  </section>
-
-  <!-- ===== 部屋 ===== -->
-  <section id="room" hidden>
-    <div class="card">
-      <div class="bar">
-        <div>
-          <div class="phase" id="phaseLabel">…</div>
-          <div class="sub" id="phaseSub"></div>
+    <!-- ===== ロビー ===== -->
+    <section id="lobby" class="narrow" hidden>
+        <div style="margin-bottom:16px;">
+            <h1>オンライン人狼</h1>
+            <h2 style="margin-bottom:0;">友達と対戦しよう（登録不要・匿名）</h2>
         </div>
-        <div class="timer" id="timer"></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <span class="sub">部屋コード <b id="codeLabel"></b></span>
-        <button class="ghost sm" id="copyBtn">招待リンクをコピー</button>
-        <button class="ghost sm" id="leaveBtn" hidden>退出</button>
-      </div>
-    </div>
-
-    <div class="banner" id="banner" hidden></div>
-
-    <div class="card" id="joinBox" hidden>
-      <h2>この部屋に参加する</h2>
-      <div class="row">
-        <input type="text" id="joinName" maxlength="20" placeholder="名前(未入力は名無しさん)">
-        <button id="joinBtn">参加する</button>
-      </div>
-      <div class="err" id="joinErr"></div>
-    </div>
-
-    <div class="grid">
-      <div>
-        <div class="card" id="meCard" hidden>
-          <h2>あなたの役職</h2>
-          <div class="role" id="myRole"></div>
-          <div class="sub" id="myRoleDesc"></div>
-          <ul class="notes" id="myNotes"></ul>
+        <div class="panel">
+            <div class="lobby-actions">
+                <div>
+                    <div class="label">表示する名前（省略可）</div>
+                    <input type="text" id="lobbyName" maxlength="20" placeholder="名無しさん" style="width:100%;">
+                </div>
+                <div>
+                    <div class="label">議論の時間（4〜12人で遊べます）</div>
+                    <select id="discussSel" style="width:100%;">
+                        <option value="60">議論 1分</option>
+                        <option value="120">議論 2分</option>
+                        <option value="180" selected>議論 3分</option>
+                        <option value="240">議論 4分</option>
+                        <option value="300">議論 5分</option>
+                    </select>
+                </div>
+                <div><button id="createBtn">新しい部屋を作る</button></div>
+            </div>
+            <div class="err" id="lobbyErr"></div>
         </div>
+        <div class="panel">
+            <h2>募集中・対局中の部屋</h2>
+            <div id="roomList"><div class="empty">読み込み中…</div></div>
+        </div>
+        <div class="panel sub">
+            人数に応じて役職が決まります(村人・人狼・占い師・騎士・霊媒師・狂人)。昼は議論して投票で1人を処刑、夜は人狼が1人を襲撃します。
+            人狼を全員処刑すれば村人陣営の勝ち、人狼が村人と同数になれば人狼陣営の勝ちです。
+        </div>
+    </section>
+
+    <!-- ===== 部屋 ===== -->
+    <section id="room" hidden>
         <div class="card">
-          <h2 id="plTitle">プレイヤー</h2>
-          <div id="players"></div>
-          <div class="row" style="margin-top:8px">
-            <button id="startBtn" hidden>ゲーム開始</button>
-            <button id="skipBtn" class="ghost" hidden>議論を終える</button>
-          </div>
-          <div class="err" id="actErr"></div>
+            <div class="bar">
+                <div>
+                    <div class="phase" id="phaseLabel">…</div>
+                    <div class="sub" id="phaseSub"></div>
+                </div>
+                <div class="timer" id="timer"></div>
+            </div>
+            <div class="room-code-box">
+                <span>部屋コード <strong id="codeLabel"></strong></span>
+                <span class="row">
+                    <button class="ghost sm" id="copyBtn">招待リンクをコピー</button>
+                    <button class="ghost sm" id="leaveBtn" hidden>退出</button>
+                </span>
+            </div>
         </div>
-      </div>
-      <div class="card">
-        <h2>チャット</h2>
-        <div id="log"></div>
-        <div class="sendbar">
-          <input type="text" id="chatInput" maxlength="200" autocomplete="off">
-          <button id="sendBtn">送信</button>
+
+        <div class="banner" id="banner" hidden></div>
+
+        <div class="card" id="joinBox" hidden>
+            <h2>この部屋に参加する</h2>
+            <div class="row">
+                <input type="text" id="joinName" maxlength="20" placeholder="名無しさん">
+                <button id="joinBtn">参加する</button>
+            </div>
+            <div class="err" id="joinErr"></div>
         </div>
-        <div class="err" id="chatErr"></div>
-      </div>
-    </div>
-  </section>
+
+        <div class="grid">
+            <div>
+                <div class="card" id="meCard" hidden>
+                    <h2>あなたの役職</h2>
+                    <div class="role" id="myRole"></div>
+                    <div class="sub" id="myRoleDesc"></div>
+                    <ul class="notes" id="myNotes"></ul>
+                </div>
+                <div class="card">
+                    <h2 id="plTitle">プレイヤー</h2>
+                    <div id="players"></div>
+                    <div class="row" style="margin-top:8px">
+                        <button id="startBtn" hidden>ゲーム開始</button>
+                        <button id="skipBtn" class="ghost" hidden>議論を終える</button>
+                    </div>
+                    <div class="err" id="actErr"></div>
+                </div>
+            </div>
+            <div class="card">
+                <h2>チャット</h2>
+                <div id="log"></div>
+                <div class="sendbar">
+                    <input type="text" id="chatInput" maxlength="200" autocomplete="off">
+                    <button id="sendBtn">送信</button>
+                </div>
+                <div class="err" id="chatErr"></div>
+            </div>
+        </div>
+    </section>
 </div>
 
 <script>
