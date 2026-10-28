@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>人狼 | Talk-ch</title>
+<style>
+:root{--bg:#14161c;--panel:#1d2029;--panel2:#252936;--line:#32384a;--text:#e8eaf0;--sub:#9aa3b8;--accent:#6c8cff;--wolf:#ff6b6b;--ok:#4cc38a;--warn:#f0b429}
+@media (prefers-color-scheme:light){:root{--bg:#f3f4f8;--panel:#fff;--panel2:#eef0f6;--line:#d5d9e6;--text:#1c2030;--sub:#667088;--accent:#3a5bd9;--wolf:#d63b3b;--ok:#1f9d63;--warn:#b7791f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.5}
+.wrap{max-width:1000px;margin:0 auto;padding:12px}
+header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+header a{color:var(--sub);text-decoration:none;font-size:14px}
+header h1{font-size:20px;margin:0}
+[hidden]{display:none!important}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 10px;color:var(--sub);font-weight:600}
+input,select,button{font:inherit}
+input[type=text],select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-width:0}
+button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+button.sm{padding:5px 10px;font-size:13px}
+button.sel{background:var(--ok)}
+button.danger{background:var(--wolf)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.room-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--panel2)}
+.room-item .meta{font-size:13px;color:var(--sub)}
+.empty{color:var(--sub);font-size:14px}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.phase{font-size:18px;font-weight:700}
+.timer{font-variant-numeric:tabular-nums;font-size:22px;font-weight:700;color:var(--warn)}
+.sub{color:var(--sub);font-size:13px}
+.banner{padding:10px 12px;border-radius:10px;margin-bottom:12px;font-weight:600;background:var(--panel2);border:1px solid var(--line)}
+.banner.win{border-color:var(--ok);color:var(--ok)}
+.grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:820px){.grid{grid-template-columns:340px 1fr}}
+.pl{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:var(--panel2)}
+.pl .no{font-weight:700;color:var(--sub);min-width:38px}
+.pl .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pl.dead{opacity:.5}
+.pl.dead .nm{text-decoration:line-through}
+.pl.me{border-color:var(--accent)}
+.tag{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--panel);border:1px solid var(--line);color:var(--sub)}
+.tag.wolf{color:var(--wolf);border-color:var(--wolf)}
+.tag.host{color:var(--warn);border-color:var(--warn)}
+.role{font-size:20px;font-weight:800}
+.role.werewolf,.role.madman{color:var(--wolf)}
+.notes{margin:8px 0 0;padding-left:18px;font-size:14px}
+#log{height:380px;overflow-y:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px}
+.msg{padding:3px 2px;font-size:14px;word-break:break-word}
+.msg .who{font-weight:700;margin-right:6px}
+.msg.system{text-align:center;color:var(--sub);font-size:13px;padding:6px 0}
+.msg.wolf{color:var(--wolf)}
+.msg.dead{color:var(--sub);font-style:italic}
+.msg .ch{font-size:11px;margin-right:6px;padding:0 6px;border-radius:99px;border:1px solid currentColor}
+.sendbar{display:flex;gap:8px;margin-top:8px}
+.sendbar input{flex:1}
+.err{color:var(--wolf);font-size:13px;min-height:18px;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a href="/games">← ゲーム一覧</a>
+    <h1>🐺 人狼</h1>
+  </header>
+
+  <!-- ===== ロビー ===== -->
+  <section id="lobby" hidden>
+    <div class="card">
+      <h2>部屋を作る(4〜12人)</h2>
+      <div class="row">
+        <input type="text" id="lobbyName" maxlength="20" placeholder="名前(未入力は名無しさん)">
+        <select id="discussSel">
+          <option value="60">議論 1分</option>
+          <option value="120">議論 2分</option>
+          <option value="180" selected>議論 3分</option>
+          <option value="240">議論 4分</option>
+          <option value="300">議論 5分</option>
+        </select>
+        <button id="createBtn">部屋を作る</button>
+      </div>
+      <div class="err" id="lobbyErr"></div>
+    </div>
+    <div class="card">
+      <h2>募集中・対局中の部屋</h2>
+      <div id="roomList"><div class="empty">読み込み中…</div></div>
+    </div>
+    <div class="card sub">
+      人数に応じて役職が決まります(村人・人狼・占い師・騎士・霊媒師・狂人)。昼は議論して投票で1人を処刑、夜は人狼が1人を襲撃します。
+      人狼を全員処刑すれば村人陣営の勝ち、人狼が村人と同数になれば人狼陣営の勝ちです。
+    </div>
+  </section>
+
+  <!-- ===== 部屋 ===== -->
+  <section id="room" hidden>
+    <div class="card">
+      <div class="bar">
+        <div>
+          <div class="phase" id="phaseLabel">…</div>
+          <div class="sub" id="phaseSub"></div>
+        </div>
+        <div class="timer" id="timer"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <span class="sub">部屋コード <b id="codeLabel"></b></span>
+        <button class="ghost sm" id="copyBtn">招待リンクをコピー</button>
+        <button class="ghost sm" id="leaveBtn" hidden>退出</button>
+      </div>
+    </div>
+
+    <div class="banner" id="banner" hidden></div>
+
+    <div class="card" id="joinBox" hidden>
+      <h2>この部屋に参加する</h2>
+      <div class="row">
+        <input type="text" id="joinName" maxlength="20" placeholder="名前(未入力は名無しさん)">
+        <button id="joinBtn">参加する</button>
+      </div>
+      <div class="err" id="joinErr"></div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <div class="card" id="meCard" hidden>
+          <h2>あなたの役職</h2>
+          <div class="role" id="myRole"></div>
+          <div class="sub" id="myRoleDesc"></div>
+          <ul class="notes" id="myNotes"></ul>
+        </div>
+        <div class="card">
+          <h2 id="plTitle">プレイヤー</h2>
+          <div id="players"></div>
+          <div class="row" style="margin-top:8px">
+            <button id="startBtn" hidden>ゲーム開始</button>
+            <button id="skipBtn" class="ghost" hidden>議論を終える</button>
+          </div>
+          <div class="err" id="actErr"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>チャット</h2>
+        <div id="log"></div>
+        <div class="sendbar">
+          <input type="text" id="chatInput" maxlength="200" autocomplete="off">
+          <button id="sendBtn">送信</button>
+        </div>
+        <div class="err" id="chatErr"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const ROOM_CODE = {{ room_code|tojson }};
+const $ = id => document.getElementById(id);
+// サーバー側でHTMLエスケープ済みの文字列だけを innerHTML に入れる(名前・本文・メモ)
+const savedName = () => { try { return localStorage.getItem('ww_name') || ''; } catch(e){ return ''; } };
+const saveName = v => { try { localStorage.setItem('ww_name', v); } catch(e){} };
+
+async function post(url, body){
+  try{
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body||{})});
+    let j = {}; try{ j = await r.json(); }catch(e){}
+    if(!r.ok && j.success === undefined) j = {success:false, error:'通信エラー('+r.status+')'};
+    return j;
+  }catch(e){ return {success:false, error:'通信エラー'}; }
+}
+
+/* ================= ロビー ================= */
+function initLobby(){
+  $('lobby').hidden = false;
+  $('lobbyName').value = savedName();
+  $('createBtn').onclick = async () => {
+    const name = $('lobbyName').value.trim(); saveName(name);
+    $('createBtn').disabled = true; $('lobbyErr').textContent = '';
+    const j = await post('/werewolf/create', {name, discuss_sec: +$('discussSel').value});
+    if(j.success){ location.href = j.url; return; }
+    $('lobbyErr').textContent = j.error || '作成に失敗しました';
+    $('createBtn').disabled = false;
+  };
+  const load = async () => {
+    try{
+      const j = await (await fetch('/api/werewolf/rooms')).json();
+      const el = $('roomList');
+      if(!j.rooms || !j.rooms.length){ el.innerHTML = '<div class="empty">いま開いている部屋はありません。最初の1部屋を作ってみましょう。</div>'; return; }
+      el.innerHTML = j.rooms.map(r => {
+        const waiting = r.status === 'waiting';
+        return `<div class="room-item"><div><b>${r.room_code}</b> ${waiting?'<span class="tag host">募集中</span>':'<span class="tag">対局中</span>'}
+          <div class="meta">ホスト: ${r.host_name} ・ ${r.count}/${r.max}人 ・ 議論${Math.round(r.discuss_sec/60)}分</div></div>
+          <a href="/werewolf/${r.room_code}"><button class="${waiting?'':'ghost'} sm">${waiting?'参加':'観戦'}</button></a></div>`;
+      }).join('');
+    }catch(e){}
+  };
+  load(); setInterval(load, 4000);
+}
+
+/* ================= 部屋 ================= */
+let since = 0, S = null, recvAt = 0, busy = false, visKey = null;
+const PH = {waiting:'メンバー募集中', night:'夜', day:'昼(議論)', vote:'投票', end:'ゲーム終了'};
+
+function initRoom(){
+  $('room').hidden = false;
+  $('codeLabel').textContent = ROOM_CODE;
+  $('joinName').value = savedName();
+  $('copyBtn').onclick = async () => {
+    const url = location.origin + '/werewolf/' + ROOM_CODE;
+    try{ await navigator.clipboard.writeText(url); $('copyBtn').textContent = 'コピーしました'; }
+    catch(e){ prompt('招待リンク', url); }
+    setTimeout(()=> $('copyBtn').textContent = '招待リンクをコピー', 1500);
+  };
+  $('joinBtn').onclick = async () => {
+    const name = $('joinName').value.trim(); saveName(name);
+    $('joinErr').textContent = '';
+    const j = await post('/werewolf/'+ROOM_CODE+'/join', {name});
+    if(!j.success) $('joinErr').textContent = j.error || '参加できませんでした';
+    poll();
+  };
+  $('leaveBtn').onclick = async () => {
+    const j = await post('/werewolf/'+ROOM_CODE+'/leave');
+    if(j.success) location.href = '/werewolf'; else $('actErr').textContent = j.error || '';
+  };
+  $('startBtn').onclick = async () => {
+    $('actErr').textContent = '';
+    const j = await post('/werewolf/'+ROOM_CODE+'/start');
+    if(!j.success) $('actErr').textContent = j.error || '';
+    poll();
+  };
+  $('skipBtn').onclick = async () => {
+    const j = await post('/werewolf/'+ROOM_CODE+'/skip');
+    if(!j.success) $('actErr').textContent = j.error || '';
+    poll();
+  };
+  $('players').addEventListener('click', async e => {
+    const b = e.target.closest('button[data-seat]'); if(!b) return;
+    $('actErr').textContent = '';
+    const url = '/werewolf/'+ROOM_CODE+'/'+b.dataset.kind;
+    const j = await post(url, {target: +b.dataset.seat});
+    if(!j.success) $('actErr').textContent = j.error || '';
+    poll();
+  });
+  const send = async () => {
+    const text = $('chatInput').value.trim(); if(!text || !S || !S.can_post.length) return;
+    $('chatErr').textContent = '';
+    $('chatInput').value = '';
+    const j = await post('/werewolf/'+ROOM_CODE+'/chat', {text, channel: S.can_post[0]});
+    if(!j.success){ $('chatErr').textContent = j.error || ''; if(j.error !== '連投はできません') $('chatInput').value = text; }
+    poll();
+  };
+  $('sendBtn').onclick = send;
+  $('chatInput').addEventListener('keydown', e => { if(e.key==='Enter' && !e.isComposing){ e.preventDefault(); send(); } });
+  poll();
+  schedule();
+  setInterval(tick, 250);
+}
+
+function schedule(){ setTimeout(async () => { await poll(); schedule(); }, document.hidden ? 5000 : 1500); }
+
+async function poll(){
+  if(busy) return; busy = true;
+  try{
+    const r = await fetch('/api/werewolf/'+ROOM_CODE+'/state?since='+since);
+    if(r.status === 404){ location.href = '/werewolf'; return; }
+    const j = await r.json();
+    if(!j.success) return;
+    // 死亡・終了で見えるチャンネルが増えたら、履歴を頭から読み直す(霊界/人狼の過去ログを見せるため)
+    const key = (j.me ? (j.me.alive ? 1 : 0) : 's') + j.room.status;
+    if(visKey !== null && key !== visKey){
+      visKey = key; since = 0; $('log').innerHTML = ''; busy = false;
+      return poll();
+    }
+    visKey = key;
+    S = j; recvAt = Date.now();
+    since = j.last_id;
+    render(j);
+  }catch(e){} finally { busy = false; }
+}
+
+function tick(){
+  if(!S || S.room.remaining == null){ $('timer').textContent = ''; return; }
+  const left = Math.max(0, S.room.remaining - Math.floor((Date.now() - recvAt)/1000));
+  const m = Math.floor(left/60), s = String(left%60).padStart(2,'0');
+  $('timer').textContent = m + ':' + s;
+}
+
+function phaseText(room){
+  if(room.status === 'waiting') return PH.waiting;
+  if(room.phase === 'night') return (room.day_no+1) + '夜目';
+  if(room.phase === 'day') return room.day_no + '日目 ' + PH.day;
+  if(room.phase === 'vote') return room.day_no + '日目 ' + PH.vote + (room.revote ? '(決選)' : '');
+  return PH.end;
+}
+
+function render(j){
+  const room = j.room, me = j.me, players = j.players;
+  const playing = room.status === 'playing', finished = room.status === 'finished', waiting = room.status === 'waiting';
+
+  $('phaseLabel').textContent = phaseText(room);
+  let sub = '';
+  if(waiting) sub = players.length + '/' + room.max_players + '人(' + room.min_players + '人以上で開始)';
+  else if(room.composition) sub = '役職構成: ' + room.composition;
+  $('phaseSub').textContent = sub;
+  $('leaveBtn').hidden = !(me && !playing);
+
+  // バナー
+  const bn = $('banner');
+  if(finished){
+    bn.hidden = false; bn.className = 'banner win';
+    bn.textContent = (room.winner === 'villagers' ? '村人陣営' : '人狼陣営') + 'の勝利!';
+  } else if(!me && playing){
+    bn.hidden = false; bn.className = 'banner'; bn.textContent = '観戦中です(役職や人狼の会話は見えません)。';
+  } else if(me && playing && !me.alive){
+    bn.hidden = false; bn.className = 'banner'; bn.textContent = 'あなたは死亡しました。霊界チャットで他の死者と話せます。';
+  } else if(playing && room.phase === 'vote' && room.revote){
+    bn.hidden = false; bn.className = 'banner'; bn.textContent = '同数のため決選投票です。候補の中から選んでください。';
+  } else bn.hidden = true;
+
+  // 参加フォーム
+  $('joinBox').hidden = !(!me && waiting && players.length < room.max_players);
+
+  // 自分の役職
+  $('meCard').hidden = !(me && me.role);
+  if(me && me.role){
+    $('myRole').textContent = me.role_label; $('myRole').className = 'role ' + me.role;
+    $('myRoleDesc').textContent = me.role_desc || '';
+    $('myNotes').innerHTML = (me.notes || []).map(n => '<li>'+n+'</li>').join('');
+  }
+
+  renderPlayers(j);
+
+  // ボタン
+  $('startBtn').hidden = !(waiting && me && me.is_host);
+  $('startBtn').disabled = players.length < room.min_players;
+  $('startBtn').textContent = players.length < room.min_players
+    ? 'ゲーム開始(あと' + (room.min_players - players.length) + '人必要)' : 'ゲーム開始';
+  const canSkip = playing && me && me.alive && room.phase === 'day';
+  $('skipBtn').hidden = !canSkip;
+  if(canSkip){ $('skipBtn').disabled = me.ready; $('skipBtn').textContent = me.ready ? '議論終了を表明済み' : '議論を終える'; }
+
+  // チャット
+  appendMessages(j.messages);
+  const can = j.can_post.length > 0;
+  $('chatInput').disabled = !can; $('sendBtn').disabled = !can;
+  const ph = {day:'全体チャット', wolf:'人狼の囁き(人狼だけに見えます)', dead:'霊界チャット(死者だけに見えます)'};
+  $('chatInput').placeholder = can ? ph[j.can_post[0]] : (me ? '今は発言できません' : '観戦者は発言できません');
+  tick();
+}
+
+function renderPlayers(j){
+  const room = j.room, me = j.me;
+  const playing = room.status === 'playing';
+  const wt = (me && me.wolf_targets) || {};
+  const targetCounts = {};
+  Object.values(wt).forEach(t => targetCounts[t] = (targetCounts[t]||0)+1);
+
+  $('plTitle').textContent = 'プレイヤー(生存 ' + j.players.filter(p=>p.alive).length + '/' + j.players.length + ')';
+  $('players').innerHTML = j.players.map(p => {
+    let tags = '';
+    if(p.is_host) tags += '<span class="tag host">ホスト</span>';
+    if(p.role_label && !p.is_me) tags += '<span class="tag '+(p.role==='werewolf'?'wolf':'')+'">'+p.role_label+'</span>';
+    if(p.is_me) tags += '<span class="tag">あなた</span>';
+    if(targetCounts[p.seat]) tags += '<span class="tag wolf">襲撃先 ×'+targetCounts[p.seat]+'</span>';
+
+    let btn = '';
+    if(me && me.alive && playing && !p.is_me && p.alive){
+      if(room.phase === 'night' && j.can_act && !(me.role==='werewolf' && p.role==='werewolf')){
+        const sel = me.action_target === p.seat;
+        btn = `<button class="sm ${sel?'sel':(j.can_act.kind==='attack'?'danger':'')}" data-kind="action" data-seat="${p.seat}">${sel?'✓ ':''}${j.can_act.label}</button>`;
+      } else if(room.phase === 'vote' && (!room.revote || room.candidates.includes(p.seat))){
+        const sel = me.vote_target === p.seat;
+        btn = `<button class="sm ${sel?'sel':''}" data-kind="vote" data-seat="${p.seat}">${sel?'✓ ':''}投票</button>`;
+      }
+    }
+    return `<div class="pl ${p.alive?'':'dead'} ${p.is_me?'me':''}"><span class="no">No.${p.seat}</span><span class="nm">${p.name}</span>${tags}${btn}</div>`;
+  }).join('');
+}
+
+const CH = {wolf:'人狼', dead:'霊界'};
+function appendMessages(msgs){
+  if(!msgs.length) return;
+  const log = $('log');
+  const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  const html = msgs.map(m => {
+    if(m.channel === 'system') return `<div class="msg system">${m.text}</div>`;
+    const tag = CH[m.channel] ? `<span class="ch">${CH[m.channel]}</span>` : '';
+    return `<div class="msg ${m.channel}">${tag}<span class="who">No.${m.seat} ${m.name}</span>${m.text}</div>`;
+  }).join('');
+  log.insertAdjacentHTML('beforeend', html);
+  if(nearBottom) log.scrollTop = log.scrollHeight;
+}
+
+if(ROOM_CODE) initRoom(); else initLobby();
+</script>
+</body>
+</html>
