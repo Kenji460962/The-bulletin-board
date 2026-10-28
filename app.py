@@ -22,6 +22,7 @@ import httpx
 import boto3
 import psutil
 import secrets
+import ipaddress
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
@@ -210,6 +211,24 @@ async def _ensure_dm_image_schema():
         print(f"dm_messages.image_key 追加エラー: {e}")
 
 
+async def _ensure_ban_schema():
+    """強力BAN用に banned_tokens テーブルと replies.visitor_token 列を用意する(冪等)。"""
+    conn = await _get_db_conn()
+    try:
+        await conn.execute(
+            "CREATE TABLE IF NOT EXISTS banned_tokens ("
+            "token TEXT PRIMARY KEY, reason TEXT, banned_at TEXT)"
+        )
+        cur = await conn.execute("PRAGMA table_info(replies)")
+        cols = [r[1] for r in await cur.fetchall()]
+        await cur.close()
+        if cols and 'visitor_token' not in cols:
+            await conn.execute("ALTER TABLE replies ADD COLUMN visitor_token TEXT")
+        await conn.commit()
+    except Exception as e:
+        print(f"BANスキーマ準備エラー: {e}")
+
+
 @app.on_event("startup")
 async def _startup_redis():
     global redis_client, _redis_listener_task, _cache_cleanup_task
@@ -228,6 +247,7 @@ async def _startup_redis():
     await _get_db_conn()
     await _ensure_adgem_schema()
     await _ensure_dm_image_schema()
+    await _ensure_ban_schema()
     await game_service.ensure_schemas()
     await _ensure_group_schema()
     await points_service.ensure_schema()
@@ -1117,6 +1137,7 @@ LAST_REPLY_SIGNATURES = {}
 # BAN(True)側は即時反映させたいのでキャッシュしない。
 _BANNED_IP_CACHE = {}
 _BANNED_IP_CACHE_TTL = 30
+_BANNED_TOKEN_CACHE = {}
 
 
 def get_daily_user_id(ip_address):
@@ -1190,6 +1211,16 @@ async def is_proxy_or_vpn(ip):
     return is_proxy
 
 
+def ban_ip_key(ip):
+    """IPv6は端末が /64 の中でアドレスを自由に変えられるため、/64単位で扱う。IPv4はそのまま。"""
+    if not ip or ':' not in ip:
+        return ip
+    try:
+        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+    except ValueError:
+        return ip
+
+
 async def is_banned_ip(ip):
     if not ip:
         return False
@@ -1198,12 +1229,36 @@ async def is_banned_ip(ip):
     if cached_at is not None and time.time() - cached_at < _BANNED_IP_CACHE_TTL:
         return False
     try:
-        res = await execute_query("SELECT * FROM banned_ips WHERE ip_address = ?", [ip])
+        keys = [ip]
+        net_key = ban_ip_key(ip)
+        if net_key != ip:
+            keys.append(net_key)
+        placeholders = ",".join("?" * len(keys))
+        res = await execute_query(
+            f"SELECT 1 FROM banned_ips WHERE ip_address IN ({placeholders})", keys
+        )
         if not res:
             _BANNED_IP_CACHE[ip] = time.time()
         return len(res) > 0
     except Exception as e:
         print(f"BANチェックエラー: {e}")
+        return False
+
+
+async def is_banned_token(token):
+    """cookie(user_bbs_token)単位のBAN。IPを変えても同じブラウザなら弾く。"""
+    if not token or len(token) > 100:
+        return False
+    cached_at = _BANNED_TOKEN_CACHE.get(token)
+    if cached_at is not None and time.time() - cached_at < _BANNED_IP_CACHE_TTL:
+        return False
+    try:
+        res = await execute_query("SELECT 1 FROM banned_tokens WHERE token = ?", [token])
+        if not res:
+            _BANNED_TOKEN_CACHE[token] = time.time()
+        return len(res) > 0
+    except Exception as e:
+        print(f"トークンBANチェックエラー: {e}")
         return False
 
 
@@ -1221,6 +1276,8 @@ async def is_banned_member_public_id(public_id):
 async def is_banned_request(request: Request, client_ip) -> bool:
 
     if await is_banned_ip(client_ip):
+        return True
+    if await is_banned_token(request.cookies.get('user_bbs_token')):
         return True
     public_id = await get_member_public_id(request)
     if public_id and await is_banned_member_public_id(public_id):
@@ -1290,7 +1347,13 @@ async def get_member_public_id(request: Request):
     member_id = request.session.get('member_id')
     try:
         res = await execute_query("SELECT public_id FROM users WHERE id = ?", [member_id])
-        public_id = res[0]['public_id'] if res else None
+        if not res:
+            # アカウントが削除済み(BAN等)。セッションを破棄してログアウト扱いにする。
+            for k in ('member_id', 'member_username', 'member_public_id', 'member_icon_path',
+                      'staff_id', 'staff_role', 'staff_name'):
+                request.session.pop(k, None)
+            return None
+        public_id = res[0]['public_id']
         if not public_id:
             public_id = await _generate_public_id()
             await execute_query("UPDATE users SET public_id = ? WHERE id = ?", [public_id, member_id])
@@ -1685,6 +1748,10 @@ async def register_submit(request: Request):
     def render_error(msg):
         return templates.TemplateResponse(request, 'register.html', {'error': msg}, status_code=400)
 
+    # BANされた端末・回線からの再登録(BAN逃れ)を防ぐ
+    if await is_banned_request(request, get_client_ip(request)):
+        return render_error('現在この環境からは登録できません。')
+
     if not USERNAME_RE.match(username):
         return render_error('ユーザー名は半角英数字・アンダースコア・日本語(ひらがな/カタカナ/漢字)で2〜20文字にしてください。')
     if len(password) < 8:
@@ -1746,6 +1813,11 @@ async def member_login_submit(request: Request):
     form = await request.form()
     username = (form.get('username') or '').strip()
     password = form.get('password') or ''
+
+    if await is_banned_request(request, get_client_ip(request)):
+        return templates.TemplateResponse(
+            request, 'login.html', {'error': 'この環境からはログインできません。'}, status_code=403
+        )
 
     user = await _authenticate_user(username, password)
     if not user:
@@ -3282,9 +3354,10 @@ async def thread_view(request: Request, thread_id: int):
 
             try:
                 await execute_query(
-                    """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address, poster_public_id) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip, poster_public_id]
+                    """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address, poster_public_id, visitor_token) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip, poster_public_id,
+                     request.cookies.get('user_bbs_token')]
                 )
                 LAST_REPLY_SIGNATURES[reply_signature] = signature_now
                 res = await execute_query("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
@@ -3517,24 +3590,153 @@ async def delete_reply(request: Request, thread_id: int, reply_id: int):
     return RedirectResponse(url=f'/thread/{thread_id}', status_code=303)
 
 
+# =========================
+# BANの挙動
+#   ・アカウントがある相手   → アカウントを削除する
+#   ・アカウントが無い相手   → 強力BAN(IP[IPv6は/64]+ブラウザcookie)
+# =========================
+
+# Trueにすると、アカウント削除と同時にIPもBANする(通常はFalse)。
+# モバイル回線はIPを多数のユーザーで共有しているため、会員のBANでIPまで塞ぐと無関係な人を巻き込みやすい。
+BAN_MEMBER_ALSO_BANS_IP = False
+
+_SAFE_IDENT_RE = re.compile(r'^[A-Za-z0-9_]+$')
+
+
+async def apply_strong_ban(ip, token, reason):
+    """アカウントを持たない相手への強力BAN。
+    ・IP(IPv6は/64単位)をbanned_ipsへ
+    ・投稿時のブラウザcookie(user_bbs_token)をbanned_tokensへ(IPを変えても弾く)
+    登録・ログインもBAN判定を通るため、アカウントを作ってのBAN逃れもできない。"""
+    now_iso = datetime.utcnow().isoformat()
+    if ip:
+        for key in {ip, ban_ip_key(ip)}:
+            await execute_query("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [key])
+        _BANNED_IP_CACHE.pop(ip, None)  # 「非BAN」キャッシュを即破棄して即時反映
+    if token:
+        await execute_query(
+            "INSERT OR IGNORE INTO banned_tokens (token, reason, banned_at) VALUES (?, ?, ?)",
+            [token, reason, now_iso]
+        )
+        _BANNED_TOKEN_CACHE.pop(token, None)
+
+
+async def _remove_user_row(conn, uid: int):
+    """usersの1行を削除する。FK制約で拒否された場合は、usersを参照している
+    子テーブルを(FK宣言から自動検出して)整理してから再試行する。"""
+    try:
+        await conn.execute("DELETE FROM users WHERE id = ?", [uid])
+        return
+    except Exception as e:
+        if 'FOREIGN KEY' not in str(e).upper():
+            raise
+
+    cur = await conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    tables = [r[0] for r in await cur.fetchall()]
+    await cur.close()
+    for t in tables:
+        if not _SAFE_IDENT_RE.match(t) or t == 'users':
+            continue
+        cur = await conn.execute(f'PRAGMA foreign_key_list("{t}")')
+        fks = [r for r in await cur.fetchall() if r[2] == 'users']
+        await cur.close()
+        if not fks:
+            continue
+        cur = await conn.execute(f'PRAGMA table_info("{t}")')
+        notnull = {r[1]: bool(r[3]) for r in await cur.fetchall()}
+        await cur.close()
+        for fk in fks:
+            col = fk[3]
+            if not _SAFE_IDENT_RE.match(col):
+                continue
+            if notnull.get(col):
+                await conn.execute(f'DELETE FROM "{t}" WHERE "{col}" = ?', [uid])
+            else:
+                await conn.execute(f'UPDATE "{t}" SET "{col}" = NULL WHERE "{col}" = ?', [uid])
+    await conn.execute("DELETE FROM users WHERE id = ?", [uid])
+
+
+async def delete_member_account(public_id: str, reason: str) -> str:
+    """会員アカウントを削除する。
+    戻り値: 'deleted'(完全削除) / 'disabled'(削除できず無効化) / 'not_found'(該当アカウント無し) / 'protected'(スタッフ)
+    投稿済みのレスは残る(必要なら別途削除)。BAN済み会員の墓石(banned_members)は残し、
+    削除前から残っているログインセッションを無効化するために使う。"""
+    res = await execute_query("SELECT id, role FROM users WHERE public_id = ?", [public_id])
+    if not res:
+        return 'not_found'
+    uid = res[0]['id']
+    if (res[0].get('role') or 'user') != 'user':
+        return 'protected'
+
+    await execute_query(
+        "INSERT OR IGNORE INTO banned_members (public_id, reason, banned_at) VALUES (?, ?, ?)",
+        [public_id, f'account_deleted:{reason}', datetime.utcnow().isoformat()]
+    )
+
+    conn = await _get_db_conn()
+    async with _db_lock:
+        try:
+            # FK宣言が無くても確実に消しておきたい、既知のユーザー紐づきデータ
+            for table, col in (
+                ("follows", "follower_id"), ("follows", "followee_id"),
+                ("blocks", "blocker_id"), ("blocks", "blocked_id"),
+                ("group_members", "user_id"),
+                ("login_bonus_state", "user_id"),
+                ("email_tokens", "user_id"),
+            ):
+                await conn.execute(f"DELETE FROM {table} WHERE {col} = ?", [uid])
+            await _remove_user_row(conn, uid)
+            await conn.commit()
+            outcome = 'deleted'
+        except Exception as e:
+            await conn.rollback()
+            print(f"アカウント削除エラー(無効化にフォールバック): {e}")
+            try:
+                # 削除できない場合はログイン不能にして個人情報だけ消す
+                await conn.execute(
+                    "UPDATE users SET username = ?, password_hash = '!', email = NULL, email_verified = 0 WHERE id = ?",
+                    [f'deleted_{public_id}', uid]
+                )
+                await conn.commit()
+                outcome = 'disabled'
+            except Exception as e2:
+                await conn.rollback()
+                print(f"アカウント無効化エラー: {e2}")
+                outcome = 'disabled'  # 墓石は作成済みなのでアクセスは遮断される
+    _LOGIN_BONUS_CLAIMED.pop(uid, None)
+    return outcome
+
+
+async def ban_target(public_id, ip, token, reason):
+    """BAN対象に応じて挙動を切り替える。アカウントあり→削除 / 無し→強力BAN。"""
+    outcome = 'not_found'
+    if public_id and public_id != 'STAFF':
+        outcome = await delete_member_account(public_id, reason)
+    if outcome == 'protected':
+        return outcome
+    if outcome == 'not_found':
+        # アカウントが元々無い(または既に削除済み) → 強力BAN
+        await apply_strong_ban(ip, token, reason)
+    elif BAN_MEMBER_ALSO_BANS_IP and ip:
+        await apply_strong_ban(ip, None, reason)
+    return outcome
+
+
 @app.post('/ban_user/{thread_id}/{reply_id}')
 async def ban_user(request: Request, thread_id: int, reply_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        reply_res = await execute_query("SELECT ip_address, poster_public_id FROM replies WHERE id = ?", [reply_id])
+        reply_res = await execute_query(
+            "SELECT ip_address, poster_public_id, visitor_token FROM replies WHERE id = ?", [reply_id]
+        )
         if reply_res:
-            b_ip = reply_res[0].get('ip_address')
-            b_public_id = reply_res[0].get('poster_public_id')
-            if b_ip:
-                await execute_query("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [b_ip])
-            if b_public_id:
-                # ログイン中の会員による投稿の場合は、IPだけでなくアカウント自体もBANする。
-                # IPアドレスが変わっても(スマホの回線切り替え等)このアカウントでの投稿はブロックされる。
-                await execute_query(
-                    "INSERT OR IGNORE INTO banned_members (public_id, reason, banned_at) VALUES (?, ?, ?)",
-                    [b_public_id, f'reply_id={reply_id}', datetime.utcnow().isoformat()]
-                )
+            r = reply_res[0]
+            outcome = await ban_target(
+                r.get('poster_public_id'), r.get('ip_address'), r.get('visitor_token'), f'reply_id={reply_id}'
+            )
+            if outcome == 'protected':
+                return text_resp("スタッフアカウントはBAN(削除)できません。", 403)
             await execute_query(
                 """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
                    WHERE id = ?""",
@@ -3556,14 +3758,10 @@ async def ban_thread_owner(request: Request, thread_id: int):
         if thread_res:
             owner_ip = thread_res[0].get('ip_address')
             owner_public_id = thread_res[0].get('user_id')
-            if owner_ip:
-                await execute_query("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [owner_ip])
-            if owner_public_id and owner_public_id != 'STAFF':
-                # スレッド作成には必ずログインが必要なため、user_idは常に会員のpublic_id。
-                await execute_query(
-                    "INSERT OR IGNORE INTO banned_members (public_id, reason, banned_at) VALUES (?, ?, ?)",
-                    [owner_public_id, f'thread_id={thread_id}', datetime.utcnow().isoformat()]
-                )
+            # スレッド作成には必ずログインが必要なため、通常user_idは会員のpublic_id(スレ主は削除対象)。
+            outcome = await ban_target(owner_public_id, owner_ip, None, f'thread_id={thread_id}')
+            if outcome == 'protected':
+                return text_resp("スタッフアカウントはBAN(削除)できません。", 403)
             await execute_query("UPDATE threads SET title = ? WHERE id = ?", ['【このスレッドは管理員によってBANされました】', thread_id])
             await execute_query("DELETE FROM replies WHERE thread_id = ?", [thread_id])
             await execute_query(
@@ -3719,7 +3917,7 @@ async def _cleanup_memory_caches_loop():
             # 経過時間による掃除に加え、件数上限でも必ず有界にする
             for _d in (LAST_THREAD_TIMES, LAST_REPLY_TIMES, LAST_REPLY_SIGNATURES,
                        LAST_DM_TIMES, LAST_GROUP_TIMES, LAST_GROUP_CREATE_TIMES,
-                       _PROXY_CHECK_CACHE, _BANNED_IP_CACHE,
+                       _PROXY_CHECK_CACHE, _BANNED_IP_CACHE, _BANNED_TOKEN_CACHE,
                        casino_service.LAST_BET_TIMES):  # === カジノ追加 ===
                 _cap_dict_size(_d, 20000)
 
@@ -3731,6 +3929,7 @@ async def _cleanup_memory_caches_loop():
                 get_timestamp=lambda v: v["checked_at"]
             )
             _prune_expired(_BANNED_IP_CACHE, now, 300)
+            _prune_expired(_BANNED_TOKEN_CACHE, now, 300)
         except Exception as e:
             print(f"メモリキャッシュ掃除エラー: {e}")
 
