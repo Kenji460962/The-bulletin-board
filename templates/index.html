@@ -1534,7 +1534,7 @@
                             <ul style="padding-left: 20px; margin: 0; color: var(--text-muted); line-height: 1.8;">
                                 <li><strong style="color: var(--text);">ダークモード切り替え:</strong> 右上の「ダーク表示 / ライト表示」ボタンで画面デザインを切り替えられます。</li>
                                 <li><strong style="color: var(--text);">スレ番号ジャンプ:</strong> スレ一覧にある「スレ番号でジャンプ」にID番号を入力すると、目的のスレに一発で移動できます。</li>
-                                <li><strong style="color: var(--text);">ミニゲーム:</strong> サイドバーの「ゲーム」タブから、ブラウザで遊べるオセロ・チェス・将棋を楽しめます。戦績とレーティングはプロフィールに表示され、ゲームタブの「ランキングを見る」で順位も確認できます。</li>
+                                <li><strong style="color: var(--text);">ミニゲーム:</strong> サイドバーの「ゲーム」タブから、ブラウザで遊べるオセロ・チェス・将棋と、みんなで遊べる人狼を楽しめます。オセロ・チェス・将棋の戦績とレーティングはプロフィールに表示され、ゲームタブの「ランキングを見る」で順位も確認できます。</li>
                                 <li><strong style="color: var(--text);">オンライン人数と在室ユーザー:</strong> スレ画面の上部に「オンライン人数: ◯人」が出て、人の出入りに合わせてリアルタイムで変わります。押すと、いまそのスレにいる人の名前とIDが一覧で出て、名前を押すとその人のプロフィールに移動できます（ログインしていない人は「ゲスト」としてまとめて表示されます）。</li>
                                 <li><strong style="color: var(--text);">過去スレ:</strong> サイドバーの「過去スレ」から、過去のスレッドを見られます。</li>
                             </ul>
@@ -1673,6 +1673,16 @@
                                     </a>
                                 </li>
                                 <li>
+                                    <a class="game-card-item" href="{{ url_for('werewolf_lobby') }}">
+                                        <div class="game-card-icon">🐺</div>
+                                        <div class="game-card-text">
+                                            <div class="game-card-title">オンライン人狼</div>
+                                            <div class="game-card-desc">4〜12人で遊べる。占い師・騎士・霊媒師などの役職つき</div>
+                                        </div>
+                                        <div class="game-card-chevron">›</div>
+                                    </a>
+                                </li>
+                                <li>
                                     <a class="game-card-item" href="{{ url_for('rankings') }}" target="_blank">
                                         <div class="game-card-icon">🏆</div>
                                         <div class="game-card-text">
@@ -1758,7 +1768,7 @@
                                 <li>
                                     <button type="button" class="menu-list-item menu-list-item-btn" onclick="switchTab('games-tab', document.querySelector('.side-nav-item[data-tab=\'games-tab\']'))">
                                         <div class="menu-list-text">
-                                            <div class="menu-list-title">ゲームハブ（オセロ・チェス・将棋）</div>
+                                            <div class="menu-list-title">ゲームハブ（オセロ・チェス・将棋・人狼）</div>
                                             <div class="menu-list-desc">ブラウザで今すぐ遊べるオンライン対戦</div>
                                         </div>
                                         <div class="menu-list-chevron">›</div>
