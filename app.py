@@ -219,11 +219,27 @@ async def _ensure_ban_schema():
             "CREATE TABLE IF NOT EXISTS banned_tokens ("
             "token TEXT PRIMARY KEY, reason TEXT, banned_at TEXT)"
         )
+        await conn.execute(
+            "CREATE TABLE IF NOT EXISTS banned_fps ("
+            "fp TEXT PRIMARY KEY, reason TEXT, banned_at TEXT)"
+        )
+        # IP + 端末特徴のペア単位のBAN(IP全体を塞がず、その人の端末だけを狙う)
+        await conn.execute(
+            "CREATE TABLE IF NOT EXISTS banned_devices ("
+            "ip_key TEXT NOT NULL, device_hash TEXT NOT NULL, reason TEXT, banned_at TEXT, "
+            "PRIMARY KEY (ip_key, device_hash))"
+        )
         cur = await conn.execute("PRAGMA table_info(replies)")
         cols = [r[1] for r in await cur.fetchall()]
         await cur.close()
         if cols and 'visitor_token' not in cols:
             await conn.execute("ALTER TABLE replies ADD COLUMN visitor_token TEXT")
+        if cols and 'visitor_dev' not in cols:
+            await conn.execute("ALTER TABLE replies ADD COLUMN visitor_dev TEXT")
+        if cols and 'device_hash' not in cols:
+            await conn.execute("ALTER TABLE replies ADD COLUMN device_hash TEXT")
+        if cols and 'fp' not in cols:
+            await conn.execute("ALTER TABLE replies ADD COLUMN fp TEXT")
         await conn.commit()
     except Exception as e:
         print(f"BANスキーマ準備エラー: {e}")
@@ -566,6 +582,9 @@ async def _thread_ws_identity(websocket: WebSocket) -> dict:
 
 @app.websocket('/ws/thread/{thread_id}')
 async def thread_ws(websocket: WebSocket, thread_id: int):
+    if await ws_is_banned(websocket):
+        await websocket.close(code=1008)
+        return
     who = await _thread_ws_identity(websocket)
     await manager.connect(thread_id, websocket, who)
     try:
@@ -784,6 +803,44 @@ async def track_page_views(request: Request, call_next):
     except Exception as e:
         print(f"アクセス解析トラッキングエラー: {e}")
 
+    return response
+
+
+@app.middleware("http")
+async def enforce_ban_and_issue_ids(request: Request, call_next):
+    """全リクエストの入口でBAN判定し、全訪問者に2本の識別cookieを発行する。
+    (旧実装は各ルートが個別に判定・発行していたため、判定漏れや cookie 未発行のルートがあった)"""
+    path = request.url.path
+    if path.startswith('/static/') or request.method in ('OPTIONS', 'HEAD'):
+        return await call_next(request)
+
+    cookies = dict(request.cookies)
+    issue = {}
+    for name in ('user_bbs_token', BAN_DEV_COOKIE):
+        if not _valid_token(cookies.get(name)):
+            issue[name] = str(uuid.uuid4())
+            cookies[name] = issue[name]
+    if issue:
+        # 同じリクエストの後続ルートにも新しい識別子が見えるよう、cookieヘッダを書き換える
+        headers = [(k, v) for k, v in request.scope['headers'] if k != b'cookie']
+        headers.append((b'cookie', "; ".join(f"{k}={v}" for k, v in cookies.items()).encode('latin-1', 'ignore')))
+        request.scope['headers'] = headers
+
+    hit = await check_visitor_ban(request)
+    if hit:
+        wants_json = path.startswith('/api/') or request.method != 'GET' or not _wants_html(request)
+        if wants_json:
+            resp = JSONResponse({"success": False, "error": _BAN_MESSAGE}, status_code=403)
+        else:
+            resp = error_page(_BAN_MESSAGE, 403)
+        # 消されていたcookieはBAN済みの識別子として植え直す(ここでBANされるのは確定した相手のみ)
+        _set_id_cookies(resp, request, {k: v for k, v in cookies.items() if k in ('user_bbs_token', BAN_DEV_COOKIE)})
+        return resp
+
+    response = await call_next(request)
+    to_set = {k: v for k, v in issue.items() if not _response_sets_cookie(response, k)}
+    if to_set:
+        _set_id_cookies(response, request, to_set)
     return response
 
 
@@ -1273,15 +1330,203 @@ async def is_banned_member_public_id(public_id):
         return False
 
 
-async def is_banned_request(request: Request, client_ip) -> bool:
+# =========================
+# 強化BAN(ゲスト向け)
+#   識別子を3系統持ち、どれか1つでも一致すれば同一人物として扱う。
+#     ① user_bbs_token cookie  ② bbs_dev cookie(別名の2本目)  ③ IP(IPv6は/64) + 端末特徴ハッシュ
+#   ・①②が一致 → その人で確実。全アクセスを遮断し、持っている他の識別子も自動でBANに紐づける
+#     (別回線に移っても、cookieを消しても、残った識別子から芋づる式に塞がる)
+#   ・③だけ一致(cookieを全消し/シークレットの場合) → 同一回線に同型端末の無関係な人がいる可能性があるため、
+#     閲覧は許可し「書き込み系リクエスト」だけを止める。この場合は他人を巻き込まないよう自動紐づけはしない
+#   ・④ ブラウザ側 static/bbs_fp.js が作る端末フィンガープリント(bbs_fp cookie)。cookieを全消ししてもIPを変えても再計算されて付く。
+#     珍しい値のときだけBANに使い、③と同じく書き込み系だけを止める(誤爆防止)
+#   ・IP単独のBANは新規には作らない(モバイル回線の共有で無関係な人を巻き込むため)
+# =========================
+BAN_DEV_COOKIE = 'bbs_dev'
+BAN_COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 10
+# static/bbs_fp.js がブラウザ側で作る端末フィンガープリント(cookie名)。cookieを消しても再計算されて付く
+BAN_FP_COOKIE = 'bbs_fp'
+_FP_RE = re.compile(r'^[0-9a-f]{32}$')
+# フィンガープリントは同機種の端末で一致しうるため、「BAN済み以外でこのfpを使ったことのある別cookieの数」が
+# この値以下の“珍しいfp”のときだけBANに使う(同機種の無関係な人を巻き込まないための歯止め)
+BAN_FP_MAX_OTHER_TOKENS = 2
+# 識別子が何も取れない古いレス等のときだけ、従来どおりIP単独BANにフォールバックするか
+BAN_FALLBACK_IP_ONLY = True
+_BANNED_VISITOR_CACHE = {}   # 「BANではない」と判定した識別子の組 -> 判定時刻
+_BIND_THROTTLE = {}          # 紐づけ処理の連打防止
+_BAN_MESSAGE = "あなたはアクセス禁止（BAN）されています。"
 
-    if await is_banned_ip(client_ip):
-        return True
-    if await is_banned_token(request.cookies.get('user_bbs_token')):
+
+def get_device_hash(headers) -> str:
+    """ブラウザが毎回送ってくるヘッダから作る端末特徴。cookieを消しても変わらない。"""
+    parts = [
+        headers.get('user-agent', ''),
+        headers.get('accept-language', ''),
+        headers.get('sec-ch-ua', ''),
+        headers.get('sec-ch-ua-platform', ''),
+        headers.get('sec-ch-ua-mobile', ''),
+    ]
+    return hashlib.sha256('|'.join(parts).encode('utf-8', 'ignore')).hexdigest()[:32]
+
+
+def _valid_token(t) -> bool:
+    return bool(t) and len(t) <= 100
+
+
+def get_fp(cookies):
+    fp = cookies.get(BAN_FP_COOKIE)
+    return fp if fp and _FP_RE.match(fp) else None
+
+
+async def _ban_fp_if_rare(fp, reason):
+    """珍しいfpのときだけ banned_fps に入れる。戻り値: 入れたか。"""
+    if not fp or not _FP_RE.match(fp):
+        return False
+    rows = await execute_query(
+        "SELECT COUNT(DISTINCT visitor_token) AS n FROM replies "
+        "WHERE fp = ? AND visitor_token IS NOT NULL "
+        "AND visitor_token NOT IN (SELECT token FROM banned_tokens)", [fp]
+    )
+    n = (rows[0].get('n') if rows else 0) or 0
+    if n > BAN_FP_MAX_OTHER_TOKENS:
+        return False
+    await execute_query(
+        "INSERT OR IGNORE INTO banned_fps (fp, reason, banned_at) VALUES (?, ?, ?)",
+        [fp, reason, datetime.utcnow().isoformat()]
+    )
+    return True
+
+
+async def _check_ban_identity(ip, token, dev_token, device_hash, is_write: bool, fp=None):
+    """戻り値: 'token' / 'ip' / 'pair' / 'fp' / None"""
+    cache_key = (ip, token, dev_token, device_hash, is_write, fp)
+    cached_at = _BANNED_VISITOR_CACHE.get(cache_key)
+    if cached_at is not None and time.time() - cached_at < _BANNED_IP_CACHE_TTL:
+        return None
+    tokens = [t for t in (token, dev_token) if _valid_token(t)]
+    try:
+        async def _tok():
+            if not tokens:
+                return []
+            ph = ",".join("?" * len(tokens))
+            return await execute_query(f"SELECT 1 FROM banned_tokens WHERE token IN ({ph})", tokens)
+
+        async def _pair():
+            if not (ip and device_hash):
+                return []
+            return await execute_query(
+                "SELECT 1 FROM banned_devices WHERE ip_key = ? AND device_hash = ?",
+                [ban_ip_key(ip), device_hash]
+            )
+
+        async def _fp():
+            if not fp:
+                return []
+            return await execute_query("SELECT 1 FROM banned_fps WHERE fp = ?", [fp])
+
+        tok_res, pair_res, fp_res, ip_hit = await asyncio.gather(_tok(), _pair(), _fp(), is_banned_ip(ip))
+        if tok_res:
+            return 'token'
+        if ip_hit:
+            return 'ip'
+        if is_write and pair_res:
+            return 'pair'
+        if is_write and fp_res:
+            return 'fp'
+        if not pair_res and not fp_res:
+            _BANNED_VISITOR_CACHE[cache_key] = time.time()
+        return None
+    except Exception as e:
+        print(f"BANチェックエラー: {e}")
+        return None
+
+
+async def _bind_banned_identity(ip, token, dev_token, device_hash, reason='linked', fp=None):
+    """BAN済みの人が持っている識別子を、まだBANに入っていないものも含めて全部BANに紐づける。"""
+    now_iso = datetime.utcnow().isoformat()
+    try:
+        for t in (token, dev_token):
+            if _valid_token(t):
+                await execute_query(
+                    "INSERT OR IGNORE INTO banned_tokens (token, reason, banned_at) VALUES (?, ?, ?)",
+                    [t, reason, now_iso]
+                )
+                _BANNED_TOKEN_CACHE.pop(t, None)
+        if ip and device_hash:
+            await execute_query(
+                "INSERT OR IGNORE INTO banned_devices (ip_key, device_hash, reason, banned_at) VALUES (?, ?, ?, ?)",
+                [ban_ip_key(ip), device_hash, reason, now_iso]
+            )
+        await _ban_fp_if_rare(fp, reason)
+        _BANNED_VISITOR_CACHE.clear()
+    except Exception as e:
+        print(f"BAN紐づけエラー: {e}")
+
+
+def _schedule_bind(ip, token, dev_token, device_hash, fp=None):
+    key = (token, dev_token, ban_ip_key(ip) if ip else None, fp)
+    now = time.time()
+    if now - _BIND_THROTTLE.get(key, 0) < 300:
+        return
+    _BIND_THROTTLE[key] = now
+    asyncio.create_task(_bind_banned_identity(ip, token, dev_token, device_hash, 'linked', fp))
+
+
+async def check_visitor_ban(request: Request, client_ip=None):
+    """セッション不要のBAN判定(ミドルウェア用)。紐づけも行う。"""
+    ip = client_ip or get_client_ip(request)
+    token = request.cookies.get('user_bbs_token')
+    dev_token = request.cookies.get(BAN_DEV_COOKIE)
+    device_hash = get_device_hash(request.headers)
+    is_write = request.method not in ('GET', 'HEAD', 'OPTIONS')
+    fp = get_fp(request.cookies)
+    hit = await _check_ban_identity(ip, token, dev_token, device_hash, is_write, fp)
+    if hit == 'token':
+        _schedule_bind(ip, token, dev_token, device_hash, fp)
+    return hit
+
+
+async def is_banned_request(request: Request, client_ip) -> bool:
+    if await check_visitor_ban(request, client_ip):
         return True
     public_id = await get_member_public_id(request)
     if public_id and await is_banned_member_public_id(public_id):
         return True
+    return False
+
+
+async def ws_is_banned(websocket: WebSocket) -> bool:
+    ip = websocket.headers.get('cf-connecting-ip') or (websocket.client.host if websocket.client else None)
+    token = websocket.cookies.get('user_bbs_token')
+    dev_token = websocket.cookies.get(BAN_DEV_COOKIE)
+    device_hash = get_device_hash(websocket.headers)
+    fp = get_fp(websocket.cookies)
+    hit = await _check_ban_identity(ip, token, dev_token, device_hash, False, fp)
+    if hit == 'token':
+        _schedule_bind(ip, token, dev_token, device_hash, fp)
+    if hit:
+        return True
+    try:
+        public_id = websocket.session.get('member_public_id')
+        if public_id and await is_banned_member_public_id(public_id):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _set_id_cookies(response, request: Request, cookies: dict):
+    secure = request.url.scheme == 'https'
+    for k, v in cookies.items():
+        response.set_cookie(k, v, max_age=BAN_COOKIE_MAX_AGE, httponly=True,
+                            samesite='lax', secure=secure)
+
+
+def _response_sets_cookie(response, name: str) -> bool:
+    prefix = (name + '=').encode()
+    for k, v in response.raw_headers:
+        if k.lower() == b'set-cookie' and v.startswith(prefix):
+            return True
     return False
 
 
@@ -3354,10 +3599,10 @@ async def thread_view(request: Request, thread_id: int):
 
             try:
                 await execute_query(
-                    """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address, poster_public_id, visitor_token) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    """INSERT INTO replies (thread_id, author, content, user_id, is_admin, role, image_url, ip_address, poster_public_id, visitor_token, visitor_dev, device_hash, fp) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     [thread_id, author_input, content, user_id, 1 if is_admin else 0, role_to_save, image_url, client_ip, poster_public_id,
-                     request.cookies.get('user_bbs_token')]
+                     request.cookies.get('user_bbs_token'), request.cookies.get(BAN_DEV_COOKIE), get_device_hash(request.headers), get_fp(request.cookies)]
                 )
                 LAST_REPLY_SIGNATURES[reply_signature] = signature_now
                 res = await execute_query("SELECT * FROM replies WHERE thread_id = ? ORDER BY id DESC LIMIT 1", [thread_id])
@@ -3593,7 +3838,7 @@ async def delete_reply(request: Request, thread_id: int, reply_id: int):
 # =========================
 # BANの挙動
 #   ・アカウントがある相手   → アカウントを削除する
-#   ・アカウントが無い相手   → 強力BAN(IP[IPv6は/64]+ブラウザcookie)
+#   ・アカウントが無い相手   → 強力BAN(cookie2本 + IP[IPv6は/64]+端末特徴のペア。詳細は「強化BAN(ゲスト向け)」節)
 # =========================
 
 # Trueにすると、アカウント削除と同時にIPもBANする(通常はFalse)。
@@ -3603,22 +3848,20 @@ BAN_MEMBER_ALSO_BANS_IP = False
 _SAFE_IDENT_RE = re.compile(r'^[A-Za-z0-9_]+$')
 
 
-async def apply_strong_ban(ip, token, reason):
-    """アカウントを持たない相手への強力BAN。
-    ・IP(IPv6は/64単位)をbanned_ipsへ
-    ・投稿時のブラウザcookie(user_bbs_token)をbanned_tokensへ(IPを変えても弾く)
+async def apply_strong_ban(ip, token, reason, dev_token=None, device_hash=None, fp=None):
+    """アカウントを持たない相手への強力BAN(その人だけを対象にする)。
+    ・cookie 2本(user_bbs_token / bbs_dev)をbanned_tokensへ
+    ・IP(IPv6は/64) + 端末特徴ハッシュのペアをbanned_devicesへ(cookieを消しても同一回線なら書き込めない)
+    ・IP単独のBANはしない(共有回線の無関係な人を巻き込むため)。ただし識別子が何も無いときだけ従来方式にフォールバック
+    BANされた人が後から使った別の識別子は、アクセス時に自動で紐づく(_bind_banned_identity)。
     登録・ログインもBAN判定を通るため、アカウントを作ってのBAN逃れもできない。"""
-    now_iso = datetime.utcnow().isoformat()
-    if ip:
+    have_identity = bool(_valid_token(token) or _valid_token(dev_token) or (ip and device_hash))
+    await _bind_banned_identity(ip, token, dev_token, device_hash, reason, fp)
+    if ip and not have_identity and BAN_FALLBACK_IP_ONLY:
         for key in {ip, ban_ip_key(ip)}:
             await execute_query("INSERT OR IGNORE INTO banned_ips (ip_address) VALUES (?)", [key])
-        _BANNED_IP_CACHE.pop(ip, None)  # 「非BAN」キャッシュを即破棄して即時反映
-    if token:
-        await execute_query(
-            "INSERT OR IGNORE INTO banned_tokens (token, reason, banned_at) VALUES (?, ?, ?)",
-            [token, reason, now_iso]
-        )
-        _BANNED_TOKEN_CACHE.pop(token, None)
+        _BANNED_IP_CACHE.pop(ip, None)
+    _BANNED_VISITOR_CACHE.clear()
 
 
 async def _remove_user_row(conn, uid: int):
@@ -3707,7 +3950,7 @@ async def delete_member_account(public_id: str, reason: str) -> str:
     return outcome
 
 
-async def ban_target(public_id, ip, token, reason):
+async def ban_target(public_id, ip, token, reason, dev_token=None, device_hash=None, fp=None):
     """BAN対象に応じて挙動を切り替える。アカウントあり→削除 / 無し→強力BAN。"""
     outcome = 'not_found'
     if public_id and public_id != 'STAFF':
@@ -3716,7 +3959,7 @@ async def ban_target(public_id, ip, token, reason):
         return outcome
     if outcome == 'not_found':
         # アカウントが元々無い(または既に削除済み) → 強力BAN
-        await apply_strong_ban(ip, token, reason)
+        await apply_strong_ban(ip, token, reason, dev_token, device_hash, fp)
     elif BAN_MEMBER_ALSO_BANS_IP and ip:
         await apply_strong_ban(ip, None, reason)
     return outcome
@@ -3728,12 +3971,13 @@ async def ban_user(request: Request, thread_id: int, reply_id: int):
         return text_resp("権限がありません", 403)
     try:
         reply_res = await execute_query(
-            "SELECT ip_address, poster_public_id, visitor_token FROM replies WHERE id = ?", [reply_id]
+            "SELECT ip_address, poster_public_id, visitor_token, visitor_dev, device_hash, fp FROM replies WHERE id = ?", [reply_id]
         )
         if reply_res:
             r = reply_res[0]
             outcome = await ban_target(
-                r.get('poster_public_id'), r.get('ip_address'), r.get('visitor_token'), f'reply_id={reply_id}'
+                r.get('poster_public_id'), r.get('ip_address'), r.get('visitor_token'), f'reply_id={reply_id}',
+                r.get('visitor_dev'), r.get('device_hash'), r.get('fp')
             )
             if outcome == 'protected':
                 return text_resp("スタッフアカウントはBAN(削除)できません。", 403)
@@ -3918,6 +4162,7 @@ async def _cleanup_memory_caches_loop():
             for _d in (LAST_THREAD_TIMES, LAST_REPLY_TIMES, LAST_REPLY_SIGNATURES,
                        LAST_DM_TIMES, LAST_GROUP_TIMES, LAST_GROUP_CREATE_TIMES,
                        _PROXY_CHECK_CACHE, _BANNED_IP_CACHE, _BANNED_TOKEN_CACHE,
+                       _BANNED_VISITOR_CACHE, _BIND_THROTTLE,
                        casino_service.LAST_BET_TIMES):  # === カジノ追加 ===
                 _cap_dict_size(_d, 20000)
 
@@ -3930,6 +4175,8 @@ async def _cleanup_memory_caches_loop():
             )
             _prune_expired(_BANNED_IP_CACHE, now, 300)
             _prune_expired(_BANNED_TOKEN_CACHE, now, 300)
+            _prune_expired(_BANNED_VISITOR_CACHE, now, 300)
+            _prune_expired(_BIND_THROTTLE, now, 600)
         except Exception as e:
             print(f"メモリキャッシュ掃除エラー: {e}")
 
@@ -4098,7 +4345,7 @@ dm_manager = DMConnectionManager()
 async def dm_ws(websocket: WebSocket):
     # SessionMiddlewareはWebSocketにも適用されるため、セッションから本人確認できる。
     member_id = websocket.session.get('member_id')
-    if not member_id:
+    if not member_id or await ws_is_banned(websocket):
         await websocket.close(code=1008)
         return
     await dm_manager.connect(member_id, websocket)
