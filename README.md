@@ -1,2 +1,4 @@
 # The-bulletin-board
-掲示板
+# talk-ch.com
+# トークちゃんねる
+次世代型リアルタイム掲示板
