@@ -1,4 +1,4 @@
-"""対戦ゲーム(オセロ・チェス・将棋・人狼)の共通サービス。
+"""対戦ゲーム(オセロ・チェス・将棋・人狼)と1人用アーケード(テトリス・ブロック崩し)の共通サービス。
 
 カジノ(casino_service.py + casino_games/)と同じ構造:
 
@@ -25,6 +25,7 @@ import json
 import points_service
 import random
 import re
+import secrets
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -369,6 +370,199 @@ def _cookie_response(request: Request, resp, token):
     if not request.cookies.get('game_player_token'):
         resp.set_cookie('game_player_token', token, max_age=60 * 60 * 24 * 365, httponly=True, samesite='Lax')
     return resp
+
+
+
+# =========================
+# 1人用スコアアタック共通部品(テトリス・ブロック崩し)
+# =========================
+# battle_games/tetris.py, breakout.py が build_arcade_router(key) で使う。ルート:
+#   GET  /{key}                      ゲーム画面(templates/arcade_{key}.html)
+#   POST /api/arcade/{key}/start     プレイ開始(セッションID発行)
+#   POST /api/arcade/{key}/submit    スコア送信(セッションIDと経過時間でサーバー側検証)
+#   GET  /api/arcade/{key}/ranking   ランキング(上位30)
+# スコアはクライアント申告なので完全には防げない。そこで
+#   ・start で発行したセッションIDが無いと送信できない(1セッション1回だけ)
+#   ・サーバー側で測った経過時間に対し、1秒あたりの最大スコアを超えたものは却下
+#   ・最短プレイ時間・スコア上限・同一プレイヤーの送信間隔制限
+# の4段で「明らかな不正」を弾く。ポイントは付与しない(不正の旨味を作らないため)。
+# ゲーム定義
+# max_per_sec : 経過1秒あたりに出せる現実的な最大スコア(これを超えたら不正扱い)
+# max_score   : 絶対上限
+ARCADE_GAMES = {
+    'tetris': {
+        'label': 'テトリス', 'icon': '🧱', 'template': 'arcade_tetris.html',
+        'desc': 'ラインを消してハイスコアを狙おう。ゴースト・ネクスト表示付き。',
+        'max_per_sec': 900, 'max_score': 5_000_000, 'min_sec': 5,
+    },
+    'breakout': {
+        'label': 'ブロック崩し', 'icon': '🏓', 'template': 'arcade_breakout.html',
+        'desc': 'パドルでボールを打ち返してブロックを全部崩そう。',
+        'max_per_sec': 200, 'max_score': 500_000, 'min_sec': 5,
+    },
+}
+
+ARCADE_SESSION_TTL_SEC = 3 * 3600        # 開始から3時間を超えたセッションは無効
+ARCADE_SESSION_MAX = 5000                # 未送信セッションの保持上限(メモリ保護)
+ARCADE_SUBMIT_MIN_INTERVAL_SEC = 3.0     # 同一プレイヤーの送信間隔
+ARCADE_RANKING_LIMIT = 30
+
+# {session_id: {'game', 'key', 't0'(monotonic), 'used'}}  ※worker数1前提(現在の構成)
+_arcade_sessions = {}
+_arcade_last_submit = {}                 # {player_key: monotonic}
+
+
+# スキーマ
+async def ensure_arcade_schema():
+    await execute_query(
+        "CREATE TABLE IF NOT EXISTS arcade_best ("
+        " player_key TEXT NOT NULL, game TEXT NOT NULL, display_name TEXT NOT NULL,"
+        " best_score INTEGER NOT NULL DEFAULT 0, best_level INTEGER NOT NULL DEFAULT 1,"
+        " plays INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL,"
+        " PRIMARY KEY (player_key, game))"
+    )
+    await execute_query(
+        "CREATE INDEX IF NOT EXISTS idx_arcade_best_rank ON arcade_best (game, best_score DESC)"
+    )
+
+
+# プレイヤー識別(game_service と同じ cookie を共用)
+async def _arcade_identify(request: Request):
+    """(player_key, display_name, token, is_member)"""
+    token = _game_token(request)
+    member = await get_current_member(request)
+    if member:
+        return f"member:{member['id']}", html.escape(str(member.get('username') or '名無しさん'))[:20], token, True
+    raw = request.cookies.get('bbs_saved_author')
+    name = '名無しさん'
+    if raw:
+        try:
+            name = unquote(raw)
+        except Exception:
+            name = raw
+    name = html.escape(name.strip() or '名無しさん')[:20]
+    return f"guest:{token}", name, token, False
+
+
+def _prune_arcade_sessions():
+    now = time.monotonic()
+    for sid in [s for s, v in _arcade_sessions.items() if now - v['t0'] > ARCADE_SESSION_TTL_SEC or v['used']]:
+        _arcade_sessions.pop(sid, None)
+    while len(_arcade_sessions) > ARCADE_SESSION_MAX:
+        _arcade_sessions.pop(next(iter(_arcade_sessions)), None)
+    for k in [k for k, t in _arcade_last_submit.items() if now - t > 600]:
+        _arcade_last_submit.pop(k, None)
+
+
+async def _arcade_top(game: str, n: int):
+    # ログイン会員は users と結合してプロフィールリンク用の public_id を返す(rankings と同じ作り)
+    rows = await execute_query(
+        "SELECT b.display_name, b.best_score, b.best_level, b.plays, "
+        "       u.public_id AS public_id, u.icon_path AS icon_path "
+        "FROM arcade_best b LEFT JOIN users u ON b.player_key = ('member:' || u.id) "
+        "WHERE b.game = ? AND b.best_score > 0 ORDER BY b.best_score DESC, b.updated_at ASC LIMIT ?",
+        [game, n],
+    )
+    return rows or []
+
+
+# ルート
+def build_arcade_router(game: str) -> APIRouter:
+    g = ARCADE_GAMES[game]
+    router = APIRouter()
+
+    @router.get(f'/{game}')
+    async def page(request: Request):
+        pkey, name, token, is_member = await _arcade_identify(request)
+        mine = await execute_query(
+            "SELECT best_score, best_level, plays FROM arcade_best WHERE player_key = ? AND game = ?",
+            [pkey, game])
+        resp = templates.TemplateResponse(request, g['template'], {
+            'game_key': game, 'game_label': g['label'], 'is_member': is_member,
+            'player_name': html.unescape(name), 'mine': (mine[0] if mine else None),
+            'ranking': await _arcade_top(game, 10),
+        })
+        return _cookie_response(request, resp, token)
+
+    @router.post(f'/api/arcade/{game}/start')
+    async def start(request: Request):
+        pkey, _name, token, _m = await _arcade_identify(request)
+        _prune_arcade_sessions()
+        sid = secrets.token_urlsafe(16)
+        _arcade_sessions[sid] = {'game': game, 'key': pkey, 't0': time.monotonic(), 'used': False}
+        return _cookie_response(request, json_resp({'success': True, 'session': sid}), token)
+
+    @router.post(f'/api/arcade/{game}/submit')
+    async def submit(request: Request):
+        pkey, name, token, _m = await _arcade_identify(request)
+        data = await get_json_silent(request)
+        if not isinstance(data, dict):
+            data = {}
+
+        sid = str(data.get('session') or '')
+        sess = _arcade_sessions.get(sid)
+        if not sess or sess['used'] or sess['game'] != game or sess['key'] != pkey:
+            return json_resp({'success': False, 'error': 'セッションが無効です。もう一度プレイしてください'}, 400)
+        sess['used'] = True  # 成否に関わらず1セッション1回
+
+        try:
+            score = int(data.get('score'))
+            level = int(data.get('level') or 1)
+        except (TypeError, ValueError):
+            return json_resp({'success': False, 'error': 'スコアが不正です'}, 400)
+        level = max(1, min(level, 999))
+
+        elapsed = time.monotonic() - sess['t0']   # サーバー側で測った時間だけを信用する
+        if score < 0 or score > g['max_score']:
+            return json_resp({'success': False, 'error': 'スコアが不正です'}, 400)
+        if score > 0 and (elapsed < g['min_sec'] or score > elapsed * g['max_per_sec'] + 200):
+            print(f"アーケード不正疑い({game}, {pkey}): score={score} elapsed={elapsed:.1f}s")
+            return json_resp({'success': False, 'error': 'スコアを記録できませんでした'}, 400)
+
+        now_m = time.monotonic()
+        if now_m - _arcade_last_submit.get((pkey, game), 0) < ARCADE_SUBMIT_MIN_INTERVAL_SEC:
+            return json_resp({'success': False, 'error': '少し間をあけてください'}, 429)
+        _arcade_last_submit[(pkey, game)] = now_m
+
+        now = datetime.utcnow().isoformat()
+        row = await execute_query(
+            "SELECT best_score FROM arcade_best WHERE player_key = ? AND game = ?", [pkey, game])
+        if not row:
+            await execute_query(
+                "INSERT OR IGNORE INTO arcade_best (player_key, game, display_name, best_score, best_level, plays, updated_at) "
+                "VALUES (?, ?, ?, 0, 1, 0, ?)", [pkey, game, name, now])
+            prev_best = 0
+        else:
+            prev_best = row[0]['best_score']
+
+        is_best = score > prev_best
+        if is_best:
+            await execute_query(
+                "UPDATE arcade_best SET best_score = ?, best_level = ?, plays = plays + 1, display_name = ?, updated_at = ? "
+                "WHERE player_key = ? AND game = ?", [score, level, name, now, pkey, game])
+        else:
+            await execute_query(
+                "UPDATE arcade_best SET plays = plays + 1, display_name = ? WHERE player_key = ? AND game = ?",
+                [name, pkey, game])
+
+        rank_row = await execute_query(
+            "SELECT COUNT(*) AS c FROM arcade_best WHERE game = ? AND best_score > ?",
+            [game, max(score, prev_best)])
+        rank = (rank_row[0]['c'] + 1) if rank_row else None
+        return _cookie_response(request, json_resp({
+            'success': True, 'is_best': is_best, 'best': max(score, prev_best), 'rank': rank,
+        }), token)
+
+    @router.get(f'/api/arcade/{game}/ranking')
+    async def ranking():
+        rows = await _arcade_top(game, ARCADE_RANKING_LIMIT)
+        out = [{'name': html.unescape(r['display_name']), 'score': r['best_score'],
+                'level': r['best_level'], 'public_id': r.get('public_id')} for r in rows]
+        resp = json_resp({'success': True, 'ranking': out})
+        resp.headers['Cache-Control'] = 'no-store'
+        return resp
+
+    return router
 
 
 @router.get('/games')
