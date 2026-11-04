@@ -2,20 +2,22 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>ブロック崩し | talk-ch</title>
 <style>
   :root { --bg:#f4f5f7; --card:#fff; --text:#1f2430; --sub:#6b7280; --line:#e5e7eb; --accent:#f59e0b; --board:#0f1117; }
   @media (prefers-color-scheme: dark) { :root { --bg:#12141a; --card:#1c1f27; --text:#e8eaf0; --sub:#9aa1b0; --line:#2b2f3a; } }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; background:var(--bg); color:var(--text); }
+  html, body { overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-text-size-adjust:100%; }
+  body { padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   .wrap { max-width:520px; margin:0 auto; padding:12px 12px 40px; }
   .top { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--sub); margin-bottom:8px; }
   .top a { color:var(--sub); text-decoration:none; }
   h1 { font-size:18px; margin:0; color:var(--text); }
   .hud { display:flex; justify-content:space-between; font-size:14px; font-weight:700; margin-bottom:6px; font-variant-numeric:tabular-nums; }
   .hud span small { font-weight:400; color:var(--sub); margin-right:4px; }
-  .boardbox { position:relative; }
+  .boardbox { position:relative; margin:0 auto; }
   canvas { width:100%; display:block; background:var(--board); border-radius:8px; border:2px solid var(--line); touch-action:none; }
   .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
              background:rgba(10,12,18,.78); color:#fff; border-radius:8px; text-align:center; padding:16px; gap:10px; }
@@ -34,11 +36,11 @@
     <canvas id="cv" width="480" height="640"></canvas>
     <div class="overlay" id="overlay">
       <h2 id="ov-title">ブロック崩し</h2>
-      <p id="ov-msg">マウス・指でパドルを動かす / ←→キー<br>クリック・タップ・Spaceでボール発射</p>
+      <p id="ov-msg">画面を左右になぞってパドルを動かす(PCはマウス / ←→キー)<br>タップ・クリック・Spaceでボール発射</p>
       <button class="btn" id="ov-btn">スタート</button>
     </div>
   </div>
-  <div class="help">P: ポーズ</div>
+  <div class="help">指でなぞるとパドルが動きます(指が隠れないよう相対移動) / P: ポーズ</div>
 </div>
 
 <script>
@@ -177,8 +179,27 @@
   // 入力
   const toX = e => { const r = cv.getBoundingClientRect(); return (e.clientX - r.left) * (W / r.width); };
   const movePad = e => { if (state === 'playing') pad.x = Math.max(4, Math.min(W - 4 - pad.w, toX(e) - pad.w / 2)); };
-  cv.addEventListener('pointermove', movePad);
-  cv.addEventListener('pointerdown', e => { movePad(e); launch(); });
+  // マウス: 位置にパドルを合わせる / タッチ: 指で隠れないよう「動かした分だけ」パドルを動かす(少し増幅)
+  let touchBase = null;
+  const clampPad = x => Math.max(4, Math.min(W - 4 - pad.w, x));
+  cv.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') movePad(e);
+    else { touchBase = { id: e.pointerId, x: toX(e), pad: pad.x }; try { cv.setPointerCapture(e.pointerId); } catch (_) {} }
+    launch();
+  });
+  cv.addEventListener('pointermove', e => {
+    if (e.pointerType === 'mouse') movePad(e);
+    else if (touchBase && touchBase.id === e.pointerId && state === 'playing') pad.x = clampPad(touchBase.pad + (toX(e) - touchBase.x) * 1.4);
+  });
+  ['pointerup', 'pointercancel'].forEach(ev => cv.addEventListener(ev, e => { if (touchBase && touchBase.id === e.pointerId) touchBase = null; }));
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+
+  // 画面サイズに合わせてゲーム画面の大きさを調整(縦横どちらでも全体が見える)
+  const fit = () => {
+    const w = Math.max(220, Math.min(480, innerWidth - 24, (innerHeight - 120) * 0.75));
+    document.querySelector('.boardbox').style.width = w + 'px';
+  };
+  fit(); addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 200));
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { keys[e.key] = true; e.preventDefault(); }
     else if (e.key === ' ') { e.preventDefault(); launch(); }
