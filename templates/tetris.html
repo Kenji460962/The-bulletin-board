@@ -2,13 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>テトリス | talk-ch</title>
 <style>
   :root { --bg:#f4f5f7; --card:#fff; --text:#1f2430; --sub:#6b7280; --line:#e5e7eb; --accent:#f59e0b; --board:#0f1117; }
   @media (prefers-color-scheme: dark) { :root { --bg:#12141a; --card:#1c1f27; --text:#e8eaf0; --sub:#9aa1b0; --line:#2b2f3a; } }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; background:var(--bg); color:var(--text); }
+  html, body { overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-text-size-adjust:100%; }
+  body { padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   .wrap { max-width:640px; margin:0 auto; padding:12px 12px 40px; }
   .top { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--sub); margin-bottom:8px; }
   .top a { color:var(--sub); text-decoration:none; }
@@ -28,7 +30,7 @@
   .overlay p { margin:0; font-size:13px; opacity:.85; line-height:1.5; }
   .btn { border:0; background:var(--accent); color:#1a1200; font-weight:700; padding:10px 22px; border-radius:999px; font-size:15px; cursor:pointer; }
   .ctrl { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:14px; }
-  .ctrl button { height:56px; border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); font-size:22px; touch-action:manipulation; user-select:none; }
+  .ctrl button { height:clamp(52px, 8.5vh, 68px); border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); font-size:22px; touch-action:manipulation; user-select:none; }
   .ctrl button:active { background:var(--accent); color:#1a1200; }
   .help { margin-top:10px; font-size:12px; color:var(--sub); text-align:center; }
 </style>
@@ -42,7 +44,7 @@
       <canvas id="board" width="300" height="600"></canvas>
       <div class="overlay" id="overlay">
         <h2 id="ov-title">テトリス</h2>
-        <p id="ov-msg">←→ 移動 / ↑・X 回転 / Z 逆回転<br>↓ ソフトドロップ / Space ハードドロップ / P ポーズ</p>
+        <p id="ov-msg">スマホ: 盤面をタップで回転 / 左右になぞって移動<br>下になぞってソフトドロップ / 上フリックでハードドロップ<br>PC: ←→ 移動 / ↑ 回転 / Space ハードドロップ / P ポーズ</p>
         <button class="btn" id="ov-btn">スタート</button>
       </div>
     </div>
@@ -62,7 +64,7 @@
     <button data-act="right" aria-label="右">▶</button>
     <button data-act="hard" style="grid-column:1 / -1; height:48px; font-size:16px;">⤓ ハードドロップ</button>
   </div>
-  <div class="help">キーボード: ←→↓ 移動 / ↑ X 回転 / Z 逆回転 / Space ハードドロップ / P ポーズ</div>
+  <div class="help">スマホ: 盤面タップ=回転・左右スワイプ=移動・下スワイプ=落下・上フリック=ハードドロップ<br>キーボード: ←→↓ 移動 / ↑ X 回転 / Z 逆回転 / Space ハードドロップ / P ポーズ</div>
 </div>
 
 <script>
@@ -237,6 +239,38 @@
     if (map[e.key]) { e.preventDefault(); act(map[e.key]); }
   });
   // タッチボタン(左右・下は長押しでリピート)
+
+  // スマホ: 盤面を直接なぞって操作(タップ=回転 / 左右=移動 / 下=ソフトドロップ / 上フリック=ハードドロップ)
+  (() => {
+    let id = null, sx = 0, sy = 0, lx = 0, ly = 0, t0 = 0, moved = false, cellPx = 20;
+    bc.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' || state !== 'playing') return;
+      id = e.pointerId; try { bc.setPointerCapture(id); } catch (_) {}
+      sx = lx = e.clientX; sy = ly = e.clientY; t0 = performance.now(); moved = false;
+      cellPx = bc.getBoundingClientRect().width / COLS;
+    });
+    bc.addEventListener('pointermove', e => {
+      if (e.pointerId !== id) return;
+      while (Math.abs(e.clientX - lx) >= cellPx) { const d = e.clientX > lx ? 1 : -1; act(d > 0 ? 'right' : 'left'); lx += d * cellPx; moved = true; }
+      if (e.clientY - ly >= cellPx * 0.9 && Math.abs(e.clientY - sy) > Math.abs(e.clientX - sx)) { act('down'); ly += cellPx * 0.9; moved = true; }
+    });
+    bc.addEventListener('pointerup', e => {
+      if (e.pointerId !== id) return; id = null;
+      const dt = performance.now() - t0, dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!moved && Math.hypot(dx, dy) < 12 && dt < 300) act('rot');
+      else if (dy < -50 && Math.abs(dy) > Math.abs(dx) * 1.5 && dt < 400) act('hard');
+      else if (dy > 70 && dt < 180 && Math.abs(dy) > Math.abs(dx) * 1.5) act('hard');
+    });
+    bc.addEventListener('pointercancel', e => { if (e.pointerId === id) id = null; });
+    bc.addEventListener('contextmenu', e => e.preventDefault());
+  })();
+
+  // 画面サイズに合わせて盤面の大きさを調整(縦長スマホで操作ボタンまで画面内に収める)
+  const fit = () => {
+    const w = Math.max(150, Math.min(300, innerWidth * 0.6, (innerHeight - 250) / 2));
+    document.querySelector('.boardbox').style.width = w + 'px';
+  };
+  fit(); addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 200));
   document.querySelectorAll('.ctrl button').forEach(btn => {
     const a = btn.dataset.act; let t1, t2;
     const stop = () => { clearTimeout(t1); clearInterval(t2); };
