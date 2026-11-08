@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>ブロック崩し | talk-ch</title>
-<style>
+<style nonce="{{ nonce }}">
   :root { --bg:#f4f5f7; --card:#fff; --text:#1f2430; --sub:#6b7280; --line:#e5e7eb; --accent:#f59e0b; --board:#0f1117; }
   @media (prefers-color-scheme: dark) { :root { --bg:#12141a; --card:#1c1f27; --text:#e8eaf0; --sub:#9aa1b0; --line:#2b2f3a; } }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -29,7 +29,7 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><a href="/games">← ゲーム一覧</a><h1>ブロック崩し</h1><span id="best-label"></span></div>
+  <div class="top"><a href="/?tab=games">← ホームへ戻る</a><h1>🏓 ブロック崩し</h1><span id="best-label"></span></div>
   <div class="hud"><span><small>SCORE</small><b id="score">0</b></span><span><small>LEVEL</small><b id="level">1</b></span><span><small>LIFE</small><b id="life">♥♥♥</b></span></div>
 
   <div class="boardbox">
@@ -40,16 +40,35 @@
       <button class="btn" id="ov-btn">スタート</button>
     </div>
   </div>
-  <div class="help">指でなぞるとパドルが動きます(指が隠れないよう相対移動) / P: ポーズ</div>
+  <div class="help">指でなぞるとパドルが動きます(指が隠れないよう相対移動) / P: ポーズ<br><a href="/rankings">🏆 ランキングを見る</a></div>
 </div>
 
-<script>
+<script nonce="{{ nonce }}">
 (() => {
   const BEST_KEY = 'talkch_breakout_best';
   let best = 0;
   try { best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0; } catch (e) {}
   const showBest = () => { document.getElementById('best-label').textContent = best ? 'ベスト ' + best : ''; };
   showBest();
+  // ---- ランキング用のスコア送信 ----
+  let session = null;
+  async function startSession() {
+    session = null;
+    try {
+      const r = await fetch('/api/breakout/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const j = await r.json(); if (j.success) session = j.session;
+    } catch (e) {}
+  }
+  async function submitScore(sc, lv) {
+    if (!session || sc <= 0) return null;
+    const sid = session; session = null;
+    try {
+      const r = await fetch('/api/breakout/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sid, score: sc, level: lv }) });
+      return await r.json();
+    } catch (e) { return null; }
+  }
+  const rankText = j => j && j.success ? ` / 現在 ${j.rank} 位` : (j && j.error ? `(${j.error})` : '');
+
   const saveBest = sc => { if (sc > best) { best = sc; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} showBest(); return true; } return false; };
   const W = 480, H = 640;
   const cv = document.getElementById('cv'), g = cv.getContext('2d');
@@ -158,16 +177,18 @@
   };
 
   function start() {
+    startSession();
     score = 0; level = 1; lives = 3; setupLevel();
     state = 'playing'; overlay.classList.add('hide');
     last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
   }
-  function gameOver() {
+  async function gameOver() {
     state = 'over'; cancelAnimationFrame(raf); draw();
     const isBest = saveBest(score);
     $('ov-title').textContent = 'GAME OVER';
     $('ov-msg').textContent = `スコア ${score} / Lv.${level}` + (isBest && score > 0 ? '  ★ベスト更新!' : '');
     $('ov-btn').textContent = 'もう一度'; overlay.classList.remove('hide');
+    $('ov-msg').textContent += rankText(await submitScore(score, level));
   }
   const pause = () => {
     if (state === 'playing') { state = 'paused'; $('ov-title').textContent = 'ポーズ中'; $('ov-msg').textContent = 'Pキーかボタンで再開'; $('ov-btn').textContent = '再開'; overlay.classList.remove('hide'); }
