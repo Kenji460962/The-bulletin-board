@@ -195,6 +195,17 @@
             white-space: nowrap;
         }
 
+        .play-link {
+            text-align: center;
+            padding: 12px 0 0;
+            font-size: 13px;
+        }
+        .play-link a, .empty-state a {
+            color: var(--accent-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+
         .empty-state {
             text-align: center;
             color: var(--text-muted);
@@ -218,6 +229,8 @@
             <button type="button" class="tab-btn active" data-target="panel-othello">オセロ</button>
             <button type="button" class="tab-btn" data-target="panel-chess">チェス</button>
             <button type="button" class="tab-btn" data-target="panel-shogi">将棋</button>
+            <button type="button" class="tab-btn" data-target="panel-tetris">テトリス</button>
+            <button type="button" class="tab-btn" data-target="panel-breakout">ブロック崩し</button>
         </div>
 
         <div id="panel-othello" class="ranking-panel active">
@@ -304,6 +317,66 @@
             </table>
             {% else %}
             <div class="empty-state">まだ対戦記録がありません。</div>
+            {% endif %}
+        </div>
+
+        <div id="panel-tetris" class="ranking-panel">
+            {% if tetris_ranking %}
+            <table class="ranking-table">
+                <thead>
+                    <tr>
+                        <th class="rank-num">#</th>
+                        <th>名前</th>
+                        <th>スコア</th>
+                        <th>レベル</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in tetris_ranking %}
+                    <tr class="rank-{{ loop.index }}">
+                        <td class="rank-num">{{ loop.index }}</td>
+                        <td class="player-name">
+                            {% if p.public_id %}<a href="{{ url_for('profile_view', public_id=p.public_id) }}">{{ p.display_name }}</a>{% else %}{{ p.display_name }}{% endif %}
+                        </td>
+                        <td class="rating-val">{{ p.best_score }}</td>
+                        <td class="wld">Lv.{{ p.best_level }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="play-link"><a href="/tetris">▶ テトリスで遊ぶ</a></div>
+            {% else %}
+            <div class="empty-state">まだ記録がありません。<br><a href="/tetris">▶ 一番乗りを狙おう</a></div>
+            {% endif %}
+        </div>
+
+        <div id="panel-breakout" class="ranking-panel">
+            {% if breakout_ranking %}
+            <table class="ranking-table">
+                <thead>
+                    <tr>
+                        <th class="rank-num">#</th>
+                        <th>名前</th>
+                        <th>スコア</th>
+                        <th>レベル</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in breakout_ranking %}
+                    <tr class="rank-{{ loop.index }}">
+                        <td class="rank-num">{{ loop.index }}</td>
+                        <td class="player-name">
+                            {% if p.public_id %}<a href="{{ url_for('profile_view', public_id=p.public_id) }}">{{ p.display_name }}</a>{% else %}{{ p.display_name }}{% endif %}
+                        </td>
+                        <td class="rating-val">{{ p.best_score }}</td>
+                        <td class="wld">Lv.{{ p.best_level }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div class="play-link"><a href="/breakout">▶ ブロック崩しで遊ぶ</a></div>
+            {% else %}
+            <div class="empty-state">まだ記録がありません。<br><a href="/breakout">▶ 一番乗りを狙おう</a></div>
             {% endif %}
         </div>
     </div>
