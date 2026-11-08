@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 from markupsafe import Markup, escape
 import io
 from PIL import Image, ImageOps
+import security_guard   # DoS・画像砲対策(巨大リクエスト拒否 / IP別レート制限 / 安全な画像オープン)
 import uvicorn
 import redis.asyncio as aioredis
 import aiosqlite
@@ -1087,7 +1088,7 @@ def process_avatar_image(raw_bytes: bytes) -> bytes:
     してbytesで返す。破損ファイルや非対応形式の場合はValueErrorを送出する。
     """
     try:
-        img = Image.open(io.BytesIO(raw_bytes))
+        img = security_guard.open_image_safely(raw_bytes, draft_to=(512, 512))  # 解凍爆弾などをデコード前に弾く
         img.load()  # ここで実際にデコードし、壊れた/偽装ファイルを検知する
     except Exception:
         raise ValueError("invalid_image")
@@ -1128,12 +1129,14 @@ def process_reply_image(raw_bytes: bytes, orig_ext: str) -> tuple[bytes, str]:
     破損ファイルや非対応形式の場合はValueErrorを送出する(呼び出し側でアップロード自体をスキップする)。
     """
     try:
-        img = Image.open(io.BytesIO(raw_bytes))
+        img = security_guard.open_image_safely(raw_bytes, draft_to=(REPLY_IMAGE_MAX_DIMENSION, REPLY_IMAGE_MAX_DIMENSION))
         img.load()
     except Exception:
         raise ValueError("invalid_image")
 
     if getattr(img, "is_animated", False):
+        if len(raw_bytes) > security_guard.MAX_ANIMATION_BYTES:
+            raise ValueError("animation_too_large")
         return raw_bytes, orig_ext
 
     img = ImageOps.exif_transpose(img)
@@ -2281,13 +2284,17 @@ async def rankings(request: Request):
             [game, n]
         ) or []
 
-    othello_ranking, chess_ranking, shogi_ranking = await asyncio.gather(
-        top_n('othello'), top_n('chess'), top_n('shogi')
+    # テトリス・ブロック崩しは1人用のスコアランキング(game_ratings ではなく各ゲームのベストスコア表から取得)
+    othello_ranking, chess_ranking, shogi_ranking, tetris_ranking, breakout_ranking = await asyncio.gather(
+        top_n('othello'), top_n('chess'), top_n('shogi'),
+        battle_games.tetris.top_scores(30), battle_games.breakout.top_scores(30)
     )
     return templates.TemplateResponse(request, 'rankings.html', {
         'othello_ranking': othello_ranking,
         'chess_ranking': chess_ranking,
         'shogi_ranking': shogi_ranking,
+        'tetris_ranking': tetris_ranking,
+        'breakout_ranking': breakout_ranking,
     })
 
 
@@ -2337,7 +2344,7 @@ async def profile_avatar_upload(request: Request):
         return RedirectResponse(url=f'/profile/edit?avatar_error=size', status_code=303)
 
     try:
-        webp_bytes = await run_in_threadpool(process_avatar_image, contents)
+        webp_bytes = await security_guard.run_image_job(process_avatar_image, contents)
     except ValueError:
         return RedirectResponse(url=f'/profile/edit?avatar_error=type', status_code=303)
     except Image.DecompressionBombError:
@@ -3566,12 +3573,19 @@ async def thread_view(request: Request, thread_id: int):
         image_url = ""
         upload = form.get('image')
         if upload is not None and getattr(upload, 'filename', ''):
+            # 画像砲対策: 画像の連投はIP・端末(cookie)・サイト全体の3つの面で制限する(運営は対象外)
+            if not staff_role:
+                img_wait = security_guard.image_rate_check(client_ip, request.cookies.get('user_bbs_token'))
+                if img_wait:
+                    return json_resp({"success": False, "error": f"画像の投稿が多すぎます。{img_wait}秒ほど待ってからお試しください。"}, 429)
             try:
                 orig_filename = secure_filename(upload.filename)
                 orig_ext = os.path.splitext(orig_filename)[1]
                 raw_bytes = await upload.read()
-                # CPUバウンドな画像処理はイベントループを塞がないようスレッドプールへ逃がす
-                processed_bytes, new_ext = await run_in_threadpool(process_reply_image, raw_bytes, orig_ext)
+                if len(raw_bytes) > security_guard.MAX_UPLOAD_BYTES:
+                    return json_resp({"success": False, "error": "画像は10MB以下にしてください。"}, 413)
+                # CPUバウンドな画像処理はイベントループを塞がないようスレッドプールへ逃がす(同時実行数は制限)
+                processed_bytes, new_ext = await security_guard.run_image_job(process_reply_image, raw_bytes, orig_ext)
                 unique_filename = f"{uuid.uuid4()}{new_ext}"
                 content_type = 'image/webp' if new_ext == '.webp' else (upload.content_type or 'application/octet-stream')
                 await run_in_threadpool(
@@ -3579,6 +3593,8 @@ async def thread_view(request: Request, thread_id: int):
                     ExtraArgs={'ContentType': content_type}
                 )
                 image_url = f"{R2_PUBLIC_URL.rstrip('/')}/{unique_filename}"
+            except security_guard.ImageBusy:
+                return json_resp({"success": False, "error": "画像の処理が混み合っています。少し待ってからもう一度お試しください。"}, 503)
             except ValueError:
                 print("投稿画像処理エラー: 不正な画像ファイルのためアップロードをスキップしました")
             except Exception as e:
@@ -4084,7 +4100,9 @@ async def _dm_store_image(upload):
     if len(raw) > DM_MAX_IMAGE_BYTES:
         return None, "画像は8MB以下にしてください。"
     try:
-        processed, new_ext = await run_in_threadpool(process_reply_image, raw, ext)
+        processed, new_ext = await security_guard.run_image_job(process_reply_image, raw, ext)
+    except security_guard.ImageBusy:
+        return None, "画像の処理が混み合っています。少し待ってからお試しください。"
     except ValueError:
         return None, "画像を読み込めませんでした。別の画像でお試しください。"
     key = f"dm/{uuid.uuid4().hex}{new_ext}"
@@ -6104,7 +6122,7 @@ def _can_moderate_market(request: Request) -> bool:
 def _market_process_image(contents: bytes) -> bytes:
     """出品画像を最大1600pxのWebPに変換する(Pillowで実際にデコードし、
     拡張子偽装された非画像ファイルを弾く)。EXIFの向きも補正する。"""
-    img = Image.open(io.BytesIO(contents))
+    img = security_guard.open_image_safely(contents, draft_to=(1600, 1600))
     img = ImageOps.exif_transpose(img)
     img.thumbnail((1600, 1600))
     if img.mode != 'RGB':
@@ -6163,7 +6181,7 @@ async def _market_handle_image(form, required=False):
     if len(contents) > MARKET_MAX_IMAGE_BYTES:
         return None, 'size'
     try:
-        webp = await run_in_threadpool(_market_process_image, contents)
+        webp = await security_guard.run_image_job(_market_process_image, contents)
     except Image.DecompressionBombError:
         return None, 'size'
     except Exception:
@@ -6979,6 +6997,16 @@ async def api_casino_play(request: Request, game_key: str):
 
 
 
+# 全リクエストの入口でDoS対策(BAN判定・DB・セッションより前に動く)。BAN判定・cookie発行(enforce_ban_and_issue_ids)には触れない。
+async def _guard_auto_ban(info):
+    """security_guard が「明らかに悪意のある送信」(解凍爆弾クラスの画像・桁違いに巨大な本文)を24時間に3回検出した端末を、既存のBANに連携する。
+    BANするのは cookie 2本(user_bbs_token / bbs_dev)だけ。IP・端末特徴は対象にしない(共有回線の無関係な人を巻き込まないため)。
+    一度入ると、以後は既存のBANと同じ扱い(別の識別子も自動で紐づく)。解除は既存のBAN管理から行う。"""
+    await _bind_banned_identity(None, info.get('token'), info.get('dev'), None, reason=f"auto(security_guard): {info.get('reason')}")
+
+
+security_guard.set_abuse_handler(_guard_auto_ban)
+app.add_middleware(security_guard.GuardMiddleware)
 app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
 
 
