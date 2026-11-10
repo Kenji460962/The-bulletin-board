@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>テトリス | talk-ch</title>
-<style>
+<style nonce="{{ nonce }}">
   :root { --bg:#f4f5f7; --card:#fff; --text:#1f2430; --sub:#6b7280; --line:#e5e7eb; --accent:#f59e0b; --board:#0f1117; }
   @media (prefers-color-scheme: dark) { :root { --bg:#12141a; --card:#1c1f27; --text:#e8eaf0; --sub:#9aa1b0; --line:#2b2f3a; } }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
@@ -29,15 +29,20 @@
   .overlay h2 { margin:0; font-size:22px; }
   .overlay p { margin:0; font-size:13px; opacity:.85; line-height:1.5; }
   .btn { border:0; background:var(--accent); color:#1a1200; font-weight:700; padding:10px 22px; border-radius:999px; font-size:15px; cursor:pointer; }
-  .ctrl { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-top:14px; }
-  .ctrl button { height:clamp(52px, 8.5vh, 68px); border-radius:12px; border:1px solid var(--line); background:var(--card); color:var(--text); font-size:22px; touch-action:manipulation; user-select:none; }
+  /* 操作ボタン: 上段=左右 / 逆回転・回転、下段=ゆっくり下げる / 一気に落とす(落とす系を下段にまとめ、回転との押し間違いを防ぐ) */
+  .ctrl { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:12px; }
+  .ctrl .grp { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .ctrl .wide { grid-column:1 / -1; }
+  .ctrl button { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; height:clamp(56px, 9vh, 72px); border-radius:14px; border:1px solid var(--line); background:var(--card); color:var(--text); touch-action:manipulation; user-select:none; padding:0; }
+  .ctrl .ic { font-size:26px; line-height:1; font-weight:700; }
+  .ctrl .lb { font-size:12px; font-weight:600; opacity:.85; }
   .ctrl button:active { background:var(--accent); color:#1a1200; }
   .help { margin-top:10px; font-size:12px; color:var(--sub); text-align:center; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><a href="/games">← ゲーム一覧</a><h1>テトリス</h1><span id="best-label"></span></div>
+  <div class="top"><a href="/?tab=games">← ホームへ戻る</a><h1>🧱 テトリス</h1><span id="best-label"></span></div>
 
   <div class="stage">
     <div class="boardbox">
@@ -57,23 +62,46 @@
   </div>
 
   <div class="ctrl">
-    <button data-act="left" aria-label="左">◀</button>
-    <button data-act="rotccw" aria-label="逆回転">⟲</button>
-    <button data-act="rot" aria-label="回転">⟳</button>
-    <button data-act="down" aria-label="下">▼</button>
-    <button data-act="right" aria-label="右">▶</button>
-    <button data-act="hard" style="grid-column:1 / -1; height:48px; font-size:16px;">⤓ ハードドロップ</button>
+    <div class="grp">
+      <button data-act="left" aria-label="左へ移動"><span class="ic">◀</span><span class="lb">左</span></button>
+      <button data-act="right" aria-label="右へ移動"><span class="ic">▶</span><span class="lb">右</span></button>
+      <button class="wide" data-act="down" aria-label="ゆっくり下げる"><span class="ic">▼</span><span class="lb">下へ(長押しで連続)</span></button>
+    </div>
+    <div class="grp">
+      <button data-act="rotccw" aria-label="逆回転"><span class="ic">⟲</span><span class="lb">逆回転</span></button>
+      <button data-act="rot" aria-label="回転"><span class="ic">⟳</span><span class="lb">回転</span></button>
+      <button class="wide" data-act="hard" aria-label="一気に落とす"><span class="ic">⤓</span><span class="lb">一気に落とす</span></button>
+    </div>
   </div>
-  <div class="help">スマホ: 盤面タップ=回転・左右スワイプ=移動・下スワイプ=落下・上フリック=ハードドロップ<br>キーボード: ←→↓ 移動 / ↑ X 回転 / Z 逆回転 / Space ハードドロップ / P ポーズ</div>
+  <div class="help">盤面を直接さわってもOK: タップ=回転 / 左右になぞる=移動 / 下になぞる=下へ / 上へはじく=一気に落とす<br>キーボード: ←→↓ 移動 / ↑ X 回転 / Z 逆回転 / Space ハードドロップ / P ポーズ<br><a href="/rankings">🏆 ランキングを見る</a></div>
 </div>
 
-<script>
+<script nonce="{{ nonce }}">
 (() => {
   const BEST_KEY = 'talkch_tetris_best';
   let best = 0;
   try { best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0; } catch (e) {}
   const showBest = () => { document.getElementById('best-label').textContent = best ? 'ベスト ' + best : ''; };
   showBest();
+  // ---- ランキング用のスコア送信 ----
+  let session = null;
+  async function startSession() {
+    session = null;
+    try {
+      const r = await fetch('/api/tetris/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const j = await r.json(); if (j.success) session = j.session;
+    } catch (e) {}
+  }
+  async function submitScore(sc, lv) {
+    if (!session || sc <= 0) return null;
+    const sid = session; session = null;
+    try {
+      const r = await fetch('/api/tetris/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sid, score: sc, level: lv }) });
+      return await r.json();
+    } catch (e) { return null; }
+  }
+  const rankText = j => j && j.success ? ` / 現在 ${j.rank} 位` : (j && j.error ? `(${j.error})` : '');
+
   const saveBest = sc => { if (sc > best) { best = sc; try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {} showBest(); return true; } return false; };
   const COLS = 10, ROWS = 20, CELL = 30;
   const COLORS = { I:'#22d3ee', O:'#facc15', T:'#a855f7', S:'#4ade80', Z:'#f87171', J:'#60a5fa', L:'#fb923c' };
@@ -204,19 +232,21 @@
   };
 
   function start() {
+    startSession();
     grid = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
     bag = []; queue = [take(), take(), take(), take()];
     score = 0; lines = 0; level = 1; dropAcc = 0; updateHud();
     state = 'playing'; overlay.classList.add('hide');
     spawn(); last = performance.now(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop);
   }
-  function gameOver() {
+  async function gameOver() {
     if (state === 'over') return;
     state = 'over'; cancelAnimationFrame(raf); draw();
     const isBest = saveBest(score);
     $('ov-title').textContent = 'GAME OVER';
     $('ov-msg').textContent = `スコア ${score} / ${lines} ライン / Lv.${level}` + (isBest && score > 0 ? '  ★ベスト更新!' : '');
     $('ov-btn').textContent = 'もう一度'; overlay.classList.remove('hide');
+    $('ov-msg').textContent += rankText(await submitScore(score, level));
   }
   const pause = () => {
     if (state === 'playing') { state = 'paused'; $('ov-title').textContent = 'ポーズ中'; $('ov-msg').textContent = 'Pキーか下のボタンで再開'; $('ov-btn').textContent = '再開'; overlay.classList.remove('hide'); }
@@ -267,7 +297,7 @@
 
   // 画面サイズに合わせて盤面の大きさを調整(縦長スマホで操作ボタンまで画面内に収める)
   const fit = () => {
-    const w = Math.max(150, Math.min(300, innerWidth * 0.6, (innerHeight - 250) / 2));
+    const w = Math.max(150, Math.min(300, innerWidth * 0.6, (innerHeight - 300) / 2));
     document.querySelector('.boardbox').style.width = w + 'px';
   };
   fit(); addEventListener('resize', fit); addEventListener('orientationchange', () => setTimeout(fit, 200));
