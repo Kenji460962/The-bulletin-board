@@ -379,6 +379,24 @@ if os.path.isdir("static"):
 FLASK_SECRET_KEY = os.environ.get('FLASK_SECRET_KEY', 'super_secret_bbs_key_12345')
 
 
+class _SitePresenceMiddleware:
+    """どのページを開いている人も「サイトにいる人」として記録する(オンライン人数・一覧用)。
+    SessionMiddleware より前に追加することで内側に入り、scope['session'] から会員情報を読める(DBアクセスなし)。
+    実体は _site_presence_touch_scope(下で定義)。ページ本体の処理を遅くしないよう、メモリ上の更新だけを行う。"""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] == 'http' and scope['method'] == 'GET':
+            try:
+                _site_presence_touch_scope(scope)
+            except Exception as e:
+                print(f"サイト在室の記録エラー: {e}")
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_SitePresenceMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=FLASK_SECRET_KEY)
 # HTML/JSONレスポンスをgzip圧縮する。thread.html/index.htmlなど数十~100KB超の
 # ページが多いため、転送量削減の効果が大きい(min_size未満は圧縮コストの方が
@@ -578,7 +596,12 @@ async def _thread_ws_identity(websocket: WebSocket) -> dict:
 
     ip = websocket.headers.get('cf-connecting-ip') or (websocket.client.host if websocket.client else None)
     guest_id = get_daily_user_id(ip) if ip else secrets.token_hex(3)
-    return {'id': f"g:{guest_id}", 'guest': True, 'username': '名無しさん', 'guest_id': guest_id}
+    token = None
+    try:
+        token = websocket.cookies.get('user_bbs_token')
+    except Exception:
+        pass
+    return {'id': f"g:{guest_id}", 'guest': True, 'username': '名無しさん', 'guest_id': guest_id, 'token': token}
 
 
 @app.websocket('/ws/thread/{thread_id}')
@@ -2207,7 +2230,128 @@ def filter_ng_words(text):
     return text
 
 
-async def update_and_get_user_counts(current_token, location):
+# ---- サイトにいる人(オンライン人数・一覧) ----
+# 「オンライン: ◯人」を押したときに「誰がいるか」を出すため、人数だけでなく在室者そのものを記録する。
+# 「いる」とみなすのは次の2通りの合算(同じ人は1人):
+#   ① どのページでも、最後にページを開いてから LOBBY_PRESENCE_TTL 秒以内の人(_SitePresenceMiddleware が記録。トップページは20秒ごとの更新も含む)
+#   ② スレのWebSocketに接続中の人(接続が切れるまで。スレを開いたまま読んでいる人が2分で消えないように)
+# スレの在室一覧(ConnectionManager.presence_snapshot)と同じ形式で返す。
+# メモリ上に持つ(現在は単一workerなので問題なし。再起動すると空になるが、ページを開くたびに再登録される)。
+LOBBY_PRESENCE_TTL = 120.0
+LOBBY_PRESENCE_MAX = 5000
+LOBBY_LIST_MAX = 100
+_lobby_presence: dict = {}       # 在室キー -> (最後に見た時刻(monotonic), 在室情報)
+
+
+async def _lobby_identity(request: Request) -> dict:
+    """サイトにいる人の身元(API用)。会員は会員ID(複数タブ・複数端末でも1人)、ゲストは端末cookie単位で数える。
+    表示するIDは掲示板の投稿と同じ「名無しさん + 日替わりID」。"""
+    member = None
+    try:
+        member = await get_current_member(request)
+    except Exception as e:
+        print(f"ロビー在室: 会員情報の取得エラー: {e}")
+    if member:
+        return {'key': f"m:{member['id']}", 'guest': False,
+                'username': member.get('username') or '(名前なし)', 'public_id': member.get('public_id') or ''}
+    ip = get_client_ip(request)
+    guest_id = get_daily_user_id(ip) if ip else secrets.token_hex(3)
+    token = request.cookies.get('user_bbs_token') or request.cookies.get('game_player_token') or f"ip:{guest_id}"
+    return {'key': f"g:{token}", 'guest': True, 'username': '名無しさん', 'guest_id': guest_id}
+
+
+_SITE_PRESENCE_SKIP = ('/static/', '/api/', '/ws/', '/internal/', '/favicon', '/robots', '/sitemap', '/.well-known')
+
+
+def _site_presence_touch_scope(scope):
+    """ページ(HTML)を開いたリクエストから、在室者を記録する。DBには触れず、セッションとcookieだけで身元を決める。"""
+    path = scope.get('path', '')
+    if path.startswith(_SITE_PRESENCE_SKIP):
+        return
+    headers = {k: v for k, v in scope.get('headers', [])}
+    if b'text/html' not in headers.get(b'accept', b''):      # 画像・JSなどの読み込みやfetchは数えない(ページを開いた人だけ)
+        return
+    session = scope.get('session') or {}
+    member_id = session.get('member_id')
+    if member_id:
+        who = {'key': f"m:{member_id}", 'guest': False,
+               'username': session.get('member_username') or '(名前なし)',
+               'public_id': session.get('member_public_id') or ''}
+    else:
+        ip = (headers.get(b'cf-connecting-ip') or b'').decode('latin-1').strip()
+        if not ip and scope.get('client'):
+            ip = scope['client'][0]
+        guest_id = get_daily_user_id(ip) if ip else secrets.token_hex(3)
+        cookies = headers.get(b'cookie', b'').decode('latin-1')
+        token = None
+        for part in cookies.split(';'):
+            n, _, v = part.strip().partition('=')
+            if n == 'user_bbs_token' and v:
+                token = v
+                break
+        who = {'key': f"g:{token or 'ip:' + guest_id}", 'guest': True, 'username': '名無しさん', 'guest_id': guest_id}
+    _lobby_presence_touch(who)
+
+
+def _lobby_presence_touch(who: dict):
+    now = time.monotonic()
+    old = _lobby_presence.get(who['key'])
+    if old and not who.get('guest') and not who.get('public_id') and old[1].get('public_id'):
+        who['public_id'] = old[1]['public_id']          # 既に分かっているプロフィールIDを、空の記録で消さない
+    _lobby_presence[who['key']] = (now, who)
+    if len(_lobby_presence) > LOBBY_PRESENCE_MAX or random.random() < 0.02:
+        for k in [k for k, (t, _w) in _lobby_presence.items() if now - t > LOBBY_PRESENCE_TTL]:
+            _lobby_presence.pop(k, None)
+        while len(_lobby_presence) > LOBBY_PRESENCE_MAX:      # 異常に増えたら古い順に捨てる(メモリ保護)
+            _lobby_presence.pop(next(iter(_lobby_presence)), None)
+
+
+def _lobby_presence_snapshot(me_key: Optional[str] = None) -> dict:
+    now = time.monotonic()
+    merged: dict = {}
+    for t, who in _lobby_presence.values():
+        if now - t > LOBBY_PRESENCE_TTL:
+            continue
+        merged[who['key']] = who
+    # スレのWebSocketに接続中の人も「サイトにいる人」に含める(同じ人は同じキーなので二重にならない)
+    try:
+        for room in manager.presence.values():
+            for w in room.values():
+                if not w:
+                    continue
+                if w.get('guest'):
+                    key = f"g:{w.get('token') or 'ip:' + str(w.get('guest_id') or '')}"
+                    merged.setdefault(key, {'key': key, 'guest': True, 'username': '名無しさん', 'guest_id': w.get('guest_id') or ''})
+                else:
+                    key = w['id']
+                    cur = merged.get(key)
+                    if cur is None or (not cur.get('public_id') and w.get('public_id')):
+                        merged[key] = {'key': key, 'guest': False, 'username': w.get('username') or '(名前なし)',
+                                       'public_id': w.get('public_id') or ''}
+    except Exception as e:
+        print(f"サイト在室: スレ接続の集計エラー: {e}")
+    members, guests = [], []
+    for who in merged.values():
+        (guests if who['guest'] else members).append(who)
+    members.sort(key=lambda m: (m.get('username') or '').lower())
+    guests.sort(key=lambda g: g.get('guest_id') or '')
+    return {
+        'success': True,
+        'count': len(members) + len(guests),
+        'guests': len(guests),
+        'members': [{'username': m['username'], 'public_id': m.get('public_id') or '', 'me': m['key'] == me_key}
+                    for m in members[:LOBBY_LIST_MAX]],
+        'guest_list': [{'name': g['username'], 'id': g.get('guest_id') or '', 'me': g['key'] == me_key}
+                       for g in guests[:LOBBY_LIST_MAX]],
+    }
+
+
+async def update_and_get_user_counts(current_token, location, request=None):
+    if location == "lobby" and request is not None:
+        # 人数は在室者の記録から数える(誰がいるかの一覧と、人数が必ず一致する)。DBへの書き込み・集計も不要になる
+        who = await _lobby_identity(request)
+        _lobby_presence_touch(who)
+        return _lobby_presence_snapshot()['count']
     now = datetime.utcnow()
     cutoff = (now - timedelta(minutes=2)).isoformat()
 
@@ -2241,10 +2385,20 @@ async def api_lobby_active_count(request: Request):
     if not user_token:
         user_token = str(uuid.uuid4())
         is_new_user = True
-    count = await update_and_get_user_counts(user_token, "lobby")
+    count = await update_and_get_user_counts(user_token, "lobby", request)
     resp = json_resp({'success': True, 'active_count': count, 'count': count})
     if is_new_user:
         resp.set_cookie('user_bbs_token', user_token, max_age=60 * 60 * 24 * 365, httponly=True)
+    return resp
+
+
+@app.get('/api/lobby/online_users')
+async def api_lobby_online_users(request: Request):
+    """「オンライン: ◯人」を押したときの、いまサイトにいる人の一覧。会員は名前+プロフィールへのリンク、ゲストは名無しさん+日替わりID。"""
+    who = await _lobby_identity(request)
+    _lobby_presence_touch(who)          # 一覧を開いた本人も確実に含める
+    resp = json_resp(_lobby_presence_snapshot(who['key']))
+    resp.headers['Cache-Control'] = 'no-store'
     return resp
 
 
@@ -3000,7 +3154,7 @@ async def index(request: Request):
     threads_result, admin_result, active_count_result, current_member_result, unread_dm_result, thread_total_result = await asyncio.gather(
         _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=per_page, offset=start_index),
         execute_query("SELECT message FROM admin_messages WHERE id = ?", [1]),
-        update_and_get_user_counts(user_token, "lobby"),
+        update_and_get_user_counts(user_token, "lobby", request),
         get_current_member(request),
         get_unread_dm_count(request),
         # ページ番号表示用の総スレッド数(一覧と同じ絞り込み条件)
