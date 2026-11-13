@@ -423,6 +423,35 @@
             background: var(--green);
         }
 
+        /* ---- オンライン人数を押すと出る在室者一覧(スレの在室一覧と同じ見せ方) ---- */
+        .online-wrap { position: relative; flex-shrink: 0; }
+        .online-pill-btn { cursor: pointer; font-family: inherit; }
+        .online-pill-btn:hover, .online-pill-btn[aria-expanded="true"] { border-color: var(--primary); color: var(--primary); }
+        .online-pill-btn .online-caret { font-size: 9px; opacity: .7; transition: transform .15s; }
+        .online-pill-btn[aria-expanded="true"] .online-caret { transform: rotate(180deg); }
+        .online-panel {
+            position: absolute; right: 0; top: calc(100% + 8px); z-index: 60;
+            width: min(320px, 88vw); max-height: 60vh; overflow-y: auto;
+            background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: var(--radius-sm); box-shadow: 0 12px 32px rgba(0, 0, 0, .18);
+            padding: 12px 14px; text-align: left;
+        }
+        .online-panel[hidden] { display: none; }
+        .online-panel-head { font-size: 12.5px; font-weight: 700; color: var(--text); margin-bottom: 2px; }
+        .online-panel-sub { font-size: 11.5px; color: var(--text-faint); margin-bottom: 8px; }
+        .online-panel h4 { margin: 10px 0 4px; font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
+        .online-list { list-style: none; margin: 0; padding: 0; }
+        .online-list li {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            padding: 6px 0; border-top: 1px solid var(--card-border); font-size: 13px; color: var(--text);
+        }
+        .online-list li:first-child { border-top: none; }
+        .online-list a { color: var(--primary); text-decoration: none; font-weight: 600; overflow-wrap: anywhere; }
+        .online-list a:hover { text-decoration: underline; }
+        .online-id { color: var(--text-faint); font-size: 12px; white-space: nowrap; }
+        .online-me { color: var(--green); font-size: 11px; font-weight: 700; white-space: nowrap; }
+        .online-empty { color: var(--text-faint); font-size: 12.5px; padding: 8px 0; }
+
         .icon-btn {
             border-radius: var(--radius-sm);
             border: 1px solid var(--card-border);
@@ -1218,9 +1247,15 @@
                 <button type="button" id="hamburger-btn" class="hamburger-btn" aria-label="メニューを開く" aria-expanded="false" aria-controls="app-sidebar">☰</button>
                 <div class="topbar-spacer"></div>
                 <div class="status-cluster">
-                    <div class="online-pill">
-                        <span class="online-dot"></span>
-                        オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
+                    <div class="online-wrap">
+                        <button type="button" id="online-pill-btn" class="online-pill online-pill-btn"
+                                aria-haspopup="true" aria-expanded="false" aria-controls="online-panel"
+                                title="押すと、いまこのサイトにいる人の一覧が出ます">
+                            <span class="online-dot"></span>
+                            オンライン: <span id="lobby-active-count">{{ active_count }}</span>人
+                            <span class="online-caret" aria-hidden="true">▼</span>
+                        </button>
+                        <div id="online-panel" class="online-panel" role="dialog" aria-label="オンラインの人の一覧" hidden></div>
                     </div>
                     <button type="button" id="theme-toggle-btn" class="icon-btn">ダーク表示</button>
                     {% if not current_member %}
@@ -1536,7 +1571,7 @@
                                 <li><strong style="color: var(--text);">ダークモード切り替え:</strong> 右上の「ダーク表示 / ライト表示」ボタンで画面デザインを切り替えられます。</li>
                                 <li><strong style="color: var(--text);">スレ番号ジャンプ:</strong> スレ一覧にある「スレ番号でジャンプ」にID番号を入力すると、目的のスレに一発で移動できます。</li>
                                 <li><strong style="color: var(--text);">ミニゲーム:</strong> サイドバーの「ゲーム」タブから、ブラウザで遊べるオセロ・チェス・将棋と、みんなで遊べる人狼、ひとりで遊べるテトリス・ブロック崩しを楽しめます。オセロ・チェス・将棋の戦績とレーティングはプロフィールに表示され、ゲームタブの「ランキングを見る」で順位も確認できます。</li>
-                                <li><strong style="color: var(--text);">オンライン人数と在室ユーザー:</strong> スレ画面の上部に「オンライン人数: ◯人」が出て、人の出入りに合わせてリアルタイムで変わります。押すと、いまそのスレにいる人の名前とIDが一覧で出て、名前を押すとその人のプロフィールに移動できます（ログインしていない人は「ゲスト」としてまとめて表示されます）。</li>
+                                <li><strong style="color: var(--text);">オンライン人数と在室ユーザー:</strong> スレ画面の上部に「オンライン人数: ◯人」が出て、人の出入りに合わせてリアルタイムで変わります。押すと、いまそのスレにいる人の名前とIDが一覧で出て、名前を押すとその人のプロフィールに移動できます（ログインしていない人は「ゲスト」としてまとめて表示されます）。トップページ右上の「オンライン: ◯人」は、いまこのサイトを見ている人（どのページでも）の人数で、押すと一覧が出ます。</li>
                                 <li><strong style="color: var(--text);">過去スレ:</strong> サイドバーの「過去スレ」から、過去のスレッドを見られます。</li>
                             </ul>
                         </div>
@@ -2045,6 +2080,93 @@
         }
     }
     setInterval(pollLobbyActiveCount, 20000);
+
+    // ---- オンライン人数を押すと、いまロビーにいる人の一覧を出す(スレの在室一覧と同じ: 会員は名前→プロフィール、ゲストは名無しさん+ID) ----
+    (function() {
+        const btn = document.getElementById('online-pill-btn');
+        const panel = document.getElementById('online-panel');
+        if (!btn || !panel) return;
+        let timer = null;
+
+        function el(tag, cls, text) {
+            const e = document.createElement(tag);
+            if (cls) e.className = cls;
+            if (text !== undefined) e.textContent = text;     // 名前はtextContentで入れる(HTMLとして解釈させない)
+            return e;
+        }
+
+        function render(data) {
+            panel.replaceChildren();
+            const members = data.members || [];
+            const guestList = data.guest_list || [];
+            panel.appendChild(el('div', 'online-panel-head', 'オンライン ' + data.count + '人'));
+            panel.appendChild(el('div', 'online-panel-sub', 'いまこのサイトにいる人(会員 ' + members.length + ' / ゲスト ' + (data.guests || 0) + ')'));
+
+            if (members.length) {
+                panel.appendChild(el('h4', null, '会員'));
+                const ul = el('ul', 'online-list');
+                members.forEach(function(m) {
+                    const li = el('li');
+                    if (m.public_id) {
+                        const a = el('a', null, m.username);
+                        a.href = '/profile/' + encodeURIComponent(m.public_id);
+                        li.appendChild(a);
+                    } else {
+                        li.appendChild(el('span', null, m.username));
+                    }
+                    if (m.me) li.appendChild(el('span', 'online-me', 'あなた'));
+                    ul.appendChild(li);
+                });
+                panel.appendChild(ul);
+            }
+            if (guestList.length) {
+                panel.appendChild(el('h4', null, 'ゲスト'));
+                const ul = el('ul', 'online-list');
+                guestList.forEach(function(g) {
+                    const li = el('li');
+                    li.appendChild(el('span', null, g.name));
+                    const right = el('span');
+                    if (g.me) right.appendChild(el('span', 'online-me', 'あなた '));
+                    right.appendChild(el('span', 'online-id', g.id ? 'ID:' + g.id : ''));
+                    li.appendChild(right);
+                    ul.appendChild(li);
+                });
+                panel.appendChild(ul);
+            }
+            if (!members.length && !guestList.length) {
+                panel.appendChild(el('div', 'online-empty', 'いまオンラインの人はいません。'));
+            }
+            const countEl = document.getElementById('lobby-active-count');
+            if (countEl) countEl.textContent = data.count;      // ボタンの人数と一覧の人数を常に揃える
+        }
+
+        async function load() {
+            try {
+                const res = await fetch('/api/lobby/online_users', { cache: 'no-store' });
+                const data = await res.json();
+                if (data && data.success) render(data);
+            } catch (err) {
+                if (!panel.childElementCount) panel.appendChild(el('div', 'online-empty', '一覧を取得できませんでした。'));
+                console.error('オンライン一覧の取得に失敗しました:', err);
+            }
+        }
+
+        function open() {
+            panel.hidden = false;
+            btn.setAttribute('aria-expanded', 'true');
+            if (!panel.childElementCount) panel.appendChild(el('div', 'online-empty', '読み込み中…'));
+            load();
+            timer = setInterval(load, 10000);       // 開いている間は10秒ごとに更新
+        }
+        function close() {
+            panel.hidden = true;
+            btn.setAttribute('aria-expanded', 'false');
+            clearInterval(timer); timer = null;
+        }
+        btn.addEventListener('click', function(e) { e.stopPropagation(); panel.hidden ? open() : close(); });
+        document.addEventListener('click', function(e) { if (!panel.hidden && !panel.contains(e.target)) close(); });
+        document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && !panel.hidden) { close(); btn.focus(); } });
+    })();
 
     // ---- サーバー負荷グラフ(自前canvas描画。ライブラリ追加なしで軽量に保つ) ----
     const SERVER_STATS_MAX_POINTS = 30;
