@@ -180,6 +180,8 @@ async def _redis_listener():
                 try:
                     if kind == 'thread_reply':
                         await manager.broadcast_local(data['thread_id'], data['reply'])
+                    elif kind == 'thread_event':
+                        await manager.broadcast_event(data['thread_id'], data['payload'])
                     elif kind == 'dm_message':
                         await dm_manager.send_to_user_local(data['user_id'], data['payload'])
                     elif kind == 'game_chat':
@@ -554,6 +556,22 @@ class ConnectionManager:
             print(f"Redis publish エラー(thread broadcast): {e}")
             # Redis障害時でも、少なくとも自プロセス内の閲覧者には届ける
             await self.broadcast_local(thread_id, reply)
+
+
+    async def broadcast_thread_event(self, thread_id: int, payload: dict):
+        """レスの削除など「そのスレを見ている全員の画面に即反映したい」イベントを、全worker配下の接続に配信する。
+        Redisが使えるときはpublishして全プロセスのリスナーに broadcast_event() を呼ばせ、
+        使えないとき(単一worker構成)は自プロセス内だけに配信する。"""
+        if redis_client is None:
+            await self.broadcast_event(thread_id, payload)
+            return
+        try:
+            await redis_client.publish(REALTIME_CHANNEL, json.dumps({
+                "kind": "thread_event", "thread_id": thread_id, "payload": payload
+            }))
+        except Exception as e:
+            print(f"Redis publish エラー(thread event): {e}")
+            await self.broadcast_event(thread_id, payload)
 
 
 manager = ConnectionManager()
@@ -3946,7 +3964,7 @@ async def delete_thread(request: Request, thread_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        await execute_query("DELETE FROM threads WHERE id = ?", [thread_id])
+        await _remove_thread_with_points(thread_id)
     except Exception as e:
         print(f"スレッド削除エラー: {e}")
     return RedirectResponse(url='/', status_code=303)
@@ -3981,6 +3999,8 @@ async def api_reply_retract(request: Request, reply_id: int):
         return json_resp({"success": False, "error": "取り消しに失敗しました。"}, 500)
 
     await _delete_r2_key(_r2_key_from_url(r.get('image_url') or ''))
+    # 取り消されたレスも、スレ主のポイントに含めない
+    _schedule_revoke_rows(await _fetch_reply_bonus_rows("r.id = ?", [reply_id]), '送信取り消しされたレス')
     # そのスレを見ている全員の画面にも反映する
     await manager.broadcast_event(r['thread_id'], {
         "type": "reply_retracted", "reply_id": reply_id, "text": RETRACTED_TEXT,
@@ -3988,16 +4008,54 @@ async def api_reply_retract(request: Request, reply_id: int):
     return {"success": True, "text": RETRACTED_TEXT}
 
 
+ADMIN_DELETED_TEXT = 'この書き込みは管理員によって削除されました。'
+ADMIN_BANNED_TEXT = 'この書き込みは管理員によってBANされました。'
+
+
+async def _abone_reply(reply_id: int, text: str, thread_id=None) -> bool:
+    """管理者によるレスの削除(あぼーん化)。DBの更新に加えて、次の3つを必ず行う。
+      ① 画像ファイル(R2)の実体も削除する(URLを知っていれば見られる状態を残さない)
+      ② そのスレを見ている全員の画面へ即時に配信する(リロード不要。複数workerでもRedis経由で届く)
+      ③ 「話題のレス」のキャッシュ(30秒)を捨てる(削除したレスの内容が残らないように)
+    戻り値: 実際に更新できたか。"""
+    rows = await execute_query("SELECT thread_id, image_url FROM replies WHERE id = ?", [reply_id])
+    if not rows:
+        return False
+    tid = rows[0]['thread_id']
+    if thread_id is not None and int(thread_id) != int(tid):
+        return False
+    await execute_query(
+        """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
+           WHERE id = ?""",
+        ['あぼーん', text, '???', 0, '', reply_id]
+    )
+    _HOT_CACHE.pop(tid, None)
+    # 削除されたレスは、スレ主のポイントに含めない(付与済みのレスボーナスを取り消す)
+    _schedule_revoke_rows(await _fetch_reply_bonus_rows("r.id = ?", [reply_id]), '削除されたレス')
+    try:
+        await _delete_r2_key(_r2_key_from_url(rows[0].get('image_url') or ''))
+    except Exception as e:
+        print(f"削除レスの画像削除エラー(reply={reply_id}): {e}")
+    try:
+        # reply_deleted: 名前・本文・画像をまとめて差し替える新しいイベント。
+        # reply_retracted: 既存の画面でも本文が即座に置き換わるよう、従来のイベントも併せて送る(同じ内容なので二重に適用されても問題ない)。
+        await manager.broadcast_thread_event(tid, {
+            "type": "reply_deleted", "reply_id": reply_id, "author": "あぼーん", "text": text, "image_url": "",
+        })
+        await manager.broadcast_thread_event(tid, {
+            "type": "reply_retracted", "reply_id": reply_id, "text": text,
+        })
+    except Exception as e:
+        print(f"レス削除の即時配信エラー(reply={reply_id}): {e}")
+    return True
+
+
 @app.post('/thread/{thread_id}/delete/{reply_id}')
 async def delete_reply(request: Request, thread_id: int, reply_id: int):
     if not can_manage_board(request):
         return text_resp("権限がありません", 403)
     try:
-        await execute_query(
-            """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
-               WHERE id = ? AND thread_id = ?""",
-            ['あぼーん', 'この書き込みは管理員によって削除されました。', '???', 0, '', reply_id, thread_id]
-        )
+        await _abone_reply(reply_id, ADMIN_DELETED_TEXT, thread_id)
     except Exception as e:
         print(f"レス削除エラー: {e}")
     return RedirectResponse(url=f'/thread/{thread_id}', status_code=303)
@@ -4118,13 +4176,159 @@ async def delete_member_account(public_id: str, reason: str) -> str:
     return outcome
 
 
+async def _reply_point_was_awarded(reply_id):
+    """そのレスで「スレ主へのレスボーナス」が実際に付与されていたか。True/False、台帳から調べられなければ None。
+    台帳(point_history)の冪等キー(thread_reply:{レスID})を見る(ポイントの台帳はアプリと同じDBにある)。"""
+    try:
+        rows = await execute_query("SELECT 1 FROM point_history WHERE idempotency_key = ? LIMIT 1", [f'thread_reply:{reply_id}'])
+        return bool(rows)
+    except Exception:
+        return None
+
+
+_REPLY_BONUS_SELECT = (
+    "SELECT r.id AS reply_id, r.thread_id AS thread_id, r.poster_public_id AS poster, t.user_id AS op "
+    "FROM replies r JOIN threads t ON t.id = r.thread_id "
+)
+
+
+async def _fetch_reply_bonus_rows(where_sql: str, params: list) -> list:
+    """取り消しの候補になるレス(レスID・スレID・投稿者・スレ主)を取り出す。
+    スレを削除する前に呼んでおく必要がある(削除後はスレ主を調べられなくなる)。"""
+    try:
+        return await execute_query(_REPLY_BONUS_SELECT + f"WHERE {where_sql} ORDER BY r.id LIMIT 5000", params) or []
+    except Exception as e:
+        print(f"ポイント取り消し候補の取得エラー: {e}")
+        return []
+
+
+async def _revoke_reply_bonus_rows(rows: list, label: str) -> int:
+    """レスに付いていたスレ主へのレスボーナス(THREAD_REPLY_POINTS)を取り消す。BAN・削除・スレ削除の共通の中核。
+    ・スレ主本人のレスにはポイントが付かないので対象外(付与のルールと同じ)
+    ・付与された記録が台帳に無いレスは取り消さない(調べられないときは付与の条件を満たすものだけ取り消す)
+    ・スレ主の残高が足りないときは、残高ぶんだけ(ポイントはマイナスにならない。既に使われた分は取り戻せない)
+    ・レスごとに冪等キー(thread_reply_revoke:{レスID})を付けるので、BANと削除など複数の経路から呼ばれても二重に引かれない
+    戻り値: 取り消したポイント数。"""
+    try:
+        by_op: dict = {}
+        for r in rows:
+            op = r.get('op')
+            if not op or op == 'STAFF':
+                continue
+            if r.get('poster') and r['poster'] == op:
+                continue
+            by_op.setdefault(op, []).append(r)
+
+        revoked = 0
+        for op_public_id, items in by_op.items():
+            user_res = await execute_query("SELECT id FROM users WHERE public_id = ?", [op_public_id])
+            if not user_res:
+                continue     # スレ主が会員でない / 既にアカウントが無い
+            op_id = user_res[0]['id']
+            balance = await points_service.get_balance(op_id)
+            for it in items:
+                if balance < THREAD_REPLY_POINTS:
+                    break
+                if await _reply_point_was_awarded(it['reply_id']) is False:
+                    continue
+                res = await points_service.add_points(
+                    op_id, -THREAD_REPLY_POINTS, reason='thread_reply_revoked',
+                    description=f"{label}(スレ#{it['thread_id']})のポイント取り消し",
+                    source='thread', idempotency_key=f"thread_reply_revoke:{it['reply_id']}",
+                )
+                if res and res.get('success') and not res.get('duplicate'):
+                    balance -= THREAD_REPLY_POINTS
+                    revoked += THREAD_REPLY_POINTS
+        if revoked:
+            print(f"{label}のポイントを取り消しました: {revoked}pt")
+        return revoked
+    except Exception as e:
+        print(f"ポイント取り消しエラー({label}): {e}")
+        return 0
+
+
+def _schedule_revoke_rows(rows: list, label: str):
+    """画面への応答を遅らせないよう、ポイントの取り消しはバックグラウンドで行う。"""
+    if not rows:
+        return
+    try:
+        asyncio.get_running_loop().create_task(_revoke_reply_bonus_rows(rows, label))
+    except RuntimeError:
+        pass
+
+
+async def _revoke_reply_points_for_banned(public_id=None, token=None, dev_token=None) -> int:
+    """BANされた人が書いたレス(会員ID / 端末cookie2本。IPでは探さない)に付いていたポイントを取り消す。"""
+    conds, params = [], []
+    if public_id and public_id != 'STAFF':
+        conds.append("r.poster_public_id = ?")
+        params.append(public_id)
+    if token:
+        conds.append("r.visitor_token = ?")
+        params.append(token)
+    if dev_token:
+        conds.append("r.visitor_dev = ?")
+        params.append(dev_token)
+    if not conds:
+        return 0
+    rows = await _fetch_reply_bonus_rows(f"({' OR '.join(conds)})", params)
+    return await _revoke_reply_bonus_rows(rows, 'BANされた人のレス')
+
+
+def _schedule_revoke_reply_points(public_id=None, token=None, dev_token=None):
+    try:
+        asyncio.get_running_loop().create_task(_revoke_reply_points_for_banned(public_id, token, dev_token))
+    except RuntimeError:
+        pass
+
+
+async def _delete_images_in_background(urls: list):
+    for u in urls:
+        try:
+            await _delete_r2_key(_r2_key_from_url(u))
+        except Exception as e:
+            print(f"スレ削除に伴う画像削除エラー: {e}")
+
+
+async def _remove_thread_with_points(thread_id: int, delete_replies: bool = True):
+    """管理者によるスレッド削除。スレ本体とそのレスを全て削除し、次の処理も行う。
+      ① そのスレの各レスでスレ主に付いていたポイントを取り消す
+      ② レスに添付されていた画像ファイル(R2)も削除する(URLを知っていれば見られる状態を残さない)
+      ③ スレを開いている全員の画面に、スレが無くなったことを即時に知らせる
+    (スレを消す前にレス・スレ主・画像URLを控えておき、削除後にバックグラウンドで処理する。
+     期限切れスレのアーカイブは「削除」ではなく保管なので、この関数は使わない。)"""
+    rows = await _fetch_reply_bonus_rows("r.thread_id = ?", [thread_id])
+    try:
+        image_rows = await execute_query(
+            "SELECT image_url FROM replies WHERE thread_id = ? AND image_url IS NOT NULL AND image_url != ''", [thread_id]) or []
+    except Exception as e:
+        print(f"スレ削除前の画像URL取得エラー: {e}")
+        image_rows = []
+    await execute_query("DELETE FROM threads WHERE id = ?", [thread_id])
+    if delete_replies:
+        await execute_query("DELETE FROM replies WHERE thread_id = ?", [thread_id])
+    _HOT_CACHE.pop(thread_id, None)
+    _schedule_revoke_rows(rows, '削除されたスレのレス')
+    if image_rows and delete_replies:
+        try:
+            asyncio.get_running_loop().create_task(_delete_images_in_background([r['image_url'] for r in image_rows]))
+        except RuntimeError:
+            pass
+    try:
+        await manager.broadcast_thread_event(thread_id, {"type": "thread_reset", "reason": "thread_deleted"})
+    except Exception as e:
+        print(f"スレ削除の即時配信エラー(thread={thread_id}): {e}")
+
+
 async def ban_target(public_id, ip, token, reason, dev_token=None, device_hash=None, fp=None):
-    """BAN対象に応じて挙動を切り替える。アカウントあり→削除 / 無し→強力BAN。"""
+    """BAN対象に応じて挙動を切り替える。アカウントあり→削除 / 無し→強力BAN。
+    BANした人が書いたレスで、スレ主に付いていたポイントは取り消す(_revoke_reply_points_for_banned)。"""
     outcome = 'not_found'
     if public_id and public_id != 'STAFF':
         outcome = await delete_member_account(public_id, reason)
     if outcome == 'protected':
         return outcome
+    _schedule_revoke_reply_points(public_id, token, dev_token)
     if outcome == 'not_found':
         # アカウントが元々無い(または既に削除済み) → 強力BAN
         await apply_strong_ban(ip, token, reason, dev_token, device_hash, fp)
@@ -4149,11 +4353,7 @@ async def ban_user(request: Request, thread_id: int, reply_id: int):
             )
             if outcome == 'protected':
                 return text_resp("スタッフアカウントはBAN(削除)できません。", 403)
-            await execute_query(
-                """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
-                   WHERE id = ?""",
-                ['あぼーん', 'この書き込みは管理員によってBANされました。', '???', 0, '', reply_id]
-            )
+            await _abone_reply(reply_id, ADMIN_BANNED_TEXT)
         referer = request.headers.get('referer') or '/'
         return RedirectResponse(url=referer, status_code=303)
     except Exception as e:
@@ -4181,6 +4381,11 @@ async def ban_thread_owner(request: Request, thread_id: int):
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 [thread_id, 'あぼーん', 'このスレッドの作成者はBANされました。', '???', 0, None, '', owner_ip]
             )
+            _HOT_CACHE.pop(thread_id, None)
+            try:   # スレを開いている全員に「レスが全て入れ替わった」ことを即時に知らせる(画面側は再読み込みすればよい)
+                await manager.broadcast_thread_event(thread_id, {"type": "thread_reset", "reason": "owner_banned"})
+            except Exception as e:
+                print(f"スレ全削除の即時配信エラー(thread={thread_id}): {e}")
         return RedirectResponse(url='/', status_code=303)
     except Exception as e:
         print(f"スレッドオーナーBANエラー: {e}")
@@ -6138,8 +6343,7 @@ async def api_admin_delete_thread(request: Request, thread_id: int):
     if not can_manage_board(request):
         return json_resp({"success": False, "error": "権限がありません。"}, 403)
     try:
-        await execute_query("DELETE FROM threads WHERE id = ?", [thread_id])
-        await execute_query("DELETE FROM replies WHERE thread_id = ?", [thread_id])
+        await _remove_thread_with_points(thread_id)
     except Exception as e:
         print(f"スレッド削除エラー(admin): {e}")
         return json_resp({"success": False, "error": "削除に失敗しました。"}, 500)
@@ -6154,11 +6358,7 @@ async def api_admin_delete_reply(request: Request, reply_id: int):
     if not can_manage_board(request):
         return json_resp({"success": False, "error": "権限がありません。"}, 403)
     try:
-        await execute_query(
-            """UPDATE replies SET author = ?, content = ?, user_id = ?, is_admin = ?, image_url = ? 
-               WHERE id = ?""",
-            ['あぼーん', 'この書き込みは管理員によって削除されました。', '???', 0, '', reply_id]
-        )
+        await _abone_reply(reply_id, ADMIN_DELETED_TEXT)
     except Exception as e:
         print(f"レス削除エラー(admin): {e}")
         return json_resp({"success": False, "error": "削除に失敗しました。"}, 500)
@@ -7157,6 +7357,7 @@ async def _guard_auto_ban(info):
     BANするのは cookie 2本(user_bbs_token / bbs_dev)だけ。IP・端末特徴は対象にしない(共有回線の無関係な人を巻き込まないため)。
     一度入ると、以後は既存のBANと同じ扱い(別の識別子も自動で紐づく)。解除は既存のBAN管理から行う。"""
     await _bind_banned_identity(None, info.get('token'), info.get('dev'), None, reason=f"auto(security_guard): {info.get('reason')}")
+    _schedule_revoke_reply_points(None, info.get('token'), info.get('dev'))
 
 
 security_guard.set_abuse_handler(_guard_auto_ban)
