@@ -31,6 +31,7 @@ import os
 import re
 import time
 import unicodedata
+import zlib
 from collections import deque, namedtuple
 
 import httpx
@@ -80,7 +81,7 @@ FORM_MIN_FILL = 1.0                        # ページ表示からこの秒数�
 FORM_TOKEN_TTL = 6 * 3600
 # --- WebSocket ---
 WS_PER_TOKEN, WS_PER_IP, WS_PER_ANON_IP, WS_TOTAL = 8, 150, 30, 1500
-TRACK_MAX_KEYS = 50000
+TRACK_MAX_KEYS = 20000                    # 各表の件数の上限(メモリ保護)
 
 Decision = namedtuple('Decision', 'action wait reason message')   # action: ok / wait / challenge / reject
 _OK = Decision('ok', 0, '', '')
@@ -147,14 +148,23 @@ def _norm(text: str) -> str:
     return t[:300]
 
 
+_MH_SEEDS = tuple(range(1, 17))
+
+
 def _grams(t: str):
-    return frozenset(t[i:i + 2] for i in range(len(t) - 1)) if len(t) > 1 else frozenset()
+    """文面の「指紋」(2文字ずつの断片16個のminhash)。文字列全体を持たないので、1投稿あたり約0.5KBで済む。
+    10文字未満は類似判定の対象外なので持たない。"""
+    t = t[:120]
+    if len(t) < 10:
+        return None
+    gs = [t[i:i + 2].encode() for i in range(len(t) - 1)]
+    return tuple(min(zlib.crc32(g, sd) for g in gs) for sd in _MH_SEEDS)
 
 
 def _jaccard(a, b) -> float:
     if not a or not b:
         return 0.0
-    return len(a & b) / len(a | b)
+    return sum(1 for x, y in zip(a, b) if x == y) / len(a)
 
 
 def _strike(keys, now, weight=1):
@@ -358,7 +368,7 @@ async def check_post(ip, token, dev, content, thread_id=0, *, is_member=False,
             if not dq:
                 continue
             _slide_t(dq, now, DUP_WINDOW)
-            same = sum(1 for _t, hh, gg in dq if hh == h or (len(n) >= 10 and _jaccard(g, gg) >= SIMILAR_THRESHOLD))
+            same = sum(1 for _t, hh, gg in dq if hh == h or (g is not None and _jaccard(g, gg) >= SIMILAR_THRESHOLD))
             if same >= DUP_PER_ID - 1:
                 _strike(keys, now)
                 return Decision('wait', DUP_WAIT, 'duplicate', f'同じ内容の連続投稿はできません。{DUP_WAIT}秒お待ちください。')
@@ -403,7 +413,7 @@ async def check_post(ip, token, dev, content, thread_id=0, *, is_member=False,
     # --- 記録(ここまで通った投稿だけ) ---
     for k in keys:
         _posts.setdefault(k, deque()).append(now)
-        _hist.setdefault(k, deque(maxlen=8)).append((now, h or '', g))
+        _hist.setdefault(k, deque(maxlen=3)).append((now, h or '', g))
         s = _seen.get(k)
         if s is None:
             _seen[k] = [now, 1]
@@ -489,6 +499,14 @@ def _maybe_prune(now):
             table.pop(k, None)
     for k in [k for k, s in _seen.items() if now - s[0] > 86400.0]:
         _seen.pop(k, None)
-    if len(_seen) > TRACK_MAX_KEYS:                       # 最後の砦: 古い順に捨てる
+    # 最後の砦: どの表も件数の上限を超えたら、古いものから半分まで捨てる(荒らしが端末を大量に作ってもメモリが膨らまない)
+    for table in (_posts, _hist, _strikes, _verify_calls, _campaign, _ip_ids, _lane_ip):
+        if len(table) > TRACK_MAX_KEYS:
+            def _last(k, t=table):
+                v = t[k][-1] if t[k] else 0
+                return v[0] if isinstance(v, tuple) else v
+            for k in sorted(table, key=_last)[:len(table) - TRACK_MAX_KEYS // 2]:
+                table.pop(k, None)
+    if len(_seen) > TRACK_MAX_KEYS:
         for k in sorted(_seen, key=lambda x: _seen[x][0])[:len(_seen) - TRACK_MAX_KEYS // 2]:
             _seen.pop(k, None)
