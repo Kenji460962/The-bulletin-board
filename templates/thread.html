@@ -1031,6 +1031,12 @@
                         if (window.onWsHello) window.onWsHello(data);
                     } else if (data.type === 'reply_retracted') {
                         if (window.applyReplyRetraction) window.applyReplyRetraction(data.reply_id, data.text);
+                    } else if (data.type === 'reply_deleted') {
+                        // 管理者がレスを削除/BANした: リロードなしで「あぼーん」表示に差し替える
+                        if (window.applyReplyDeletion) window.applyReplyDeletion(data.reply_id, data.author, data.text);
+                    } else if (data.type === 'thread_reset') {
+                        // スレが削除された / スレ主BANでレスが全て入れ替わった: 最新の状態を読み込み直す
+                        location.reload();
                     }
                 } catch (e) {
                     console.error('WSメッセージ処理エラー:', e);
@@ -1660,6 +1666,31 @@ window.MY_PUBLIC_ID = {{ ((current_member.public_id if current_member else '') o
         if (btn) btn.remove();
         var more = el.querySelector('.more-btn');
         if (more) more.setAttribute('data-retract', '');
+    };
+
+    // 管理者によるレスの削除・BAN: 送信取り消しと同じ差し替え(本文・画像・取り消しボタン)に加えて、
+    // 名前を「あぼーん」、ID を「???」に変える(サーバーのあぼーん化と同じ見た目)。
+    window.applyReplyDeletion = function (replyId, author, text) {
+        var el = document.querySelector('.post-item[data-reply-id="' + replyId + '"]');
+        if (!el) return;
+        window.applyReplyRetraction(replyId, text);
+        var meta = el.querySelector('.post-meta');
+        if (!meta) return;
+        var label = author || 'あぼーん';
+        var avatar = meta.querySelector('.post-avatar');
+        if (avatar) {
+            avatar.textContent = label.slice(0, 1);          // 画像アイコンも外す
+            var nameEl = avatar.nextElementSibling;           // アバターの次が名前(リンクの場合も、そうでない場合も)
+            if (nameEl && !nameEl.classList.contains('post-num')) {
+                var span = document.createElement('span');
+                span.textContent = label;
+                nameEl.replaceWith(span);
+            }
+        }
+        meta.querySelectorAll('span').forEach(function (s) {
+            if (/^ID:/.test(s.textContent.trim())) s.textContent = 'ID:???';
+            if (/^\(スレ主\)$/.test(s.textContent.trim())) s.remove();
+        });
     };
 
     document.addEventListener('click', function (e) {
