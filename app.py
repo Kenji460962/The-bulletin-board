@@ -3855,8 +3855,11 @@ async def thread_view(request: Request, thread_id: int):
                         is_owner_post = new_reply['is_op'] or bool(
                             poster_public_id and op_user_id and poster_public_id == op_user_id
                         )
-                        if op_user_id and not is_owner_post:
-                            # 自分が立てたスレに自分以外がレスした場合のみスレ主にポイント付与。
+                        # ゲスト(会員ログインなし・スタッフでもない)のレスはポイント付与の対象外。
+                        # ゲストは使い捨てで作れるため、スレ主の自作自演によるポイント稼ぎを防ぐ。
+                        is_guest_post = (not poster_public_id) and (not staff_role)
+                        if op_user_id and not is_owner_post and not is_guest_post:
+                            # 自分が立てたスレに「自分以外の会員(またはスタッフ)」がレスした場合のみスレ主にポイント付与。
                             await _award_thread_reply_points(thread_id, op_user_id, new_reply['id'])
 
                     total_count_res = gather_results[1]
