@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 from markupsafe import Markup, escape
 import io
 from PIL import Image, ImageOps
+import flood_guard      # 書き込みの行動・内容の監視(連投・コピペ・AI連投・WebSocket接続数)
 import security_guard   # DoS・画像砲対策(巨大リクエスト拒否 / IP別レート制限 / 安全な画像オープン)
 import uvicorn
 import redis.asyncio as aioredis
@@ -624,6 +625,19 @@ async def _thread_ws_identity(websocket: WebSocket) -> dict:
 
 @app.websocket('/ws/thread/{thread_id}')
 async def thread_ws(websocket: WebSocket, thread_id: int):
+    # 同時接続数の上限(端末ごと・IPごと・サイト全体)。クライアントは接続に失敗すると間隔を空けて再接続する。
+    _ws_ip = websocket.headers.get('cf-connecting-ip') or (websocket.client.host if websocket.client else None)
+    _ws_tok = websocket.cookies.get('user_bbs_token')
+    if not flood_guard.ws_acquire(_ws_ip, _ws_tok):
+        await websocket.close(code=1013)
+        return
+    try:
+        await _thread_ws_body(websocket, thread_id)
+    finally:
+        flood_guard.ws_release(_ws_ip, _ws_tok)
+
+
+async def _thread_ws_body(websocket: WebSocket, thread_id: int):
     if await ws_is_banned(websocket):
         await websocket.close(code=1008)
         return
@@ -3361,18 +3375,19 @@ async def create_thread(request: Request):
     is_admin = can_manage_board(request)
     now = time.time()
 
+    # スレ作成はログイン必須なので、制限は「会員ごと」にかける(共有IP・Webプロキシ経由の会員を巻き込まない)。
+    # proxy/VPNだから長くする、という扱いもやめた(会員ごとの制限で足りる)。
     thread_cooldown = 300
-    if not is_admin and await is_proxy_or_vpn(client_ip):
-        thread_cooldown = 900
+    thread_key = (await get_member_public_id(request)) or client_ip
 
     if not is_admin:
-        if client_ip in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[client_ip] < thread_cooldown:
-            remaining_time = int(thread_cooldown - (now - LAST_THREAD_TIMES[client_ip]))
+        if thread_key in LAST_THREAD_TIMES and now - LAST_THREAD_TIMES[thread_key] < thread_cooldown:
+            remaining_time = int(thread_cooldown - (now - LAST_THREAD_TIMES[thread_key]))
             minutes = remaining_time // 60
             seconds = remaining_time % 60
-            return json_resp({"error": f"スレッド作成は5分に1回までです。(proxy,VPNは15分）あと {minutes}分 {seconds}秒 お待ちください。"}, 429)
+            return json_resp({"error": f"スレッド作成は5分に1回までです。あと {minutes}分 {seconds}秒 お待ちください。"}, 429)
 
-    LAST_THREAD_TIMES[client_ip] = now
+    LAST_THREAD_TIMES[thread_key] = now
 
     try:
         member_public_id = await get_member_public_id(request)
@@ -3737,10 +3752,16 @@ async def thread_view(request: Request, thread_id: int):
 
         now = time.time()
         if not staff_role:
-            reply_cooldown = 3
-            if client_ip in LAST_REPLY_TIMES and now - LAST_REPLY_TIMES[client_ip] < reply_cooldown:
-                return json_resp({"success": False, "error": f"連続投稿はできません。{reply_cooldown}秒お待ちください。"}, 429)
-            LAST_REPLY_TIMES[client_ip] = now
+            # 連投・同文コピペ・機械的な間隔・攻撃時の新規端末を、IPではなく「端末(cookie)」単位で判定する。
+            # (従来の「IPごとに3秒」は、Webプロキシ・学校・モバイル回線の共有IPで無関係な人同士が止め合っていた)
+            flood = await flood_guard.check_post(
+                client_ip, request.cookies.get('user_bbs_token'), request.cookies.get(BAN_DEV_COOKIE),
+                content, thread_id, is_member=bool(poster_public_id),
+                form_token=form.get('ft'), honeypot=form.get('hp_x9'),
+                turnstile_token=form.get('cf-turnstile-response'))
+            if flood.action != 'ok':
+                _body, _status = flood_guard.decision_response(flood)
+                return json_resp(_body, _status)
 
         image_url = ""
         upload = form.get('image')
@@ -3951,6 +3972,8 @@ async def thread_view(request: Request, thread_id: int):
         'market_equipped': market_equipped,
         # レスで実際に使われているフォント(@font-face定義用)
         'thread_fonts': _collect_thread_fonts(thread['replies']),
+        'form_token': flood_guard.issue_form_token(),
+        'turnstile_sitekey': flood_guard.TURNSTILE_SITEKEY,
     })
 
     if is_new_user:
