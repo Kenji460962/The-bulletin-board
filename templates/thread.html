@@ -687,6 +687,11 @@
 
     <div class="footer-area">
         <form id="bbsForm" action="{{ url_for('thread_view', thread_id=thread.id) }}" method="POST" enctype="multipart/form-data" style="margin: 0;">
+            {# 自動投稿ツール対策: 人間には見えない欄(ハニーポット)と、ページ表示時刻の署名つきトークン #}
+            <input type="hidden" name="ft" value="{{ form_token }}">
+            <div style="position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
+                <label>空のままにしてください <input type="text" name="hp_x9" tabindex="-1" autocomplete="off" data-lpignore="true" data-1p-ignore></label>
+            </div>
             <div style="display: flex; align-items: stretch; gap: 8px; margin-bottom: 4px;">
                 <div style="display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; justify-content: center;">
                     <label style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">名前: <input type="text" name="author" style="width: 120px; font-size: 11px; padding: 2px 6px;" value="名無しさん"></label>
@@ -1261,6 +1266,32 @@
                 });
             }
 
+        // Cloudflare Turnstile(ボット確認)。必要になったときだけスクリプトを読み込み、小さなダイアログで表示する。
+        function askTurnstile(sitekey) {
+            return new Promise((resolve) => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;';
+                overlay.innerHTML = '<div style="background:#1e293b;color:#e2e8f0;padding:18px 20px;border-radius:10px;max-width:90vw;text-align:center;font-size:13px;">'
+                    + '<div style="margin-bottom:10px;">短時間に書き込みが集中しています。<br>ボットでないことを確認してください。</div>'
+                    + '<div id="ts-box" style="min-height:65px;"></div>'
+                    + '<button type="button" id="ts-cancel" style="margin-top:10px;font-size:12px;padding:4px 12px;">キャンセル</button></div>';
+                document.body.appendChild(overlay);
+                const done = (v) => { overlay.remove(); resolve(v); };
+                overlay.querySelector('#ts-cancel').addEventListener('click', () => done(null));
+                const render = () => window.turnstile.render(overlay.querySelector('#ts-box'), {
+                    sitekey: sitekey, callback: (t) => done(t),
+                    'error-callback': () => done(null), 'timeout-callback': () => done(null)
+                });
+                if (window.turnstile) { render(); return; }
+                const sc = document.createElement('script');
+                sc.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+                sc.async = true;
+                sc.onload = render;
+                sc.onerror = () => done(null);
+                document.head.appendChild(sc);
+            });
+        }
+
             bbsForm.addEventListener('submit', async (e) => {
                 if (isSubmitting) {
                     e.preventDefault();
@@ -1276,11 +1307,23 @@
                 // 投稿時に名前を保存
                 localStorage.setItem('user_name', nameInput.value);
                 try {
-                    const res = await fetch(bbsForm.action, {
+                    let res = await fetch(bbsForm.action, {
                         method: 'POST',
                         body: formData
                     });
-                    const data = await res.json();
+                    let data = await res.json();
+
+                    // 「ボットでないことの確認」を求められたときだけ、Turnstileを1回表示して送り直す(通れば30分は求められない)
+                    if (data && data.challenge === 'turnstile' && data.sitekey) {
+                        const tsToken = await askTurnstile(data.sitekey);
+                        if (tsToken) {
+                            formData.set('cf-turnstile-response', tsToken);
+                            res = await fetch(bbsForm.action, { method: 'POST', body: formData });
+                            data = await res.json();
+                        } else {
+                            data = { success: false, error: '確認がキャンセルされました。' };
+                        }
+                    }
 
                     if (data.success && data.reply) {
                         appendReply(data.reply);
