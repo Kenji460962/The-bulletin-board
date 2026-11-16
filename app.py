@@ -60,7 +60,8 @@ templates = Jinja2Templates(directory="templates")
 # REDIS_URLが未設定/接続不可の場合は、単一worker構成のときと同じく
 # 「自プロセス内の接続にのみ配信」にフォールバックする(動作は継続するが、
 # 複数worker構成では配信が届かない閲覧者が出ることに注意)。
-REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+# 1workerではRedis Pub/Subは不要なので、REDIS_URLを設定したときだけ有効にする(メモリ・CPU節約)。
+REDIS_URL = os.environ.get('REDIS_URL', '')
 REALTIME_CHANNEL = 'bbs:realtime'
 redis_client = None
 _redis_listener_task = None
@@ -273,16 +274,19 @@ async def _startup_redis():
     await points_service.ensure_schema()
     await _ensure_login_bonus_schema()
 
-    try:
-        redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-        await redis_client.ping()
-        _redis_listener_task = asyncio.create_task(_redis_listener())
-        print(f"Redis接続OK ({REDIS_URL})。複数worker間のリアルタイム配信が有効です。")
-    except Exception as e:
+    if REDIS_URL:
+        try:
+            redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+            await redis_client.ping()
+            _redis_listener_task = asyncio.create_task(_redis_listener())
+            print(f"Redis接続OK ({REDIS_URL})。複数worker間のリアルタイム配信が有効です。")
+        except Exception as e:
+            redis_client = None
+            print(f"Redis接続エラー: {e} — リアルタイム配信は自プロセス内のみに縮退します。"
+                  f"複数worker構成ではリアルタイム配信が一部の閲覧者に届かなくなるため、"
+                  f"Redisの起動状況を確認してください。")
+    else:
         redis_client = None
-        print(f"Redis接続エラー: {e} — リアルタイム配信は自プロセス内のみに縮退します。"
-              f"複数worker構成ではリアルタイム配信が一部の閲覧者に届かなくなるため、"
-              f"Redisの起動状況を確認してください。")
 
     # レート制限・重複投稿判定・プロキシ判定などに使うメモリ上の辞書は、
     # エントリを削除する仕組みがないと稼働時間とアクセス数に比例して
@@ -404,7 +408,7 @@ app.add_middleware(SessionMiddleware, secret_key=FLASK_SECRET_KEY)
 # HTML/JSONレスポンスをgzip圧縮する。thread.html/index.htmlなど数十~100KB超の
 # ページが多いため、転送量削減の効果が大きい(min_size未満は圧縮コストの方が
 # 高くつくのでそのまま返す)。
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+# GZipMiddlewareは外した: 圧縮レベル9が1CPUには重く、Cloudflareがエッジで圧縮するため。
 
 
 
@@ -807,13 +811,28 @@ async def _pv_writer():
     sql = ("INSERT INTO page_views (path, thread_id, visitor_token, "
            "referrer_host, device, browser) VALUES (?, ?, ?, ?, ?, ?)")
     while True:
-        args = await _pv_queue.get()
+        batch = [await _pv_queue.get()]
         try:
-            await execute_query(sql, list(args))
-        except Exception as e:
-            print(f"アクセス解析ログエラー: {e}")
+            await asyncio.sleep(2)  # 少し溜めて1トランザクションでまとめて書く
+            while len(batch) < 200:
+                try:
+                    batch.append(_pv_queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+            conn = await _get_db_conn()
+            async with _db_lock:
+                try:
+                    await conn.executemany(sql, [list(a) for a in batch])
+                    await conn.commit()
+                except Exception as e:
+                    try:
+                        await conn.rollback()
+                    except Exception:
+                        pass
+                    print(f"アクセス解析ログエラー: {e}")
         finally:
-            _pv_queue.task_done()
+            for _ in batch:
+                _pv_queue.task_done()
 
 
 @app.middleware("http")
@@ -952,6 +971,9 @@ async def _get_db_conn() -> aiosqlite.Connection:
         _db_conn.row_factory = aiosqlite.Row
         await _db_conn.execute("PRAGMA journal_mode=WAL")
         await _db_conn.execute("PRAGMA foreign_keys=ON")
+        await _db_conn.execute("PRAGMA synchronous=NORMAL")   # WALなら安全。コミットごとのfsyncが大幅に減る
+        await _db_conn.execute("PRAGMA busy_timeout=5000")
+        await _db_conn.execute("PRAGMA journal_size_limit=33554432")  # WALファイルの肥大防止(32MB)
         await _db_conn.commit()
     return _db_conn
 
@@ -1167,7 +1189,7 @@ def process_avatar_image(raw_bytes: bytes) -> bytes:
     img = img.resize((target, target), Image.LANCZOS)
 
     buf = io.BytesIO()
-    img.save(buf, format='WEBP', quality=AVATAR_WEBP_QUALITY, method=6)
+    img.save(buf, format='WEBP', quality=AVATAR_WEBP_QUALITY, method=4)
     return buf.getvalue()
 
 
@@ -1206,7 +1228,7 @@ def process_reply_image(raw_bytes: bytes, orig_ext: str) -> tuple[bytes, str]:
         img = img.resize((max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
 
     buf = io.BytesIO()
-    img.save(buf, format='WEBP', quality=REPLY_IMAGE_WEBP_QUALITY, method=6)
+    img.save(buf, format='WEBP', quality=REPLY_IMAGE_WEBP_QUALITY, method=4)
     return buf.getvalue(), '.webp'
 
 
@@ -1988,6 +2010,19 @@ async def _consume_token(token: str, purpose: str):
 
 
 
+_PW_SEM = asyncio.Semaphore(2)   # scrypt(約32MB/100ms CPU)の同時実行を制限
+
+
+async def pw_check(hashed: str, password: str) -> bool:
+    async with _PW_SEM:
+        return await run_in_threadpool(check_password_hash, hashed, password)
+
+
+async def pw_hash(password: str) -> str:
+    async with _PW_SEM:
+        return await run_in_threadpool(generate_password_hash, password)
+
+
 async def _authenticate_user(username: str, password: str):
 
     try:
@@ -1996,7 +2031,7 @@ async def _authenticate_user(username: str, password: str):
         print(f"ログインエラー: {e}")
         res = []
     user = res[0] if res else None
-    if not user or not check_password_hash(user['password_hash'], password):
+    if not user or not await pw_check(user['password_hash'], password):
         return None
     return user
 
@@ -2073,7 +2108,7 @@ async def register_submit(request: Request):
             if existing_email:
                 return render_error('そのメールアドレスはすでに登録されています。')
 
-        password_hash = generate_password_hash(password)
+        password_hash = await pw_hash(password)
         public_id = await _generate_public_id()
         await execute_query(
             "INSERT INTO users (username, password_hash, email, email_verified, public_id, role) VALUES (?, ?, ?, 0, ?, 'user')",
@@ -2217,7 +2252,7 @@ async def reset_password_submit(request: Request, token: str):
         )
 
     try:
-        await execute_query("UPDATE users SET password_hash = ? WHERE id = ?", [generate_password_hash(password), user['id']])
+        await execute_query("UPDATE users SET password_hash = ? WHERE id = ?", [await pw_hash(password), user['id']])
     except Exception as e:
         print(f"パスワード更新エラー: {e}")
         return templates.TemplateResponse(
