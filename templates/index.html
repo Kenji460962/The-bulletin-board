@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <script src="/static/bbs_fp.js"></script>
+    <script src="/static/bbs_fp.js" defer></script>
 
    <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-L1F5QJ1P30"></script>
@@ -2079,7 +2079,7 @@
             console.error('オンライン人数の取得に失敗しました:', err);
         }
     }
-    setInterval(pollLobbyActiveCount, 20000);
+    setInterval(function () { if (!document.hidden) pollLobbyActiveCount(); }, 30000);
 
     // ---- オンライン人数を押すと、いまロビーにいる人の一覧を出す(スレの在室一覧と同じ: 会員は名前→プロフィール、ゲストは名無しさん+ID) ----
     (function() {
@@ -2296,7 +2296,7 @@
     window.addEventListener('load', function() {
         setTimeout(function() {
             pollServerStats();
-            setInterval(pollServerStats, 4000);
+            setInterval(function () { if (!document.hidden) pollServerStats(); }, 15000);
         }, 1000);
     });
 
