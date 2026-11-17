@@ -80,7 +80,7 @@ FALLBACK_GLOBAL_POSTS = 15                 #   ・攻撃モード中の未確認
 FORM_MIN_FILL = 1.0                        # ページ表示からこの秒数未満の送信は自動化とみなす
 FORM_TOKEN_TTL = 6 * 3600
 # --- WebSocket ---
-WS_PER_TOKEN, WS_PER_IP, WS_PER_ANON_IP, WS_TOTAL = 8, 150, 30, 1500
+WS_PER_TOKEN, WS_PER_IP, WS_PER_ANON_IP, WS_TOTAL = 8, 150, 30, 500   # WS_TOTAL: 1500→500(512MB環境で収まる本数。DM用は app.py の DM_WS_TOTAL_MAX で別管理)
 TRACK_MAX_KEYS = 20000                    # 各表の件数の上限(メモリ保護)
 
 Decision = namedtuple('Decision', 'action wait reason message')   # action: ok / wait / challenge / reject
