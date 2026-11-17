@@ -3,6 +3,8 @@
    サーバー側では「珍しい値のときだけ」BANに使う(app.py の _ban_fp_if_rare)。 */
 (function () {
   'use strict';
+  // 既にcookieがあれば何もしない(毎回の計算でページ表示が止まるのを防ぐ)
+  if (/(?:^|;\s*)bbs_fp=/.test(document.cookie)) return;
   function h128(str) {
     // cyrb53 を2系統回して 32桁hex にする(同期・外部依存なし)
     function one(seed) {
