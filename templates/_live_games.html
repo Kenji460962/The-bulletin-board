@@ -70,14 +70,24 @@
     }
 
     function load() {
-        if (document.hidden) return;
+        // 別タブにいる間、またはゲームタブが開かれていない間(非表示の間)は通信しない
+        if (document.hidden || listEl.offsetParent === null) return;
         fetch('/api/games/live', { cache: 'no-store' })
             .then(function (r) { return r.json(); })
             .then(function (d) { if (d && d.success) render(d.games || []); })
             .catch(function () {});
     }
 
-    load();
+    // ページを開いた直後には取得せず、一覧が画面に表示されたとき(ゲームタブを開いたとき)に取得する
+    if ('IntersectionObserver' in window) {
+        new IntersectionObserver(function (entries) {
+            for (var i = 0; i < entries.length; i++) {
+                if (entries[i].isIntersecting) { load(); break; }
+            }
+        }).observe(listEl);
+    } else {
+        load();
+    }
     timer = setInterval(load, 10000);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) load(); });
 })();
