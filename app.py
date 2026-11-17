@@ -4799,11 +4799,24 @@ class DMConnectionManager:
 dm_manager = DMConnectionManager()
 
 
+_dm_ws_reject = {'nosession': 0, 'banned': 0}
+
+
 @app.websocket('/ws/dm')
 async def dm_ws(websocket: WebSocket):
     # SessionMiddlewareはWebSocketにも適用されるため、セッションから本人確認できる。
     member_id = websocket.session.get('member_id')
-    if not member_id or await ws_is_banned(websocket):
+    reject_reason = None
+    if not member_id:
+        reject_reason = 'nosession'
+    elif await ws_is_banned(websocket):
+        reject_reason = 'banned'
+    if reject_reason:
+        # 拒否の内訳を記録する(uvicornのINFOログを止めても、原因の割合が分かるように)
+        _dm_ws_reject[reject_reason] += 1
+        _n = _dm_ws_reject['nosession'] + _dm_ws_reject['banned']
+        if _n == 1 or _n % 50 == 0:
+            print(f"/ws/dm 拒否 累計{_n}件 (セッションなし {_dm_ws_reject['nosession']} / BAN {_dm_ws_reject['banned']})")
         await websocket.close(code=1008)
         return
     await dm_manager.connect(member_id, websocket)
@@ -7508,4 +7521,5 @@ if __name__ == '__main__':
         timeout_graceful_shutdown=10,
         ws_per_message_deflate=False,   # WebSocket圧縮を切る(接続ごとのzlib領域のメモリとCPUを節約)
         access_log=False,               # アクセスログ出力を止める(botのアクセスが多いとCPUとjournaldを圧迫する)
+        log_level="warning",            # WebSocketの接続・切断などの情報ログを止める(警告・エラーとprintは残る)
     )
