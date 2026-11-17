@@ -756,13 +756,17 @@
         }
 
         let dmDelay = 1000, dmWs = null, dmHb = null, dmPong = null;
+        let dmFailStreak = 0;   // 一度も接続できないまま閉じられた連続回数(拒否され続ける場合に間隔を広げる)
 
         function connectDmWs() {
             if (dmWs && (dmWs.readyState === WebSocket.OPEN || dmWs.readyState === WebSocket.CONNECTING)) return;
             const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
             dmWs = new WebSocket(`${proto}//${location.host}/ws/dm`);
+            let dmOpened = false;
 
             dmWs.onopen = () => {
+                dmOpened = true;
+                dmFailStreak = 0;
                 dmDelay = 1000;
                 // 定期pingで死んだ接続を検出する（スリープ復帰時はcloseが飛ばないことがある）
                 dmHb = setInterval(() => {
@@ -793,8 +797,9 @@
             dmWs.onclose = () => {
                 clearInterval(dmHb);
                 clearTimeout(dmPong);
+                if (dmOpened) dmFailStreak = 0; else dmFailStreak++;
                 setTimeout(connectDmWs, dmDelay);
-                dmDelay = Math.min(dmDelay * 2, 30000);
+                dmDelay = Math.min(dmDelay * 2, dmFailStreak >= 5 ? 300000 : 30000);
             };
 
             dmWs.onerror = () => { try { dmWs.close(); } catch (e) {} };
@@ -802,9 +807,9 @@
 
         // タブ復帰・ネットワーク復帰時は即座に張り直す
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') { dmDelay = 1000; connectDmWs(); }
+            if (document.visibilityState === 'visible' && dmFailStreak < 5) { dmDelay = 1000; connectDmWs(); }
         });
-        window.addEventListener('online', () => { dmDelay = 1000; connectDmWs(); });
+        window.addEventListener('online', () => { if (dmFailStreak < 5) { dmDelay = 1000; connectDmWs(); } });
         connectDmWs();
     })();
 
