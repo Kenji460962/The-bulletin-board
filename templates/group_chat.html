@@ -423,6 +423,7 @@
 
     // ---- WebSocket(DMと共用の /ws/dm。切れてもポーリングが拾う) ----
     let ws = null, reconnectDelay = 1000, pingTimer = null;
+    let failStreak = 0;   // 一度も接続できないまま閉じられた連続回数
     function leaveBecauseRemoved() {
         alert('このグループから外されたか、グループが削除されました。');
         location.href = '/groups';
@@ -434,7 +435,10 @@
     function connectWS() {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
+        let opened = false;
         ws.onopen = () => {
+            opened = true;
+            failStreak = 0;
             reconnectDelay = 1000;
             if (pingTimer) clearInterval(pingTimer);
             pingTimer = setInterval(() => {
@@ -452,8 +456,9 @@
         };
         ws.onclose = () => {
             if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+            if (opened) failStreak = 0; else failStreak++;
             setTimeout(connectWS, reconnectDelay);
-            reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+            reconnectDelay = Math.min(reconnectDelay * 2, failStreak >= 5 ? 300000 : 30000);
         };
         ws.onerror = () => { try { ws.close(); } catch {} };
     }
