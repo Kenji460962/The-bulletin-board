@@ -414,13 +414,17 @@
     // ---- WebSocket(つながっていれば即時反映。切れていてもポーリングが拾う) ----
     let ws = null;
     let reconnectDelay = 1000;
+    let failStreak = 0;   // 一度も接続できないまま閉じられた連続回数
     let pingTimer = null;
 
     function connectWS() {
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
+        let opened = false;
 
         ws.onopen = () => {
+            opened = true;
+            failStreak = 0;
             reconnectDelay = 1000;
             // 一定間隔でpingを送り、アイドルタイムアウトで
             // プロキシ側から切断されるのを防ぐ
@@ -445,8 +449,9 @@
 
         ws.onclose = () => {
             if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+            if (opened) failStreak = 0; else failStreak++;
             setTimeout(connectWS, reconnectDelay);
-            reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+            reconnectDelay = Math.min(reconnectDelay * 2, failStreak >= 5 ? 300000 : 30000);
         };
         ws.onerror = () => { try { ws.close(); } catch {} };
     }
