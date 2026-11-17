@@ -97,7 +97,7 @@ _http_client: httpx.AsyncClient | None = None
 
 D1_QUERY_TIMEOUT = httpx.Timeout(6.0, connect=3.0)   # D1 REST 用の明示タイムアウト(リトライ込みでもnginxの30s以内に収める)
 D1_MAX_RETRIES = 1                                   # 読み取りクエリの再試行回数(最悪2回×6s=12sで打ち切る)
-D1_SLOW_QUERY_MS = 500.0                             # 低速クエリ警告の閾値(ms)
+D1_SLOW_QUERY_MS = float(os.environ.get('SLOW_QUERY_MS', '100'))   # 低速クエリ警告の閾値(ms)。環境変数 SLOW_QUERY_MS で変更可
 _d1_slow_query_total = 0                             # /api/server_stats 表示用カウンタ
 
 # ---------------------------------------------------------------------
@@ -253,7 +253,7 @@ async def _ensure_ban_schema():
 @app.on_event("startup")
 async def _startup_redis():
     global redis_client, _redis_listener_task, _cache_cleanup_task
-    global _http_client, _pv_writer_task
+    global _http_client, _pv_writer_task, _db_maint_task
     # 共有HTTPクライアントは「動いているイベントループ」の中で生成する必要がある。
     # ここで1度だけ作ることで、以降すべてのD1/proxycheck呼び出しが
     # 接続プールとキープアライブを再利用できるようになる。
@@ -273,6 +273,7 @@ async def _startup_redis():
     await _ensure_group_schema()
     await points_service.ensure_schema()
     await _ensure_login_bonus_schema()
+    await _ensure_perf_indexes()
 
     if REDIS_URL:
         try:
@@ -295,6 +296,8 @@ async def _startup_redis():
     _cache_cleanup_task = asyncio.create_task(_cleanup_memory_caches_loop())
     # アクセス解析の書き込みは専用ライター1本に集約する(スレッドを増やさない)
     _pv_writer_task = asyncio.create_task(_pv_writer())
+    # 古いアクセス解析データの削除(DBとWALの肥大・集計の遅延を防ぐ)
+    _db_maint_task = asyncio.create_task(_db_maintenance_loop())
 
 
 @app.on_event("shutdown")
@@ -2360,8 +2363,27 @@ def _site_presence_touch_scope(scope):
     _lobby_presence_touch(who)
 
 
+# ゲストは「2回目の記録」が来て初めて在室に数える。
+# cookieを保存しないbot・巡回は1回見て去るため、アクセスのたびに新しい訪問者として
+# 120秒間「ゲスト1人」になっていた(オンライン人数・ゲスト一覧の水増しの原因)。
+# 初見のゲストはここ(保留)に置き、TTL内に同じキーがもう一度来たら在室へ昇格する。
+# 実際の人はトップの20秒ごとの更新やスレを開く動作で自然に昇格する。
+_lobby_pending: dict = {}        # 保留中のゲストキー -> 初回に見た時刻(monotonic)
+
+
 def _lobby_presence_touch(who: dict):
     now = time.monotonic()
+    if who.get('guest') and who['key'] not in _lobby_presence:
+        first = _lobby_pending.get(who['key'])
+        if first is None or now - first > LOBBY_PRESENCE_TTL:
+            _lobby_pending[who['key']] = now
+            if len(_lobby_pending) > LOBBY_PRESENCE_MAX or random.random() < 0.02:
+                for k in [k for k, t in _lobby_pending.items() if now - t > LOBBY_PRESENCE_TTL]:
+                    _lobby_pending.pop(k, None)
+                while len(_lobby_pending) > LOBBY_PRESENCE_MAX:      # 異常に増えたら古い順に捨てる(メモリ保護)
+                    _lobby_pending.pop(next(iter(_lobby_pending)), None)
+            return
+        _lobby_pending.pop(who['key'], None)                         # 2回目 → 在室に昇格
     old = _lobby_presence.get(who['key'])
     if old and not who.get('guest') and not who.get('public_id') and old[1].get('public_id'):
         who['public_id'] = old[1]['public_id']          # 既に分かっているプロフィールIDを、空の記録で消さない
@@ -5527,6 +5549,48 @@ async def _ensure_group_schema():
             print(f"グループチャットのスキーマ作成エラー: {e}")
 
 
+async def _ensure_perf_indexes():
+    """よく使う検索に必要なインデックスを起動時に保証する(IF NOT EXISTSなので何度実行しても安全)。
+    users.public_id にインデックスが無く、スレッド表示のJOIN(replies LEFT JOIN users ON public_id)が
+    返信1件ごとにusersを全件スキャンしていた。"""
+    try:
+        conn = await _get_db_conn()
+        async with _db_lock:
+            await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_public_id ON users(public_id)")
+            await conn.commit()
+    except Exception as e:
+        print(f"パフォーマンス用インデックス作成エラー: {e}")
+
+
+PAGE_VIEWS_KEEP_DAYS = 30
+_db_maint_task = None
+
+
+async def _db_maintenance_loop():
+    """1日1回、保存期間を過ぎたアクセス解析(page_views)を小分けに削除する。
+    小分け(2000件ずつ)にするのは、1回の削除でDBロックを長く握って他のクエリを待たせないため。"""
+    await asyncio.sleep(600)       # 起動直後の負荷が落ち着いてから
+    while True:
+        try:
+            while True:
+                conn = await _get_db_conn()
+                async with _db_lock:
+                    cur = await conn.execute(
+                        "DELETE FROM page_views WHERE rowid IN ("
+                        "SELECT rowid FROM page_views WHERE created_at < datetime('now', ?) LIMIT 2000)",
+                        [f"-{PAGE_VIEWS_KEEP_DAYS} days"]
+                    )
+                    deleted = cur.rowcount
+                    await cur.close()
+                    await conn.commit()
+                if deleted < 2000:
+                    break
+                await asyncio.sleep(0.5)
+        except Exception as e:
+            print(f"DBメンテナンスエラー: {e}")
+        await asyncio.sleep(86400)
+
+
 async def _get_group_membership(group_id: int, member_id: int):
     """member_id がグループの参加者なら、グループ情報+自分の参加情報を返す。違えば None。"""
     res = await execute_query(
@@ -7442,4 +7506,6 @@ if __name__ == '__main__':
         proxy_headers=True,
         forwarded_allow_ips='127.0.0.1',
         timeout_graceful_shutdown=10,
+        ws_per_message_deflate=False,   # WebSocket圧縮を切る(接続ごとのzlib領域のメモリとCPUを節約)
+        access_log=False,               # アクセスログ出力を止める(botのアクセスが多いとCPUとjournaldを圧迫する)
     )
