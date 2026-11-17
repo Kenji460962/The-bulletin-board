@@ -1979,13 +1979,17 @@
         }
 
         let delay = 1000, ws = null, hb = null, pong = null;
+        let failStreak = 0;   // 一度も接続できないまま閉じられた連続回数(未ログイン・BAN等で断られ続ける場合)
 
         function connect() {
             if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
             const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
             ws = new WebSocket(`${proto}//${location.host}/ws/dm`);
+            let opened = false;
 
             ws.onopen = () => {
+                opened = true;
+                failStreak = 0;
                 delay = 1000;
                 // 定期pingで死んだ接続を検出する（スリープ復帰時はcloseが飛ばないことがある）
                 hb = setInterval(() => {
@@ -2029,8 +2033,10 @@
             ws.onclose = () => {
                 clearInterval(hb);
                 clearTimeout(pong);
+                // 一度も繋がらないまま5回連続で閉じられたら(サーバーに拒否され続けている)、間隔を最大5分まで広げる
+                if (opened) failStreak = 0; else failStreak++;
                 setTimeout(connect, delay);
-                delay = Math.min(delay * 2, 30000);
+                delay = Math.min(delay * 2, failStreak >= 5 ? 300000 : 30000);
             };
 
             ws.onerror = () => { try { ws.close(); } catch (e) {} };
@@ -2038,9 +2044,9 @@
 
         // タブ復帰・ネットワーク復帰時は即座に張り直す
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') { delay = 1000; connect(); }
+            if (document.visibilityState === 'visible' && failStreak < 5) { delay = 1000; connect(); }
         });
-        window.addEventListener('online', () => { delay = 1000; connect(); });
+        window.addEventListener('online', () => { if (failStreak < 5) { delay = 1000; connect(); } });
         connect();
     })();
 
