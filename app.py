@@ -31,6 +31,7 @@ import io
 from PIL import Image, ImageOps
 import flood_guard      # 書き込みの行動・内容の監視(連投・コピペ・AI連投・WebSocket接続数)
 import security_guard   # DoS・画像砲対策(巨大リクエスト拒否 / IP別レート制限 / 安全な画像オープン)
+from http_limit import HttpConcurrencyLimit   # 処理中のHTTP数の制限(WebSocketは数えない。待たせてから503)
 import uvicorn
 import redis.asyncio as aioredis
 import aiosqlite
@@ -4802,6 +4803,35 @@ dm_manager = DMConnectionManager()
 _dm_ws_reject = {'nosession': 0, 'banned': 0}
 
 
+# DM用WebSocketの接続数の上限(uvicornの--limit-concurrencyを外すかわりに、アプリ側で守る)
+DM_WS_TOTAL_MAX = 400          # サイト全体(スレッド用WebSocketはflood_guard.WS_TOTALで別に管理)
+DM_WS_PER_MEMBER_MAX = 8       # 1人あたり(タブ複数・再接続の取りこぼしを見込んだ余裕)
+DM_WS_IDLE_TIMEOUT = 120       # 無通信がこの秒数続いたら切る(クライアントは25秒ごとにpingを送る)
+_dm_ws_count = {'total': 0, 'by_member': {}}
+
+
+def _dm_ws_acquire(member_id) -> bool:
+    """接続してよいなら True を返して1本分を数える。await を挟まないので競合しない。"""
+    if _dm_ws_count['total'] >= DM_WS_TOTAL_MAX:
+        return False
+    n = _dm_ws_count['by_member'].get(member_id, 0)
+    if n >= DM_WS_PER_MEMBER_MAX:
+        return False
+    _dm_ws_count['by_member'][member_id] = n + 1
+    _dm_ws_count['total'] += 1
+    return True
+
+
+def _dm_ws_release(member_id) -> None:
+    n = _dm_ws_count['by_member'].get(member_id, 0)
+    if n <= 1:
+        _dm_ws_count['by_member'].pop(member_id, None)
+    else:
+        _dm_ws_count['by_member'][member_id] = n - 1
+    if _dm_ws_count['total'] > 0:
+        _dm_ws_count['total'] -= 1
+
+
 @app.websocket('/ws/dm')
 async def dm_ws(websocket: WebSocket):
     # SessionMiddlewareはWebSocketにも適用されるため、セッションから本人確認できる。
@@ -4819,16 +4849,29 @@ async def dm_ws(websocket: WebSocket):
             print(f"/ws/dm 拒否 累計{_n}件 (セッションなし {_dm_ws_reject['nosession']} / BAN {_dm_ws_reject['banned']})")
         await websocket.close(code=1008)
         return
-    await dm_manager.connect(member_id, websocket)
+    # 接続数の上限。超えた分は1013(一時的に混雑)で断る。クライアントは間隔を空けて自動再接続する。
+    if not _dm_ws_acquire(member_id):
+        await websocket.close(code=1013)
+        return
     try:
+        await dm_manager.connect(member_id, websocket)
         while True:
-            msg = await websocket.receive_text()
+            # 無通信が続く接続は切る(スリープ等で切断に気づけないまま溜まる接続を防ぐ)
+            msg = await asyncio.wait_for(websocket.receive_text(), timeout=DM_WS_IDLE_TIMEOUT)
             if msg == 'ping':
                 await websocket.send_text('{"type":"pong"}')
+    except asyncio.TimeoutError:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
     except WebSocketDisconnect:
-        dm_manager.disconnect(member_id, websocket)
+        pass
     except Exception:
-        dm_manager.disconnect(member_id, websocket)
+        pass
+    finally:
+        dm_manager.disconnect(member_id, websocket)   # 二重に呼んでも安全(未登録なら何もしない)
+        _dm_ws_release(member_id)
 
 
 # ---------------------------------------------------------------------
@@ -7500,20 +7543,21 @@ async def _guard_auto_ban(info):
 
 security_guard.set_abuse_handler(_guard_auto_ban)
 app.add_middleware(security_guard.GuardMiddleware)
+# 最後に追加したものが最も外側になる。重い処理に入る前に、処理中のHTTP数を制限する。
+app.add_middleware(HttpConcurrencyLimit, limit=150, max_wait=8.0, max_queue=300)
 app = ProxyHeadersMiddleware(app, trusted_hosts="127.0.0.1")
 
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     # 512MB環境では worker は1つに固定する(増やすと1プロセスあたりの常駐メモリで即OOM)。
-    # limit_concurrency により、過負荷時は「無応答で504」ではなく
-    # 「即座に503」を返して早く失敗させる(ユーザー体験・復旧速度の両方が改善する)。
+    # 過負荷時の制御は HttpConcurrencyLimit(HTTPのみ・待たせてから503)とWebSocketの接続数上限で行う。
+    # uvicornの limit_concurrency は WebSocket や keep-alive 接続も数えて503になるため使わない。
     uvicorn.run(
         app,
         host='0.0.0.0',
         port=port,
         workers=1,
-        limit_concurrency=64,
         timeout_keep_alive=65,   # Cloudflare のキープアライブを再利用する
         backlog=128,
         proxy_headers=True,
