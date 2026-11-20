@@ -3180,6 +3180,35 @@ async def _fetch_threads_with_stats(where_sql, where_params, order_sql, limit=No
     """
     params = [active_cutoff] + list(where_params)
 
+    if limit is not None and 'replies_count' not in order_sql:
+        # 並び替えにレス数を使わないときは、まず「最終更新・閲覧人数」だけで表示する件数に絞り込み、
+        # 重いレス数の集計(COUNT)は絞り込んだ後の20件ぶんだけにする。
+        # (旧: 全スレッドのレス数を毎回数えてから並べ替えていた。結果の並び・中身は同じ)
+        sql = f"""
+            SELECT
+                t.*,
+                (SELECT COUNT(*) FROM replies r WHERE r.thread_id = t.id) AS replies_count,
+                u.username AS op_username,
+                u.icon_path AS op_icon_path
+            FROM (
+                SELECT
+                    t.*,
+                    COALESCE(
+                        (SELECT MAX(r2.date) FROM replies r2 WHERE r2.thread_id = t.id),
+                        t.created_at
+                    ) AS last_activity,
+                    (SELECT COUNT(*) FROM active_users au
+                        WHERE au.location = ('thread_' || t.id) AND au.last_seen >= ?) AS thread_active_count
+                FROM threads t
+                {where_sql}
+                ORDER BY {order_sql}
+                LIMIT ? OFFSET ?
+            ) t
+            LEFT JOIN users u ON u.public_id = t.user_id
+            ORDER BY {order_sql}
+        """
+        return await execute_query(sql, params + [limit, offset or 0])
+
     if limit is not None:
         sql += " LIMIT ? OFFSET ?"
         params += [limit, offset or 0]
@@ -3948,9 +3977,8 @@ async def thread_view(request: Request, thread_id: int):
         # 初回表示はテンプレート描画・転送量・体感速度への影響が大きいため、
         # 必要最小限だけ取得し、残りは「もっと見る」ボタンの追加取得に任せる。
         RECENT_REPLIES_LIMIT = 300
-        thread_res, count_res, replies_res = await asyncio.gather(
+        thread_res, replies_res = await asyncio.gather(
             execute_query("SELECT * FROM threads WHERE id = ?", [thread_id]),
-            execute_query("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id]),
             execute_query(
                 """SELECT r.*, u.icon_path AS icon_path
                    FROM replies r
@@ -3964,6 +3992,13 @@ async def thread_view(request: Request, thread_id: int):
             return (error_page("スレッドが見つかりません", 404) if request.method == 'GET' else text_resp("スレッドが見つかりません", 404))
         thread = thread_res[0]
         thread['tags_list'] = _parse_tags(thread.get('tags'))
+
+        # 取得上限(300件)に届かなかったなら、そのスレの全レスを取得できているので件数 = 取得行数。
+        # この場合は重い COUNT(*) を省く(上限に届いた/0件のときだけ従来どおり数える)。
+        if replies_res and len(replies_res) < RECENT_REPLIES_LIMIT:
+            count_res = [{'cnt': len(replies_res)}]
+        else:
+            count_res = await execute_query("SELECT COUNT(*) as cnt FROM replies WHERE thread_id = ?", [thread_id])
 
         total_reply_count = count_res[0]['cnt'] if count_res else 0
         loaded_replies = list(reversed(replies_res)) if replies_res else []
