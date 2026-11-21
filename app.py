@@ -1023,7 +1023,7 @@ async def execute_query(sql, params=None):
             elapsed_ms = (time.perf_counter() - started) * 1000
             if elapsed_ms >= D1_SLOW_QUERY_MS:
                 _d1_slow_query_total += 1
-                print(f"SQLite 低速クエリ: {elapsed_ms:.0f}ms / {sql[:120]}")
+                print(f"SQLite 低速クエリ: {elapsed_ms:.0f}ms / {' '.join(sql.split())[:160]}")   # 改行入りSQLも1行で出す
 
             return result
         except Exception as e:
